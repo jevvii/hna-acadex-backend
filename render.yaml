@@ -28,8 +28,6 @@ services:
         value: "1"
       - key: WEB_CONCURRENCY
         value: "2"
-      - key: DJANGO_SU_USERNAME
-        value: "admin"
       - key: DJANGO_SU_EMAIL
         value: "admin@hna-acadex.edu"
       - key: DJANGO_SU_PASSWORD
