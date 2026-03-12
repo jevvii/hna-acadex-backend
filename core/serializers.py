@@ -9,6 +9,7 @@ from .models import (
     Notification,
     MeetingSession,
     AttendanceRecord,
+    PasswordResetRequest,
     Quiz,
     QuizAnswer,
     QuizAttempt,
@@ -40,10 +41,11 @@ class UserSerializer(serializers.ModelSerializer):
             "employee_id",
             "student_id",
             "theme",
+            "requires_setup",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "avatar_url")
+        read_only_fields = ("id", "created_at", "updated_at", "avatar_url", "requires_setup")
 
     def get_avatar_url(self, obj: User):
         request = self.context.get("request")
@@ -421,3 +423,47 @@ class QuizAnswerGradeSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuizAnswer
         fields = ("points_awarded", "is_correct")
+
+
+class PasswordResetRequestSerializer(serializers.ModelSerializer):
+    """Serializer for password reset requests (admin view)."""
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    resolved_by_name = serializers.CharField(source="resolved_by.full_name", read_only=True)
+
+    class Meta:
+        model = PasswordResetRequest
+        fields = (
+            "id",
+            "user",
+            "user_email",
+            "user_name",
+            "personal_email",
+            "status",
+            "created_at",
+            "resolved_at",
+            "resolved_by",
+            "resolved_by_name",
+        )
+        read_only_fields = ("id", "user", "created_at", "resolved_at", "resolved_by")
+
+
+class PasswordResetRequestSerializer(serializers.ModelSerializer):
+    """Serializer for password reset requests (admin view)."""
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_name = serializers.CharField(source="user.full_name", read_only=True)
+    resolved_by_name = serializers.CharField(source="resolved_by.full_name", read_only=True, allow_null=True)
+
+    class Meta:
+        model = PasswordResetRequest
+        fields = (
+            "id",
+            "user_email",
+            "user_name",
+            "personal_email",
+            "status",
+            "created_at",
+            "resolved_at",
+            "resolved_by_name",
+        )
+        read_only_fields = ("id", "created_at", "resolved_at", "resolved_by_name")

@@ -1,5 +1,10 @@
+# hna-acadex-backend/core/admin.py
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django import forms
+from django.contrib import messages
+from django.utils.html import format_html
 from .models import (
     Activity,
     Announcement,
@@ -12,6 +17,7 @@ from .models import (
     Enrollment,
     Notification,
     MeetingSession,
+    PasswordResetRequest,
     Quiz,
     QuizAnswer,
     QuizAttempt,
@@ -23,23 +29,103 @@ from .models import (
     User,
     WeeklyModule,
 )
+from .email_utils import generate_random_password, send_credentials_email
+
+
+class CustomUserCreationForm(UserCreationForm):
+    """Custom form for creating users with auto-generated password."""
+
+    personal_email = forms.EmailField(
+        required=False,
+        label="Personal Email",
+        help_text="Personal email for sending login credentials (required for teachers/students)"
+    )
+    auto_generate_password = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Auto-generate password",
+        help_text="If checked, a random password will be generated. Uncheck to set password manually."
+    )
+    password1 = forms.CharField(
+        label="Password",
+        required=False,
+        widget=forms.PasswordInput,
+        help_text="Required if auto-generate password is unchecked."
+    )
+    password2 = forms.CharField(
+        label="Password confirmation",
+        required=False,
+        widget=forms.PasswordInput,
+        help_text="Enter the same password as above, for verification."
+    )
+    send_credentials_email = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Send credentials via email",
+        help_text="If checked, login credentials will be sent to the personal email address."
+    )
+
+    class Meta:
+        model = User
+        fields = ('email', 'personal_email', 'full_name', 'role', 'status', 'is_active', 'is_staff')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        role = cleaned_data.get('role')
+        personal_email = cleaned_data.get('personal_email')
+        auto_generate = cleaned_data.get('auto_generate_password', True)
+        send_email = cleaned_data.get('send_credentials_email', True)
+        password1 = cleaned_data.get('password1')
+        password2 = cleaned_data.get('password2')
+
+        # Require personal email for teachers and students if sending email
+        if role in [User.Role.TEACHER, User.Role.STUDENT] and send_email and not personal_email:
+            self.add_error('personal_email', 'Personal email is required to send credentials for teachers/students.')
+
+        # If not auto-generating, require password fields
+        if not auto_generate:
+            if not password1:
+                self.add_error('password1', 'Password is required when auto-generate is unchecked.')
+            if not password2:
+                self.add_error('password2', 'Password confirmation is required when auto-generate is unchecked.')
+            if password1 and password2 and password1 != password2:
+                self.add_error('password2', 'The two password fields didn\'t match.')
+
+        return cleaned_data
+
+
+class CustomUserChangeForm(UserChangeForm):
+    """Custom form for changing user details."""
+
+    personal_email = forms.EmailField(
+        required=False,
+        label="Personal Email",
+        help_text="Personal email for sending login credentials"
+    )
+
+    class Meta:
+        model = User
+        fields = '__all__'
 
 
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
+    form = CustomUserChangeForm
+    add_form = CustomUserCreationForm
     model = User
     list_display = (
         "email",
         "full_name",
         "role",
         "status",
+        "personal_email",
         "is_staff",
         "is_active",
         "created_at",
     )
     list_filter = ("role", "status", "is_staff", "is_superuser", "is_active")
     ordering = ("-created_at",)
-    search_fields = ("email", "full_name", "employee_id", "student_id")
+    search_fields = ("email", "full_name", "employee_id", "student_id", "personal_email")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -48,6 +134,7 @@ class UserAdmin(DjangoUserAdmin):
             {
                 "fields": (
                     "full_name",
+                    "personal_email",
                     "avatar",
                     "avatar_url",
                     "role",
@@ -75,11 +162,14 @@ class UserAdmin(DjangoUserAdmin):
                 "classes": ("wide",),
                 "fields": (
                     "email",
+                    "personal_email",
                     "full_name",
                     "role",
                     "status",
+                    "auto_generate_password",
                     "password1",
                     "password2",
+                    "send_credentials_email",
                     "is_active",
                     "is_staff",
                 ),
@@ -88,6 +178,115 @@ class UserAdmin(DjangoUserAdmin):
     )
 
     readonly_fields = ("created_at", "updated_at", "date_joined", "last_login")
+
+    actions = ["send_credentials_action"]
+
+    def send_credentials_action(self, request, queryset):
+        """Admin action to send login credentials to selected users."""
+        success_count = 0
+        error_count = 0
+
+        for user in queryset:
+            if user.role not in [User.Role.TEACHER, User.Role.STUDENT]:
+                self.message_user(
+                    request,
+                    f"Skipping {user.email} - can only send credentials to teachers and students.",
+                    level=messages.WARNING
+                )
+                continue
+
+            if not user.personal_email:
+                self.message_user(
+                    request,
+                    f"Skipping {user.email} - no personal email configured.",
+                    level=messages.WARNING
+                )
+                continue
+
+            # Generate a new password
+            new_password = generate_random_password()
+            user.set_password(new_password)
+            user.save()
+
+            # Send the email
+            success, message = send_credentials_email(user, new_password)
+            if success:
+                success_count += 1
+            else:
+                error_count += 1
+                self.message_user(request, f"Failed to send to {user.email}: {message}", level=messages.ERROR)
+
+        if success_count > 0:
+            self.message_user(
+                request,
+                f"Successfully sent credentials to {success_count} user(s).",
+                level=messages.SUCCESS
+            )
+        if error_count > 0:
+            self.message_user(
+                request,
+                f"Failed to send credentials to {error_count} user(s).",
+                level=messages.ERROR
+            )
+
+    send_credentials_action.short_description = "Send login credentials via email"
+
+    def save_model(self, request, obj, form, change):
+        """Override save_model to handle auto-generated passwords and email sending."""
+        if not change:
+            # Creating a new user
+            auto_generate = form.cleaned_data.get('auto_generate_password', True)
+            send_email = form.cleaned_data.get('send_credentials_email', True)
+
+            if auto_generate:
+                # Generate a random password
+                plain_password = generate_random_password()
+                obj.set_password(plain_password)
+            else:
+                # Use the manually entered password
+                plain_password = form.cleaned_data.get('password1')
+
+            # Save the user first
+            super().save_model(request, obj, form, change)
+
+            # Send credentials email if requested
+            if send_email and obj.personal_email:
+                if obj.role in [User.Role.TEACHER, User.Role.STUDENT]:
+                    success, message = send_credentials_email(obj, plain_password)
+                    if success:
+                        self.message_user(
+                            request,
+                            f"User created successfully. Credentials sent to {obj.personal_email}",
+                            level=messages.SUCCESS
+                        )
+                    else:
+                        self.message_user(
+                            request,
+                            f"User created but email failed: {message}",
+                            level=messages.WARNING
+                        )
+                else:
+                    self.message_user(
+                        request,
+                        f"User created. Email not sent (only teachers/students receive credentials).",
+                        level=messages.INFO
+                    )
+            else:
+                if send_email and not obj.personal_email:
+                    self.message_user(
+                        request,
+                        f"User created. Credentials not sent - no personal email provided.",
+                        level=messages.INFO
+                    )
+                else:
+                    self.message_user(
+                        request,
+                        f"User created with {'auto-generated' if auto_generate else 'manual'} password.",
+                        level=messages.SUCCESS
+                    )
+        else:
+            # Updating existing user
+            super().save_model(request, obj, form, change)
 
 
 @admin.register(Section)
@@ -218,3 +417,68 @@ class TodoItemAdmin(admin.ModelAdmin):
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ("recipient", "type", "title", "is_read", "created_at")
     list_filter = ("type", "is_read")
+
+
+@admin.register(PasswordResetRequest)
+class PasswordResetRequestAdmin(admin.ModelAdmin):
+    list_display = ("user", "personal_email", "status", "created_at", "resolved_at", "resolved_by")
+    list_filter = ("status", "created_at")
+    search_fields = ("user__email", "user__full_name", "personal_email")
+    readonly_fields = ("created_at", "resolved_at", "resolved_by")
+    ordering = ("-created_at",)
+
+    actions = ["approve_requests", "decline_requests"]
+
+    def approve_requests(self, request, queryset):
+        """Admin action to approve multiple password reset requests."""
+        from .email_utils import generate_random_password, send_password_reset_email
+        from django.utils import timezone
+
+        success_count = 0
+        error_count = 0
+
+        for reset_request in queryset.filter(status=PasswordResetRequest.Status.PENDING):
+            user = reset_request.user
+
+            # Generate new password
+            new_password = generate_random_password()
+            user.set_password(new_password)
+            user.requires_setup = True
+            user.save(update_fields=["password", "requires_setup", "updated_at"])
+
+            # Send email
+            success, message = send_password_reset_email(user, new_password)
+
+            if success:
+                reset_request.status = PasswordResetRequest.Status.APPROVED
+                reset_request.resolved_at = timezone.now()
+                reset_request.resolved_by = request.user
+                reset_request.save()
+                success_count += 1
+            else:
+                error_count += 1
+                self.message_user(request, f"Failed to send email for {user.email}: {message}", level=messages.ERROR)
+
+        if success_count > 0:
+            self.message_user(request, f"Successfully approved {success_count} password reset request(s).", level=messages.SUCCESS)
+        if error_count > 0:
+            self.message_user(request, f"Failed to process {error_count} request(s).", level=messages.ERROR)
+
+    approve_requests.short_description = "Approve selected password reset requests"
+
+    def decline_requests(self, request, queryset):
+        """Admin action to decline multiple password reset requests."""
+        from django.utils import timezone
+
+        count = 0
+        for reset_request in queryset.filter(status=PasswordResetRequest.Status.PENDING):
+            reset_request.status = PasswordResetRequest.Status.DECLINED
+            reset_request.resolved_at = timezone.now()
+            reset_request.resolved_by = request.user
+            reset_request.save()
+            count += 1
+
+        if count > 0:
+            self.message_user(request, f"Successfully declined {count} password reset request(s).", level=messages.SUCCESS)
+
+    decline_requests.short_description = "Decline selected password reset requests"

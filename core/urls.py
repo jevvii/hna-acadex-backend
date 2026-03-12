@@ -17,14 +17,17 @@ from .views import (
     AuthLoginView,
     AvatarUploadView,
     CalendarEventViewSet,
+    ChangePasswordView,
     CourseFileViewSet,
     CourseSectionContentView,
     CourseSectionGradesView,
     CourseSectionGradesExportCSVView,
     DashboardStatsView,
     EnrollmentGradeOverrideView,
+    ForgotPasswordRequestView,
     MeView,
     NotificationViewSet,
+    PasswordResetRequestViewSet,
     ProfileViewSet,
     QuizAnswerGradeView,
     QuizGradingListView,
@@ -53,11 +56,14 @@ router.register(r"activities", ActivityViewSet, basename="activities")
 router.register(r"course-files", CourseFileViewSet, basename="course-files")
 router.register(r"announcements", AnnouncementViewSet, basename="announcements")
 router.register(r"quizzes", QuizViewSet, basename="quizzes")
+router.register(r"password-reset-requests", PasswordResetRequestViewSet, basename="password-reset-requests")
 
 urlpatterns = [
     path("auth/login/", AuthLoginView.as_view(), name="auth-login"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
+    path("auth/change-password/", ChangePasswordView.as_view(), name="auth-change-password"),
+    path("auth/forgot-password/", ForgotPasswordRequestView.as_view(), name="auth-forgot-password"),
     path("profiles/me/avatar/", AvatarUploadView.as_view(), name="profile-avatar-upload"),
     path("dashboard/stats/", DashboardStatsView.as_view(), name="dashboard-stats"),
     path("courses/student/", StudentCoursesView.as_view(), name="student-courses"),

@@ -1,3 +1,4 @@
+# hna-acadex-backend/core/models.py
 import uuid
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
@@ -62,6 +63,7 @@ class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
+    personal_email = models.EmailField(blank=True, null=True, help_text="Personal email for sending login credentials")
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
@@ -73,6 +75,7 @@ class User(AbstractUser):
     employee_id = models.CharField(max_length=50, blank=True, null=True)
     student_id = models.CharField(max_length=50, blank=True, null=True)
     theme = models.CharField(max_length=20, default="system")
+    requires_setup = models.BooleanField(default=True, help_text="User must complete first-time setup (photo + password)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -487,3 +490,38 @@ class QuizAnswer(models.Model):
 
     class Meta:
         unique_together = ("attempt", "question")
+
+
+class PasswordResetRequest(models.Model):
+    """Track password reset requests that require admin approval."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        DECLINED = "declined", "Declined"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_requests",
+        limit_choices_to={"role__in": [User.Role.TEACHER, User.Role.STUDENT]},
+    )
+    personal_email = models.EmailField(help_text="Personal email where credentials will be sent")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    resolved_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="resolved_password_reset_requests",
+        limit_choices_to={"role": User.Role.ADMIN},
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Password reset request for {self.user.email} - {self.status}"
