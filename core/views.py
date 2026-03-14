@@ -172,10 +172,14 @@ def _compute_activity_percentage(enrollment: Enrollment) -> Decimal | None:
     if not activities:
         return None
 
-    submissions = {
-        s.activity_id: s
-        for s in Submission.objects.filter(activity__in=activities, student=enrollment.student)
-    }
+    # Get all submissions for the student for these activities
+    all_submissions = Submission.objects.filter(activity__in=activities, student=enrollment.student)
+    submissions_by_activity: dict[str, list[Submission]] = {}
+    for s in all_submissions:
+        activity_id = str(s.activity_id)
+        if activity_id not in submissions_by_activity:
+            submissions_by_activity[activity_id] = []
+        submissions_by_activity[activity_id].append(s)
 
     grouped: dict[str, dict[str, Decimal]] = {}
     explicit_weights: dict[str, Decimal] = {}
@@ -184,8 +188,21 @@ def _compute_activity_percentage(enrollment: Enrollment) -> Decimal | None:
     for activity in activities:
         group_key = str(activity.assignment_group_id) if activity.assignment_group_id else "__default__"
         possible = Decimal(activity.points or 0)
-        sub = submissions.get(activity.id)
-        earned = Decimal(sub.score) if sub and sub.score is not None else Decimal("0")
+
+        # Get all submissions for this activity
+        activity_submissions = submissions_by_activity.get(str(activity.id), [])
+        earned = Decimal("0")
+
+        if activity_submissions:
+            # Calculate best score based on policy
+            scores = [s.score for s in activity_submissions if s.score is not None]
+            if scores:
+                if activity.score_selection_policy == Activity.ScorePolicy.HIGHEST:
+                    earned = max(scores)
+                else:  # LATEST
+                    # Get the latest submission's score
+                    latest = max(activity_submissions, key=lambda s: s.attempt_number)
+                    earned = Decimal(latest.score) if latest.score is not None else Decimal("0")
 
         data = grouped.setdefault(group_key, {"earned": Decimal("0"), "possible": Decimal("0")})
         data["earned"] += earned
@@ -243,19 +260,35 @@ def _compute_quiz_percentage(enrollment: Enrollment) -> Decimal | None:
         for row in quiz_totals_raw
     }
 
+    # Get all attempts for the student
     attempts = QuizAttempt.objects.filter(
         quiz__in=quizzes,
         student=enrollment.student,
         is_submitted=True,
         score__isnull=False,
-    )
+    ).order_by("quiz_id", "attempt_number")
 
-    best_score_map: dict[str, Decimal] = {}
+    # Group attempts by quiz and calculate score based on policy
+    attempts_by_quiz: dict[str, list[QuizAttempt]] = {}
     for attempt in attempts:
         quiz_id = str(attempt.quiz_id)
-        score = Decimal(str(attempt.score or 0))
-        if quiz_id not in best_score_map or score > best_score_map[quiz_id]:
-            best_score_map[quiz_id] = score
+        if quiz_id not in attempts_by_quiz:
+            attempts_by_quiz[quiz_id] = []
+        attempts_by_quiz[quiz_id].append(attempt)
+
+    # Build a map of quiz -> selected score based on policy
+    score_by_quiz: dict[str, Decimal] = {}
+    quiz_policy_map = {str(q.id): q.score_selection_policy for q in quizzes}
+
+    for quiz_id, quiz_attempts in attempts_by_quiz.items():
+        scores = [Decimal(str(a.score or 0)) for a in quiz_attempts if a.score is not None]
+        if not scores:
+            continue
+        policy = quiz_policy_map.get(quiz_id, Quiz.ScorePolicy.HIGHEST)
+        if policy == Quiz.ScorePolicy.HIGHEST:
+            score_by_quiz[quiz_id] = max(scores)
+        else:  # LATEST - use the last attempt's score
+            score_by_quiz[quiz_id] = scores[-1]
 
     total_possible = Decimal("0")
     total_earned = Decimal("0")
@@ -264,7 +297,7 @@ def _compute_quiz_percentage(enrollment: Enrollment) -> Decimal | None:
         if possible <= 0:
             continue
         total_possible += possible
-        earned = best_score_map.get(str(quiz.id), Decimal("0"))
+        earned = score_by_quiz.get(str(quiz.id), Decimal("0"))
         total_earned += max(Decimal("0"), min(earned, possible))
 
     if total_possible <= 0:
@@ -1488,6 +1521,12 @@ class ActivitySubmitView(APIView):
         if not enrolled:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
+        # Check attempt limit
+        attempt_limit = activity.attempt_limit or 1
+        existing_submissions = Submission.objects.filter(activity=activity, student=request.user).count()
+        if existing_submissions >= attempt_limit:
+            return Response({"detail": f"Attempt limit reached. You have used {existing_submissions} of {attempt_limit} attempts."}, status=status.HTTP_400_BAD_REQUEST)
+
         allowed = activity.allowed_file_types or ["all"]
         allowed_set = set([a.lower() for a in allowed if isinstance(a, str)])
         allow_all = "all" in allowed_set
@@ -1519,15 +1558,16 @@ class ActivitySubmitView(APIView):
         if activity.deadline and now > activity.deadline:
             status_value = Submission.SubmissionStatus.LATE
 
-        submission, _ = Submission.objects.update_or_create(
+        # Create new submission with incremented attempt_number
+        next_attempt_number = existing_submissions + 1
+        submission = Submission.objects.create(
             activity=activity,
             student=request.user,
-            defaults={
-                "file_urls": existing_urls + uploaded_urls,
-                "text_content": text_content,
-                "submitted_at": now,
-                "status": status_value,
-            },
+            attempt_number=next_attempt_number,
+            file_urls=existing_urls + uploaded_urls,
+            text_content=text_content,
+            submitted_at=now,
+            status=status_value,
         )
         enrollment = Enrollment.objects.filter(course_section=activity.course_section, student=request.user, is_active=True).first()
         if enrollment:
@@ -1542,8 +1582,20 @@ class ActivityMySubmissionView(APIView):
     def get(self, request, pk):
         if request.user.role != User.Role.STUDENT:
             return Response({"detail": "Only students can view own submission here."}, status=status.HTTP_403_FORBIDDEN)
-        submission = Submission.objects.filter(activity_id=pk, student=request.user).first()
-        return Response(SubmissionSerializer(submission).data if submission else None)
+        # Return the latest submission
+        submission = Submission.objects.filter(activity_id=pk, student=request.user).order_by("-attempt_number").first()
+        # Also return all submissions for the student's reference
+        all_submissions = Submission.objects.filter(activity_id=pk, student=request.user).order_by("-attempt_number")
+        activity = Activity.objects.filter(id=pk).first()
+        attempt_limit = activity.attempt_limit if activity else 1
+        attempts_used = all_submissions.count()
+        return Response({
+            "submission": SubmissionSerializer(submission).data if submission else None,
+            "all_submissions": SubmissionSerializer(all_submissions, many=True).data,
+            "attempt_limit": attempt_limit,
+            "attempts_used": attempts_used,
+            "attempts_remaining": max(attempt_limit - attempts_used, 0),
+        })
 
 
 class ActivitySubmissionsForTeacherView(APIView):
@@ -1557,20 +1609,49 @@ class ActivitySubmissionsForTeacherView(APIView):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
-        submissions = Submission.objects.filter(activity=activity).select_related("student").order_by("-submitted_at")
-        submission_by_student = {str(s.student_id): s for s in submissions}
+
+        # Get all submissions ordered by attempt number
+        all_submissions = Submission.objects.filter(activity=activity).select_related("student").order_by("student_id", "-attempt_number")
+
+        # Group submissions by student
+        submissions_by_student: dict[str, list[Submission]] = {}
+        for s in all_submissions:
+            student_id = str(s.student_id)
+            if student_id not in submissions_by_student:
+                submissions_by_student[student_id] = []
+            submissions_by_student[student_id].append(s)
+
+        # Get latest submission per student (first in the list due to ordering)
+        latest_by_student = {student_id: submissions[0] for student_id, submissions in submissions_by_student.items()}
+
         enrolled_students = User.objects.filter(
             enrollments__course_section=activity.course_section,
             enrollments__is_active=True,
             role=User.Role.STUDENT,
         ).distinct().order_by("full_name")
+
         payload = []
         for student in enrolled_students:
-            s = submission_by_student.get(str(student.id))
-            row = SubmissionSerializer(s).data if s else {
+            student_id = str(student.id)
+            all_student_subs = submissions_by_student.get(student_id, [])
+            latest_sub = latest_by_student.get(student_id)
+
+            # Calculate best score based on policy
+            best_score = None
+            if all_student_subs:
+                scores = [s.score for s in all_student_subs if s.score is not None]
+                if scores:
+                    if activity.score_selection_policy == Activity.ScorePolicy.HIGHEST:
+                        best_score = max(scores)
+                    else:
+                        best_score = scores[-1]  # Latest score
+
+            # Base submission data
+            row = SubmissionSerializer(latest_sub).data if latest_sub else {
                 "id": None,
                 "activity_id": str(activity.id),
                 "student_id": str(student.id),
+                "attempt_number": None,
                 "file_urls": [],
                 "text_content": None,
                 "status": Submission.SubmissionStatus.NOT_SUBMITTED,
@@ -1584,6 +1665,12 @@ class ActivitySubmissionsForTeacherView(APIView):
             row["enrollment_status"] = "enrolled"
             row["student_name"] = student.full_name
             row["student_email"] = student.email
+            row["attempt_limit"] = activity.attempt_limit
+            row["attempts_used"] = len(all_student_subs)
+            row["attempts_remaining"] = max(activity.attempt_limit - len(all_student_subs), 0)
+            row["all_submissions"] = SubmissionSerializer(all_student_subs, many=True).data
+            row["best_score"] = best_score
+            row["score_selection_policy"] = activity.score_selection_policy
             payload.append(row)
         return Response(payload)
 

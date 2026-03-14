@@ -196,6 +196,10 @@ class AssignmentGroup(models.Model):
 
 
 class Activity(models.Model):
+    class ScorePolicy(models.TextChoices):
+        LATEST = "latest", "Latest"
+        HIGHEST = "highest", "Highest"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course_section = models.ForeignKey(CourseSection, on_delete=models.CASCADE, related_name="activities")
     weekly_module = models.ForeignKey(
@@ -219,6 +223,12 @@ class Activity(models.Model):
     deadline = models.DateTimeField(blank=True, null=True)
     allowed_file_types = models.JSONField(blank=True, null=True)
     support_file_url = models.URLField(blank=True, null=True)
+    attempt_limit = models.PositiveIntegerField(default=1)
+    score_selection_policy = models.CharField(
+        max_length=20,
+        choices=ScorePolicy.choices,
+        default=ScorePolicy.HIGHEST,
+    )
     is_published = models.BooleanField(default=True)
     created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -253,6 +263,10 @@ class CourseFile(models.Model):
 
 
 class Quiz(models.Model):
+    class ScorePolicy(models.TextChoices):
+        LATEST = "latest", "Latest"
+        HIGHEST = "highest", "Highest"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course_section = models.ForeignKey(CourseSection, on_delete=models.CASCADE, related_name="quizzes")
     weekly_module = models.ForeignKey(
@@ -266,6 +280,11 @@ class Quiz(models.Model):
     instructions = models.TextField(blank=True, null=True)
     time_limit_minutes = models.PositiveIntegerField(blank=True, null=True)
     attempt_limit = models.PositiveIntegerField(default=1)
+    score_selection_policy = models.CharField(
+        max_length=20,
+        choices=ScorePolicy.choices,
+        default=ScorePolicy.HIGHEST,
+    )
     open_at = models.DateTimeField(blank=True, null=True)
     close_at = models.DateTimeField(blank=True, null=True)
     is_published = models.BooleanField(default=True)
@@ -410,6 +429,7 @@ class Submission(models.Model):
         related_name="activity_submissions",
         limit_choices_to={"role": User.Role.STUDENT},
     )
+    attempt_number = models.PositiveIntegerField(default=1)
     file_urls = models.JSONField(blank=True, null=True)
     text_content = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=SubmissionStatus.choices, default=SubmissionStatus.SUBMITTED)
@@ -421,7 +441,8 @@ class Submission(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("activity", "student")
+        unique_together = ("activity", "student", "attempt_number")
+        ordering = ["-attempt_number"]
 
 
 class QuizQuestion(models.Model):
