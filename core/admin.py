@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.utils.html import format_html
 from .models import (
     Activity,
+    ActivityReminder,
     Announcement,
     AssignmentGroup,
     AttendanceRecord,
@@ -18,6 +19,7 @@ from .models import (
     Notification,
     MeetingSession,
     PasswordResetRequest,
+    PushToken,
     Quiz,
     QuizAnswer,
     QuizAttempt,
@@ -482,3 +484,19 @@ class PasswordResetRequestAdmin(admin.ModelAdmin):
             self.message_user(request, f"Successfully declined {count} password reset request(s).", level=messages.SUCCESS)
 
     decline_requests.short_description = "Decline selected password reset requests"
+
+
+@admin.register(PushToken)
+class PushTokenAdmin(admin.ModelAdmin):
+    list_display = ("user", "token", "device_type", "device_name", "is_active", "created_at")
+    list_filter = ("device_type", "is_active")
+    search_fields = ("user__email", "user__full_name", "token")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ActivityReminder)
+class ActivityReminderAdmin(admin.ModelAdmin):
+    list_display = ("user", "reminder_type", "activity", "quiz", "reminder_datetime", "notification_sent", "created_at")
+    list_filter = ("reminder_type", "notification_sent")
+    search_fields = ("user__email", "user__full_name", "activity__title", "quiz__title")
+    readonly_fields = ("created_at", "updated_at")

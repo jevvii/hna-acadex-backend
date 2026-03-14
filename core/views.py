@@ -23,6 +23,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     Activity,
+    ActivityReminder,
     Announcement,
     AssignmentGroup,
     AttendanceRecord,
@@ -34,6 +35,7 @@ from .models import (
     MeetingSession,
     Notification,
     PasswordResetRequest,
+    PushToken,
     Quiz,
     QuizAnswer,
     QuizAttempt,
@@ -48,6 +50,7 @@ from .models import (
 from .permissions import IsAdminRole
 from .serializers import (
     ActivitySerializer,
+    ActivityReminderSerializer,
     AssignmentGroupSerializer,
     AnnouncementSerializer,
     AttendanceRecordSerializer,
@@ -56,6 +59,7 @@ from .serializers import (
     MeetingSessionSerializer,
     NotificationSerializer,
     PasswordResetRequestSerializer,
+    PushTokenSerializer,
     QuizAnswerGradeSerializer,
     QuizAnswerInputSerializer,
     QuizQuestionWriteSerializer,
@@ -68,6 +72,7 @@ from .serializers import (
     UserSerializer,
     WeeklyModuleSerializer,
 )
+from .push_notifications import send_push_notification_to_users
 
 
 def _notify_students_for_course_section(
@@ -123,6 +128,32 @@ def _notify_students_for_course_section(
     if not rows:
         return
     Notification.objects.bulk_create(rows)
+
+    # Send push notifications to students
+    # Get student IDs who didn't already receive this notification
+    new_recipient_ids = [str(student_id) for student_id in student_ids if student_id not in existing_recipient_ids]
+
+    if new_recipient_ids:
+        # Build data payload for deep linking
+        data = {
+            "type": notif_type,
+            "course_section_id": str(course_section.id),
+        }
+        if activity:
+            data["activity_id"] = str(activity.id)
+        if quiz:
+            data["quiz_id"] = str(quiz.id)
+
+        # Send push notifications asynchronously (in production, use Celery task)
+        try:
+            send_push_notification_to_users(
+                user_ids=new_recipient_ids,
+                title=title,
+                body=body,
+                data=data,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send push notifications: {e}")
 
 
 LETTER_SCALE = [
@@ -1688,6 +1719,9 @@ class ActivitySubmissionGradeView(APIView):
         if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
+        # Check if this is a new grade being set
+        was_ungraded = submission.score is None
+
         serializer = SubmissionGradeSerializer(submission, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         graded = serializer.save(graded_at=timezone.now())
@@ -1701,7 +1735,46 @@ class ActivitySubmissionGradeView(APIView):
             ).first()
             if enrollment:
                 _recompute_enrollment_grade(enrollment)
+
+            # Send push notification to student when grade is released
+            if was_ungraded:
+                self._send_grade_notification(graded)
+
         return Response(SubmissionSerializer(graded).data)
+
+    def _send_grade_notification(self, submission: Submission):
+        """Send push notification to student when grade is released."""
+        from .push_notifications import send_push_notification_to_users
+
+        try:
+            activity = submission.activity
+            student = submission.student
+
+            # Create in-app notification
+            Notification.objects.create(
+                recipient=student,
+                type=Notification.NotificationType.GRADE_RELEASED,
+                title=f"Grade Released: {activity.title}",
+                body=f"Your submission for '{activity.title}' has been graded. Score: {submission.score}/{activity.points}",
+                course_section=activity.course_section,
+                activity=activity,
+            )
+
+            # Send push notification
+            data = {
+                "type": "grade_released",
+                "activity_id": str(activity.id),
+                "course_section_id": str(activity.course_section_id),
+            }
+
+            send_push_notification_to_users(
+                user_ids=[str(student.id)],
+                title=f"Grade Released: {activity.title}",
+                body=f"Your submission has been graded. Score: {submission.score}/{activity.points}",
+                data=data,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send grade notification: {e}")
 
 
 class QuizTakeView(APIView):
@@ -2118,6 +2191,9 @@ class QuizAnswerGradeView(APIView):
         if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
+        # Check if this was previously pending manual grading
+        was_pending = answer.needs_manual_grading
+
         serializer = QuizAnswerGradeSerializer(answer, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         graded = serializer.save(
@@ -2145,6 +2221,10 @@ class QuizAnswerGradeView(APIView):
         if enrollment:
             _recompute_enrollment_grade(enrollment)
 
+        # Send notification when grading is complete (no more pending)
+        if was_pending and not pending:
+            self._send_quiz_grade_notification(attempt)
+
         return Response(
             {
                 "attempt_id": str(attempt.id),
@@ -2152,6 +2232,40 @@ class QuizAnswerGradeView(APIView):
                 "pending_manual_grading": attempt.pending_manual_grading,
             }
         )
+
+    def _send_quiz_grade_notification(self, attempt: QuizAttempt):
+        """Send push notification when quiz grading is complete."""
+        from .push_notifications import send_push_notification_to_users
+
+        try:
+            quiz = attempt.quiz
+            student = attempt.student
+
+            # Create in-app notification
+            Notification.objects.create(
+                recipient=student,
+                type=Notification.NotificationType.GRADE_RELEASED,
+                title=f"Quiz Graded: {quiz.title}",
+                body=f"Your quiz '{quiz.title}' has been graded. Score: {attempt.score}/{attempt.max_score}",
+                course_section=quiz.course_section,
+                quiz=quiz,
+            )
+
+            # Send push notification
+            data = {
+                "type": "grade_released",
+                "quiz_id": str(quiz.id),
+                "course_section_id": str(quiz.course_section_id),
+            }
+
+            send_push_notification_to_users(
+                user_ids=[str(student.id)],
+                title=f"Quiz Graded: {quiz.title}",
+                body=f"Your quiz has been graded. Score: {attempt.score}/{attempt.max_score}",
+                data=data,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send quiz grade notification: {e}")
 
 
 class QuizQuestionsView(APIView):
@@ -2552,7 +2666,91 @@ class AnnouncementViewSet(TeacherCourseSectionScopedModelViewSet):
     serializer_class = AnnouncementSerializer
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        announcement = serializer.save(created_by=self.request.user)
+
+        # Send notifications to students if published
+        if announcement.is_published:
+            self._send_announcement_notifications(announcement)
+
+    def perform_update(self, serializer):
+        announcement = serializer.save()
+        # Send notifications if being published for the first time
+        if announcement.is_published:
+            self._send_announcement_notifications(announcement)
+
+    def _send_announcement_notifications(self, announcement: Announcement):
+        """Send in-app notifications and push notifications for announcement."""
+        from .push_notifications import send_push_notification_to_users
+
+        # Determine recipients based on school_wide flag and audience
+        if announcement.school_wide:
+            # School-wide announcement - notify all teachers and students
+            recipient_ids = list(
+                User.objects.filter(
+                    status=User.Status.ACTIVE,
+                    role__in=[User.Role.TEACHER, User.Role.STUDENT],
+                ).values_list('id', flat=True)
+            )
+            course_section_id = None
+        else:
+            # Course section announcement
+            if not announcement.course_section:
+                return
+            course_section_id = str(announcement.course_section.id)
+
+            # Filter recipients based on audience
+            if announcement.audience == Announcement.Audience.TEACHERS_ONLY:
+                recipient_ids = [announcement.course_section.teacher_id] if announcement.course_section.teacher else []
+            else:
+                # ALL - notify all enrolled students
+                recipient_ids = list(
+                    Enrollment.objects.filter(
+                        course_section=announcement.course_section,
+                        is_active=True,
+                        student__status=User.Status.ACTIVE,
+                    ).values_list('student_id', flat=True)
+                )
+
+        if not recipient_ids:
+            return
+
+        # Create in-app notifications
+        notif_type = (
+            Notification.NotificationType.SCHOOL_ANNOUNCEMENT
+            if announcement.school_wide
+            else Notification.NotificationType.COURSE_ANNOUNCEMENT
+        )
+
+        notifications = [
+            Notification(
+                recipient_id=recipient_id,
+                type=notif_type,
+                title=announcement.title,
+                body=announcement.body[:200] if announcement.body else "",
+                course_section=announcement.course_section,
+                announcement=announcement,
+            )
+            for recipient_id in recipient_ids
+        ]
+        Notification.objects.bulk_create(notifications)
+
+        # Send push notifications
+        data = {
+            "type": notif_type,
+            "announcement_id": str(announcement.id),
+        }
+        if course_section_id:
+            data["course_section_id"] = course_section_id
+
+        try:
+            send_push_notification_to_users(
+                user_ids=[str(uid) for uid in recipient_ids],
+                title=announcement.title,
+                body=announcement.body[:100] if announcement.body else "",
+                data=data,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send push notifications for announcement: {e}")
 
 
 class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
@@ -2626,3 +2824,137 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
         super().perform_destroy(instance)
         _recompute_course_section_grades(course_section)
         _sync_course_section_students_activity_items(course_section)
+
+
+class PushTokenViewSet(viewsets.ModelViewSet):
+    """Viewset for managing push notification tokens."""
+    serializer_class = PushTokenSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return PushToken.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # If token already exists for another user, deactivate it
+        token = serializer.validated_data.get('token')
+        if token:
+            PushToken.objects.filter(token=token).exclude(user=self.request.user).update(is_active=False)
+        serializer.save(user=self.request.user)
+
+
+class ActivityReminderViewSet(viewsets.ModelViewSet):
+    """Viewset for managing activity/quiz reminders."""
+    serializer_class = ActivityReminderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ActivityReminder.objects.filter(user=self.request.user).select_related('activity', 'quiz')
+
+        # Filter by activity_id or quiz_id if provided
+        activity_id = self.request.query_params.get('activity_id')
+        quiz_id = self.request.query_params.get('quiz_id')
+        reminder_type = self.request.query_params.get('reminder_type')
+
+        if activity_id:
+            qs = qs.filter(activity_id=activity_id)
+        if quiz_id:
+            qs = qs.filter(quiz_id=quiz_id)
+        if reminder_type:
+            qs = qs.filter(reminder_type=reminder_type)
+
+        return qs.order_by('reminder_datetime')
+
+    def perform_create(self, serializer):
+        # Validate that the user has access to the activity or quiz
+        reminder_type = serializer.validated_data.get('reminder_type')
+        activity = serializer.validated_data.get('activity')
+        quiz = serializer.validated_data.get('quiz')
+
+        if reminder_type == 'activity' and activity:
+            # Check if user is enrolled in the course section
+            enrolled = Enrollment.objects.filter(
+                course_section=activity.course_section,
+                student=self.request.user,
+                is_active=True,
+            ).exists()
+            if not enrolled and self.request.user.role != User.Role.ADMIN:
+                raise permissions.PermissionDenied("You are not enrolled in this activity's course section.")
+
+        if reminder_type == 'quiz' and quiz:
+            # Check if user is enrolled in the course section
+            enrolled = Enrollment.objects.filter(
+                course_section=quiz.course_section,
+                student=self.request.user,
+                is_active=True,
+            ).exists()
+            if not enrolled and self.request.user.role != User.Role.ADMIN:
+                raise permissions.PermissionDenied("You are not enrolled in this quiz's course section.")
+
+        serializer.save(user=self.request.user)
+
+
+class PushTokenViewSet(viewsets.ModelViewSet):
+    """Viewset for managing push notification tokens."""
+    serializer_class = PushTokenSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return PushToken.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # If token already exists for another user, deactivate it
+        token = serializer.validated_data.get('token')
+        if token:
+            PushToken.objects.filter(token=token).exclude(user=self.request.user).update(is_active=False)
+        serializer.save(user=self.request.user)
+
+
+class ActivityReminderViewSet(viewsets.ModelViewSet):
+    """Viewset for managing activity/quiz reminders."""
+    serializer_class = ActivityReminderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ActivityReminder.objects.filter(user=self.request.user).select_related('activity', 'quiz')
+
+        # Filter by activity_id or quiz_id if provided
+        activity_id = self.request.query_params.get('activity_id')
+        quiz_id = self.request.query_params.get('quiz_id')
+        reminder_type = self.request.query_params.get('reminder_type')
+
+        if activity_id:
+            qs = qs.filter(activity_id=activity_id)
+        if quiz_id:
+            qs = qs.filter(quiz_id=quiz_id)
+        if reminder_type:
+            qs = qs.filter(reminder_type=reminder_type)
+
+        return qs.order_by('reminder_datetime')
+
+    def perform_create(self, serializer):
+        # Validate that the user has access to the activity or quiz
+        reminder_type = serializer.validated_data.get('reminder_type')
+        activity = serializer.validated_data.get('activity')
+        quiz = serializer.validated_data.get('quiz')
+
+        if reminder_type == 'activity' and activity:
+            # Check if user is enrolled in the course section
+            enrolled = Enrollment.objects.filter(
+                course_section=activity.course_section,
+                student=self.request.user,
+                is_active=True,
+            ).exists()
+            if not enrolled and self.request.user.role != User.Role.ADMIN:
+                raise permissions.PermissionDenied("You are not enrolled in this activity's course section.")
+
+        if reminder_type == 'quiz' and quiz:
+            # Check if user is enrolled in the course section
+            enrolled = Enrollment.objects.filter(
+                course_section=quiz.course_section,
+                student=self.request.user,
+                is_active=True,
+            ).exists()
+            if not enrolled and self.request.user.role != User.Role.ADMIN:
+                raise permissions.PermissionDenied("You are not enrolled in this quiz's course section.")
+
+        serializer.save(user=self.request.user)

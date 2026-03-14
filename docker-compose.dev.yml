@@ -1,0 +1,92 @@
+# docker-compose.dev.yml
+# Development-only compose file for Redis + Celery services.
+# Usage: docker compose -f docker-compose.dev.yml up -d
+#
+# This file provides:
+#   - Redis (message broker for Celery)
+#   - Celery Worker (executes background tasks)
+#   - Celery Beat (schedules periodic tasks)
+#
+# The Django API server runs separately via: python manage.py runserver
+
+services:
+  # ===========================================
+  # REDIS - Message Broker for Celery
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: hna-acadex-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ===========================================
+  # CELERY WORKER - Executes Background Tasks
+  # ===========================================
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: hna-acadex-celery-worker
+    command: celery -A config worker -l INFO --concurrency=2
+    volumes:
+      # Mount code for hot-reloading during development
+      - .:/app
+      # Mount firebase credentials
+      - ./hna-acadex-firebase-adminsdk-fbsvc-00fcb8bbd2.json:/app/firebase-credentials.json:ro
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
+      # Pass through other env vars from .env
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-1}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===========================================
+  # CELERY BEAT - Periodic Task Scheduler
+  # ===========================================
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.celery
+    container_name: hna-acadex-celery-beat
+    command: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      # Mount code for development
+      - .:/app
+      - ./hna-acadex-firebase-adminsdk-fbsvc-00fcb8bbd2.json:/app/firebase-credentials.json:ro
+      # Persist beat schedule
+      - celery_beat_data:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - FIREBASE_CREDENTIALS_PATH=/app/firebase-credentials.json
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-1}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  celery_beat_data:

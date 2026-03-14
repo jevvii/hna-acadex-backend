@@ -1,0 +1,35 @@
+# Dockerfile.celery
+# Lightweight Docker image for Celery worker and beat services.
+# Optimized for development with hot-reloading support.
+
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+# In development, this is overridden by volume mount for hot-reloading
+COPY . .
+
+# Create non-root user for security
+RUN adduser --disabled-password --gecos '' celeryuser && \
+    chown -R celeryuser:celeryuser /app
+USER celeryuser
+
+# Default command (overridden by docker-compose)
+CMD ["celery", "-A", "config", "worker", "-l", "INFO"]

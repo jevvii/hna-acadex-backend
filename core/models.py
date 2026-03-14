@@ -546,3 +546,75 @@ class PasswordResetRequest(models.Model):
 
     def __str__(self):
         return f"Password reset request for {self.user.email} - {self.status}"
+
+
+class PushToken(models.Model):
+    """Store FCM/APNs push notification tokens per user/device."""
+
+    class DeviceType(models.TextChoices):
+        ANDROID = "android", "Android"
+        IOS = "ios", "iOS"
+        WEB = "web", "Web"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="push_tokens",
+    )
+    token = models.CharField(max_length=255, unique=True, help_text="FCM/APNs push token")
+    device_type = models.CharField(max_length=20, choices=DeviceType.choices, default=DeviceType.ANDROID)
+    device_name = models.CharField(max_length=100, blank=True, null=True, help_text="Optional device name for identification")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PushToken for {self.user.email} ({self.device_type})"
+
+
+class ActivityReminder(models.Model):
+    """Store reminder scheduling info for activities/quizzes."""
+
+    class ReminderType(models.TextChoices):
+        ACTIVITY = "activity", "Activity"
+        QUIZ = "quiz", "Quiz"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="activity_reminders",
+    )
+    reminder_type = models.CharField(max_length=20, choices=ReminderType.choices, default=ReminderType.ACTIVITY)
+    activity = models.ForeignKey(Activity, null=True, blank=True, on_delete=models.CASCADE, related_name="reminders")
+    quiz = models.ForeignKey(Quiz, null=True, blank=True, on_delete=models.CASCADE, related_name="reminders")
+    reminder_datetime = models.DateTimeField(help_text="When the reminder notification should be sent")
+    offset_minutes = models.PositiveIntegerField(default=0, help_text="Minutes before deadline (for display purposes)")
+    notification_sent = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["reminder_datetime"]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(reminder_type="activity", activity__isnull=False) |
+                       models.Q(reminder_type="quiz", quiz__isnull=False),
+                name="reminder_has_valid_target"
+            )
+        ]
+
+    def __str__(self):
+        target = self.activity if self.reminder_type == "activity" else self.quiz
+        return f"Reminder for {target} - {self.user.email}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.reminder_type == "activity" and not self.activity:
+            raise ValidationError("Activity reminder must have an activity")
+        if self.reminder_type == "quiz" and not self.quiz:
+            raise ValidationError("Quiz reminder must have a quiz")

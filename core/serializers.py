@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Activity,
+    ActivityReminder,
     Announcement,
     AssignmentGroup,
     CalendarEvent,
@@ -10,6 +11,7 @@ from .models import (
     MeetingSession,
     AttendanceRecord,
     PasswordResetRequest,
+    PushToken,
     Quiz,
     QuizAnswer,
     QuizAttempt,
@@ -471,3 +473,100 @@ class PasswordResetRequestSerializer(serializers.ModelSerializer):
             "resolved_by_name",
         )
         read_only_fields = ("id", "created_at", "resolved_at", "resolved_by_name")
+
+
+class PushTokenSerializer(serializers.ModelSerializer):
+    """Serializer for push notification tokens."""
+    user_id = serializers.UUIDField(read_only=True)
+
+    class Meta:
+        model = PushToken
+        fields = (
+            "id",
+            "user_id",
+            "token",
+            "device_type",
+            "device_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "user_id", "created_at", "updated_at")
+
+
+class ActivityReminderSerializer(serializers.ModelSerializer):
+    """Serializer for activity/quiz reminders."""
+    user_id = serializers.UUIDField(read_only=True)
+    # Accept activity_id/quiz_id on write (mapped to foreign keys),
+    # and return them as UUIDs on read (using the same field name for backward compat)
+    activity_id = serializers.PrimaryKeyRelatedField(
+        queryset=Activity.objects.all(),
+        source='activity',
+        required=False,
+        allow_null=True,
+    )
+    quiz_id = serializers.PrimaryKeyRelatedField(
+        queryset=Quiz.objects.all(),
+        source='quiz',
+        required=False,
+        allow_null=True,
+    )
+    course_section_id = serializers.SerializerMethodField()
+    activity_title = serializers.SerializerMethodField()
+    activity_deadline = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityReminder
+        fields = (
+            "id",
+            "user_id",
+            "reminder_type",
+            "activity_id",
+            "quiz_id",
+            "course_section_id",
+            "activity_title",
+            "activity_deadline",
+            "reminder_datetime",
+            "offset_minutes",
+            "notification_sent",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "user_id", "notification_sent", "created_at", "updated_at")
+
+    def validate(self, data):
+        """Validate that the reminder has a valid target based on reminder_type."""
+        reminder_type = data.get('reminder_type')
+        activity = data.get('activity')
+        quiz = data.get('quiz')
+
+        if reminder_type == 'activity' and not activity:
+            raise serializers.ValidationError(
+                {"activity_id": "Activity reminder must have an activity_id."}
+            )
+        if reminder_type == 'quiz' and not quiz:
+            raise serializers.ValidationError(
+                {"quiz_id": "Quiz reminder must have a quiz_id."}
+            )
+        return data
+
+    def get_course_section_id(self, obj: ActivityReminder):
+        if obj.activity_id:
+            return str(obj.activity.course_section_id) if obj.activity else None
+        if obj.quiz_id:
+            return str(obj.quiz.course_section_id) if obj.quiz else None
+        return None
+
+    def get_activity_title(self, obj: ActivityReminder):
+        if obj.reminder_type == "activity" and obj.activity:
+            return obj.activity.title
+        if obj.reminder_type == "quiz" and obj.quiz:
+            return obj.quiz.title
+        return None
+
+    def get_activity_deadline(self, obj: ActivityReminder):
+        if obj.reminder_type == "activity" and obj.activity:
+            return obj.activity.deadline
+        if obj.reminder_type == "quiz" and obj.quiz:
+            return obj.quiz.close_at
+        return None

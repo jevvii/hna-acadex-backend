@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
+    ActivityReminderViewSet,
     AttendanceOverviewView,
     AttendanceRecordBulkUpdateView,
     AttendanceSessionCreateView,
@@ -29,6 +30,7 @@ from .views import (
     NotificationViewSet,
     PasswordResetRequestViewSet,
     ProfileViewSet,
+    PushTokenViewSet,
     QuizAnswerGradeView,
     QuizGradingListView,
     QuizMyLatestAttemptView,
@@ -57,6 +59,8 @@ router.register(r"course-files", CourseFileViewSet, basename="course-files")
 router.register(r"announcements", AnnouncementViewSet, basename="announcements")
 router.register(r"quizzes", QuizViewSet, basename="quizzes")
 router.register(r"password-reset-requests", PasswordResetRequestViewSet, basename="password-reset-requests")
+router.register(r"push-tokens", PushTokenViewSet, basename="push-tokens")
+router.register(r"reminders", ActivityReminderViewSet, basename="reminders")
 
 urlpatterns = [
     path("auth/login/", AuthLoginView.as_view(), name="auth-login"),
