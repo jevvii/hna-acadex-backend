@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.utils.html import format_html
 from .models import (
     Activity,
+    ActivityComment,
     ActivityReminder,
     Announcement,
     AssignmentGroup,
@@ -15,6 +16,7 @@ from .models import (
     Course,
     CourseFile,
     CourseSection,
+    CourseSectionGroup,
     Enrollment,
     Notification,
     MeetingSession,
@@ -310,6 +312,162 @@ class CourseSectionAdmin(admin.ModelAdmin):
     list_display = ("course", "section", "teacher", "school_year", "semester", "is_active")
     list_filter = ("school_year", "semester", "is_active")
     search_fields = ("course__code", "course__title", "section__name", "teacher__full_name")
+
+
+class CourseSectionGroupForm(forms.ModelForm):
+    """Custom form for CourseSectionGroup with validation."""
+
+    class Meta:
+        model = CourseSectionGroup
+        fields = '__all__'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        course_sections = cleaned_data.get('course_sections')
+
+        if course_sections and course_sections.count() > 10:
+            raise forms.ValidationError(
+                "A course group can contain at most 10 courses. "
+                f"You have selected {course_sections.count()} courses."
+            )
+
+        return cleaned_data
+
+
+class CourseSectionGroupInlineEnrollmentForm(forms.Form):
+    """Form for enrolling students to a course group."""
+    students = forms.ModelMultipleChoiceField(
+        queryset=User.objects.filter(role=User.Role.STUDENT, status=User.Status.ACTIVE),
+        widget=admin.widgets.FilteredSelectMultiple("Students", is_stacked=False),
+        required=True,
+        help_text="Select students to enroll in all courses in this group"
+    )
+
+
+@admin.register(CourseSectionGroup)
+class CourseSectionGroupAdmin(admin.ModelAdmin):
+    form = CourseSectionGroupForm
+    list_display = ("name", "school_year", "semester", "course_count", "is_active", "created_at")
+    list_filter = ("school_year", "semester", "is_active")
+    search_fields = ("name", "description")
+    filter_horizontal = ("course_sections",)
+    readonly_fields = ("created_at", "updated_at", "course_count", "enroll_students_link")
+
+    fieldsets = (
+        (None, {
+            "fields": ("name", "description", "is_active")
+        }),
+        ("Academic Period", {
+            "fields": ("school_year", "semester")
+        }),
+        ("Course Sections", {
+            "fields": ("course_sections",)
+        }),
+        ("Info", {
+            "fields": ("created_at", "updated_at", "course_count"),
+            "classes": ("collapse",)
+        }),
+    )
+
+    def course_count(self, obj):
+        return obj.course_sections.count()
+    course_count.short_description = "Number of Courses"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<path:object_id>/enroll-students/',
+                self.admin_site.admin_view(self.enroll_students_view),
+                name='core_coursesectiongroup_enroll_students'
+            ),
+        ]
+        return custom_urls + urls
+
+    def enroll_students_link(self, obj):
+        """Display a link to enroll students (shown after saving)."""
+        from django.urls import reverse
+        from django.utils.html import format_html
+        if obj.pk:
+            url = reverse('admin:core_coursesectiongroup_enroll_students', args=[obj.pk])
+            return format_html('<a class="button" href="{}">Enroll Students to All Courses in Group</a>', url)
+        return "-"
+    enroll_students_link.short_description = "Student Enrollment"
+    enroll_students_link.allow_tags = True
+
+    def get_readonly_fields(self, request, obj=None):
+        """Only show enroll_students_link for existing objects."""
+        if obj:
+            return self.readonly_fields
+        return tuple(f for f in self.readonly_fields if f != 'enroll_students_link')
+
+    def get_fieldsets(self, request, obj=None):
+        """Add enrollment section for existing objects."""
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj and obj.pk:
+            # Add enrollment section at the end
+            fieldsets = list(fieldsets) + [
+                ("Student Enrollment", {
+                    "fields": ("enroll_students_link",),
+                    "description": "Click the button above to enroll students to all courses in this group."
+                }),
+            ]
+        return fieldsets
+
+    def enroll_students_view(self, request, object_id):
+        """View to enroll multiple students to all courses in the group."""
+        from django.shortcuts import get_object_or_404, render
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        from django.contrib import messages as admin_messages
+        from django.db import transaction
+
+        course_group = get_object_or_404(CourseSectionGroup, pk=object_id)
+
+        if request.method == 'POST':
+            form = CourseSectionGroupInlineEnrollmentForm(request.POST)
+            if form.is_valid():
+                students = form.cleaned_data['students']
+                course_sections = course_group.course_sections.filter(is_active=True)
+
+                if not course_sections.exists():
+                    admin_messages.error(request, "No active course sections in this group.")
+                    return HttpResponseRedirect(request.path)
+
+                created_count = 0
+                skipped_count = 0
+
+                with transaction.atomic():
+                    for student in students:
+                        for course_section in course_sections:
+                            _, created = Enrollment.objects.get_or_create(
+                                student=student,
+                                course_section=course_section,
+                                defaults={'is_active': True}
+                            )
+                            if created:
+                                created_count += 1
+                            else:
+                                skipped_count += 1
+
+                admin_messages.success(
+                    request,
+                    f"Successfully enrolled {students.count()} student(s) to {course_sections.count()} course(s). "
+                    f"Created {created_count} new enrollments, {skipped_count} already existed."
+                )
+                return HttpResponseRedirect(reverse('admin:core_coursesectiongroup_changelist'))
+        else:
+            form = CourseSectionGroupInlineEnrollmentForm()
+
+        context = {
+            'course_group': course_group,
+            'form': form,
+            'opts': self.model._meta,
+            'has_view_permission': True,
+            'title': f'Enroll Students to {course_group.name}',
+        }
+        return render(request, 'admin/course_section_group_enroll.html', context)
 
 
 @admin.register(Enrollment)

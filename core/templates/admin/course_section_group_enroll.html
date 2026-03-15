@@ -1,0 +1,66 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}{{ block.super }}
+<script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
+{{ media }}
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-form{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:core_coursesectiongroup_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; <a href="{% url 'admin:core_coursesectiongroup_change' course_group.pk %}">{{ course_group.name }}</a>
+&rsaquo; Enroll Students
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        <fieldset class="module aligned">
+            <div class="form-row">
+                <label>Course Group:</label>
+                <div class="readonly">{{ course_group.name }}</div>
+            </div>
+            <div class="form-row">
+                <label>School Year:</label>
+                <div class="readonly">{{ course_group.school_year }}</div>
+            </div>
+            {% if course_group.semester %}
+            <div class="form-row">
+                <label>Semester:</label>
+                <div class="readonly">{{ course_group.semester }}</div>
+            </div>
+            {% endif %}
+            <div class="form-row">
+                <label>Courses Included:</label>
+                <div class="readonly">
+                    <ul style="margin: 0; padding-left: 20px;">
+                        {% for cs in course_group.course_sections.all %}
+                        <li>{{ cs.course.code }} - {{ cs.course.title }} ({{ cs.section.name }}{% if cs.teacher %}, {{ cs.teacher.full_name }}{% endif %})</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="module">
+            <h2>Select Students to Enroll</h2>
+            <div class="form-row field-students">
+                {{ form.students }}
+                <p class="help">Select students to enroll in all {{ course_group.course_sections.count }} course(s) in this group. Hold Ctrl/Cmd to select multiple.</p>
+            </div>
+        </div>
+
+        <div class="submit-row">
+            <input type="submit" value="Enroll Selected Students" class="default">
+            <a href="{% url 'admin:core_coursesectiongroup_change' course_group.pk %}" class="closelink">Back to Group</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

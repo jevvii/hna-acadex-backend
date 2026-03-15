@@ -3096,18 +3096,32 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
 
 
 class ActivityCommentsByActivityView(APIView):
-    """Get all comments for a specific activity (including nested replies)."""
+    """Get comments for a specific activity with per-user privacy.
+
+    For students: Only returns comments they are involved in:
+    - Comments authored by the student
+    - Comments authored by teachers of the course section
+    - Comments on their own submissions
+
+    For teachers: Returns all comments for activities in their course sections.
+
+    For admins: Returns all comments.
+    """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        """Get all comments for an activity."""
+        """Get comments for an activity based on user role and involvement."""
         activity = Activity.objects.filter(id=pk).first()
         if not activity:
             return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Check user access
+        # Get the course section teacher for this activity
+        course_section = activity.course_section
+        teacher_id = course_section.teacher_id if course_section else None
+
         if request.user.role == User.Role.STUDENT:
+            # Check enrollment
             enrolled = Enrollment.objects.filter(
                 course_section=activity.course_section,
                 student=request.user,
@@ -3115,24 +3129,90 @@ class ActivityCommentsByActivityView(APIView):
             ).exists()
             if not enrolled:
                 return Response({"detail": "You are not enrolled in this activity's course section."}, status=status.HTTP_403_FORBIDDEN)
+
+            # Get the student's submission for this activity (if any)
+            student_submission = Submission.objects.filter(
+                activity=activity,
+                student=request.user,
+            ).order_by('-submitted_at').first()
+            student_submission_id = student_submission.id if student_submission else None
+
+            # Build filter for comments visible to this student:
+            # 1. Comments authored by this student
+            # 2. Comments authored by the course section teacher
+            # 3. Comments specifically on this student's submission (if they have one)
+            from django.db.models import Q
+
+            # Base filter: comments by this student OR by the teacher
+            visible_filter = Q(author=request.user) | Q(author_id=teacher_id)
+
+            # If student has a submission, also include comments on that submission
+            if student_submission_id:
+                visible_filter = visible_filter | Q(submission_id=student_submission_id)
+
+            comments = ActivityComment.objects.filter(
+                activity=activity,
+                parent=None,
+            ).filter(visible_filter).select_related('author').prefetch_related('replies__author').order_by('created_at')
+
+            # Filter replies similarly - only include replies the student should see
+            filtered_comments = []
+            for comment in comments:
+                filtered_comment = self._filter_comment_replies(comment, request.user.id, teacher_id, student_submission_id)
+                if filtered_comment:
+                    filtered_comments.append(filtered_comment)
+
+            serializer = ActivityCommentSerializer(filtered_comments, many=True, context={'request': request})
+            return Response(serializer.data)
+
         elif request.user.role == User.Role.TEACHER:
+            # Check if teacher owns this course section
             teaches = CourseSection.objects.filter(
                 id=activity.course_section_id,
                 teacher=request.user,
             ).exists()
             if not teaches:
                 return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
-        elif request.user.role != User.Role.ADMIN:
-            return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Get all top-level comments with nested replies
-        comments = ActivityComment.objects.filter(
-            activity=activity,
-            parent=None,
-        ).select_related('author').prefetch_related('replies__author').order_by('created_at')
+            # Teachers see all comments for their course sections
+            comments = ActivityComment.objects.filter(
+                activity=activity,
+                parent=None,
+            ).select_related('author').prefetch_related('replies__author').order_by('created_at')
 
-        serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
-        return Response(serializer.data)
+            serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
+            return Response(serializer.data)
+
+        elif request.user.role == User.Role.ADMIN:
+            # Admins see all comments
+            comments = ActivityComment.objects.filter(
+                activity=activity,
+                parent=None,
+            ).select_related('author').prefetch_related('replies__author').order_by('created_at')
+
+            serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
+            return Response(serializer.data)
+
+        return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
+
+    def _filter_comment_replies(self, comment, student_id, teacher_id, submission_id):
+        """Filter replies to only include those the student should see."""
+        visible_replies = []
+        for reply in comment.replies.all():
+            # Show reply if:
+            # 1. Reply is by the student
+            # 2. Reply is by the teacher
+            # 3. Reply is on the student's submission (if they have one)
+            is_by_student = str(reply.author_id) == str(student_id)
+            is_by_teacher = str(reply.author_id) == str(teacher_id)
+            is_on_student_submission = submission_id and str(reply.submission_id) == str(submission_id)
+
+            if is_by_student or is_by_teacher or is_on_student_submission:
+                visible_replies.append(reply)
+
+        # Set filtered replies
+        comment.replies._data = visible_replies
+        return comment
 
 
 class ActivityCommentViewSet(viewsets.ModelViewSet):
@@ -3241,43 +3321,3 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
         if comment.author != request.user:
             return Response({"detail": "You can only delete your own comments."}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
-
-
-class ActivityCommentsByActivityView(APIView):
-    """Get all comments for a specific activity (including nested replies)."""
-
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, pk):
-        """Get all comments for an activity."""
-        activity = Activity.objects.filter(id=pk).first()
-        if not activity:
-            return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Check user access
-        if request.user.role == User.Role.STUDENT:
-            enrolled = Enrollment.objects.filter(
-                course_section=activity.course_section,
-                student=request.user,
-                is_active=True,
-            ).exists()
-            if not enrolled:
-                return Response({"detail": "You are not enrolled in this activity's course section."}, status=status.HTTP_403_FORBIDDEN)
-        elif request.user.role == User.Role.TEACHER:
-            teaches = CourseSection.objects.filter(
-                id=activity.course_section_id,
-                teacher=request.user,
-            ).exists()
-            if not teaches:
-                return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
-        elif request.user.role != User.Role.ADMIN:
-            return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
-
-        # Get all top-level comments with nested replies
-        comments = ActivityComment.objects.filter(
-            activity=activity,
-            parent=None,
-        ).select_related('author').prefetch_related('replies__author').order_by('created_at')
-
-        serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
-        return Response(serializer.data)

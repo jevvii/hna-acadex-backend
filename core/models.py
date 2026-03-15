@@ -638,3 +638,36 @@ class ActivityComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author.full_name} on {self.activity.title}"
+
+
+class CourseSectionGroup(models.Model):
+    """Group multiple CourseSections together for batch enrollment.
+
+    This allows admins to group up to 10 courses and enroll students
+    to all courses in the group at once.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, help_text="Descriptive name for this course group")
+    description = models.TextField(blank=True, null=True, help_text="Optional description")
+    course_sections = models.ManyToManyField(
+        CourseSection,
+        related_name="course_groups",
+        limit_choices_to={"is_active": True},
+        help_text="Select up to 10 course sections to include in this group"
+    )
+    school_year = models.CharField(max_length=20, help_text="Academic year (e.g., '2024-2025')")
+    semester = models.CharField(max_length=20, blank=True, null=True, help_text="Semester (optional)")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.school_year})"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        # Course count validation is handled in admin form
