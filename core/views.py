@@ -3174,11 +3174,28 @@ class ActivityCommentsByActivityView(APIView):
             if not teaches:
                 return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Teachers see all comments for their course sections
-            comments = ActivityComment.objects.filter(
-                activity=activity,
-                parent=None,
-            ).select_related('author').prefetch_related('replies__author').order_by('created_at')
+            # Check if teacher wants to filter by a specific submission
+            submission_id = request.query_params.get('submission_id')
+
+            if submission_id:
+                # Verify the submission belongs to this activity
+                submission = Submission.objects.filter(id=submission_id, activity=activity).first()
+                if not submission:
+                    return Response({"detail": "Submission not found for this activity."}, status=status.HTTP_404_NOT_FOUND)
+
+                # Return only comments for this specific submission
+                # This ensures teachers see the correct per-student conversation
+                comments = ActivityComment.objects.filter(
+                    activity=activity,
+                    submission_id=submission_id,
+                    parent=None,
+                ).select_related('author').prefetch_related('replies__author').order_by('created_at')
+            else:
+                # Teachers see all comments for their course sections
+                comments = ActivityComment.objects.filter(
+                    activity=activity,
+                    parent=None,
+                ).select_related('author').prefetch_related('replies__author').order_by('created_at')
 
             serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
             return Response(serializer.data)
@@ -3213,111 +3230,3 @@ class ActivityCommentsByActivityView(APIView):
         # Set filtered replies
         comment.replies._data = visible_replies
         return comment
-
-
-class ActivityCommentViewSet(viewsets.ModelViewSet):
-    """ViewSet for activity comments - allows students and teachers to comment on activities."""
-
-    queryset = ActivityComment.objects.all().select_related('author', 'activity').prefetch_related('replies')
-    serializer_class = ActivityCommentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
-
-    def get_queryset(self):
-        """Filter comments by activity_id, optionally filter by submission_id."""
-        qs = super().get_queryset()
-
-        activity_id = self.request.query_params.get('activity_id')
-        submission_id = self.request.query_params.get('submission_id')
-
-        if activity_id:
-            qs = qs.filter(activity_id=activity_id)
-        if submission_id:
-            qs = qs.filter(submission_id=submission_id)
-
-        # Only return top-level comments (parent=None), replies are nested
-        qs = qs.filter(parent=None)
-
-        return qs.order_by('-created_at')
-
-    def create(self, request, *args, **kwargs):
-        """Create a new comment with optional file attachments."""
-        activity_id = request.data.get('activity_id')
-        if not activity_id:
-            return Response({"detail": "activity_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        activity = Activity.objects.filter(id=activity_id).first()
-        if not activity:
-            return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Check user access - student must be enrolled, teacher must teach the course
-        if request.user.role == User.Role.STUDENT:
-            enrolled = Enrollment.objects.filter(
-                course_section=activity.course_section,
-                student=request.user,
-                is_active=True,
-            ).exists()
-            if not enrolled:
-                return Response({"detail": "You are not enrolled in this activity's course section."}, status=status.HTTP_403_FORBIDDEN)
-        elif request.user.role == User.Role.TEACHER:
-            teaches = CourseSection.objects.filter(
-                id=activity.course_section_id,
-                teacher=request.user,
-            ).exists()
-            if not teaches:
-                return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
-        elif request.user.role != User.Role.ADMIN:
-            return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
-
-        # Handle file uploads
-        file_urls = request.data.get('file_urls') or []
-        if not isinstance(file_urls, list):
-            file_urls = []
-
-        # Process uploaded files
-        files = request.FILES.getlist('files')
-        for file_obj in files:
-            path = default_storage.save(
-                f"comments/{request.user.id}/{timezone.now().timestamp()}_{file_obj.name}",
-                file_obj,
-            )
-            file_urls.append(request.build_absolute_uri(default_storage.url(path)))
-
-        content = request.data.get('content')
-        parent_id = request.data.get('parent_id')
-        submission_id = request.data.get('submission_id')
-
-        parent_comment = None
-        if parent_id:
-            parent_comment = ActivityComment.objects.filter(id=parent_id).first()
-            if not parent_comment:
-                return Response({"detail": "Parent comment not found."}, status=status.HTTP_404_NOT_FOUND)
-            # Parent must be for the same activity
-            if str(parent_comment.activity_id) != str(activity_id):
-                return Response({"detail": "Parent comment must be for the same activity."}, status=status.HTTP_400_BAD_REQUEST)
-
-        comment = ActivityComment.objects.create(
-            activity=activity,
-            submission_id=submission_id,
-            author=request.user,
-            parent=parent_comment,
-            content=content,
-            file_urls=file_urls if file_urls else None,
-        )
-
-        serializer = self.get_serializer(comment)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    def update(self, request, *args, **kwargs):
-        """Update a comment - only the author can update."""
-        comment = self.get_object()
-        if comment.author != request.user:
-            return Response({"detail": "You can only edit your own comments."}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        """Delete a comment - only the author can delete."""
-        comment = self.get_object()
-        if comment.author != request.user:
-            return Response({"detail": "You can only delete your own comments."}, status=status.HTTP_403_FORBIDDEN)
-        return super().destroy(request, *args, **kwargs)
