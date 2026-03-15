@@ -1224,11 +1224,20 @@ class AttendanceOverviewView(APIView):
             absent_count = sum(1 for r in s_records if r.status == AttendanceRecord.AttendanceStatus.ABSENT)
             late_count = sum(1 for r in s_records if r.status == AttendanceRecord.AttendanceStatus.LATE)
             excused_count = sum(1 for r in s_records if r.status == AttendanceRecord.AttendanceStatus.EXCUSED)
+
+            # Get avatar URL (handles both avatar_url field and avatar FileField)
+            avatar_url = None
+            if student.avatar_url:
+                avatar_url = student.avatar_url
+            elif student.avatar:
+                avatar_url = request.build_absolute_uri(student.avatar.url)
+
             student_rows.append(
                 {
                     "student_id": str(student.id),
                     "student_name": student.full_name,
                     "student_email": student.email,
+                    "avatar_url": avatar_url,
                     "total_sessions": len(sessions),
                     "present_count": present_count,
                     "absent_count": absent_count,
