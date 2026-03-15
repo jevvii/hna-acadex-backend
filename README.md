@@ -327,22 +327,6 @@ hna-acadex-backend/
 
 ---
 
-## Future Plans
-
 <p align="center">
-  <img src="https://img.shields.io/badge/Mobile_App-iOS/Android-gray?style=for-the-badge" alt="Mobile App">
-  <img src="https://img.shields.io/badge/Parent_Portal-gray?style=for-the-badge" alt="Parent Portal">
-  <img src="https://img.shields.io/badge/Real--time_Chat-gray?style=for-the-badge" alt="Chat">
-  <img src="https://img.shields.io/badge-Video_Conferencing-gray?style=for-the-badge" alt="Video">
-</p>
-
-- [ ] Mobile app support (iOS/Android)
-- [ ] Parent portal for viewing student progress
-- [ ] Real-time chat between teachers and students
-- [ ] Video conferencing integration for online classes
-
----
-
-<p align="center">
-  <sub>Built with ❤️ for Highland Nest Academy</sub>
+  <sub>Built with ❤️ for Holy Name Academy</sub>
 </p>
