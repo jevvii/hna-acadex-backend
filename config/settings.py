@@ -144,4 +144,8 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 # Firebase Configuration for Push Notifications
+# Supports two methods:
+# 1. FIREBASE_CREDENTIALS_JSON - JSON string of credentials (recommended for production)
+# 2. FIREBASE_CREDENTIALS_PATH - Path to credentials file (for local development)
 FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", None)
+FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", None)

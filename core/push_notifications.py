@@ -134,6 +134,10 @@ def get_firebase_app():
     Get or initialize the Firebase Admin SDK app.
 
     Returns None if Firebase is not configured.
+
+    Supports two methods for credentials:
+    1. FIREBASE_CREDENTIALS_JSON - JSON string of credentials (recommended for production)
+    2. FIREBASE_CREDENTIALS_PATH - Path to credentials file (for local development)
     """
     global _firebase_app
 
@@ -143,28 +147,46 @@ def get_firebase_app():
     try:
         import firebase_admin
         from firebase_admin import credentials
+        import json
 
         # Check if already initialized
         if firebase_admin._apps:
             _firebase_app = list(firebase_admin._apps.values())[0]
             return _firebase_app
 
-        # Get credentials path from settings
-        credentials_path = getattr(settings, 'FIREBASE_CREDENTIALS_PATH', None)
+        cred = None
 
-        if not credentials_path:
-            # Check environment variable
-            credentials_path = os.environ.get('FIREBASE_CREDENTIALS_PATH')
+        # Method 1: Try FIREBASE_CREDENTIALS_JSON (JSON string) - for production
+        credentials_json = os.environ.get('FIREBASE_CREDENTIALS_JSON')
+        if credentials_json:
+            try:
+                cred_dict = json.loads(credentials_json)
+                cred = credentials.Certificate(cred_dict)
+                logger.info("Firebase credentials loaded from FIREBASE_CREDENTIALS_JSON")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse FIREBASE_CREDENTIALS_JSON: {e}")
 
-        if not credentials_path:
+        # Method 2: Try FIREBASE_CREDENTIALS_PATH (file path) - for local development
+        if not cred:
+            credentials_path = getattr(settings, 'FIREBASE_CREDENTIALS_PATH', None)
+            if not credentials_path:
+                credentials_path = os.environ.get('FIREBASE_CREDENTIALS_PATH')
+
+            if credentials_path:
+                # Handle relative paths
+                if credentials_path.startswith('./'):
+                    credentials_path = os.path.join(settings.BASE_DIR, credentials_path[2:])
+
+                if os.path.exists(credentials_path):
+                    cred = credentials.Certificate(credentials_path)
+                    logger.info(f"Firebase credentials loaded from file: {credentials_path}")
+                else:
+                    logger.warning(f"Firebase credentials file not found: {credentials_path}")
+
+        if not cred:
             logger.info("Firebase credentials not configured. Push notifications disabled.")
             return None
 
-        if not os.path.exists(credentials_path):
-            logger.warning(f"Firebase credentials file not found: {credentials_path}")
-            return None
-
-        cred = credentials.Certificate(credentials_path)
         _firebase_app = firebase_admin.initialize_app(cred)
         logger.info("Firebase Admin SDK initialized successfully")
         return _firebase_app

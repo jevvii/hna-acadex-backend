@@ -22,6 +22,12 @@ media/
 # Environment variables
 .env
 
+# Firebase credentials (NEVER commit these)
+*firebase*.json
+
+# Celery beat schedule files
+celerybeat-schedule*
+
 # IDE
 .idea/
 .vscode/
@@ -47,3 +53,29 @@ staticfiles/
 
 # mypy
 .mypy_cache/
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+# Firebase credentials (NEVER commit these)
+*-firebase-adminsdk*.json
+firebase-credentials*.json
+
+# Logs
+logs/
+
+# Celery beat schedule files (runtime generated)
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+# Firebase credentials (NEVER commit these)
+*-firebase-adminsdk*.json
+firebase-credentials*.json
+firebase-credentials.json
+
+# Logs
+logs/
+*.log
