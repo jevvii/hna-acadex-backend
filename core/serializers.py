@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Activity,
+    ActivityComment,
     ActivityReminder,
     Announcement,
     AssignmentGroup,
@@ -570,3 +571,106 @@ class ActivityReminderSerializer(serializers.ModelSerializer):
         if obj.reminder_type == "quiz" and obj.quiz:
             return obj.quiz.close_at
         return None
+
+
+class ActivityCommentSerializer(serializers.ModelSerializer):
+    """Serializer for activity comments with author details and nested replies."""
+
+    id = serializers.UUIDField(read_only=True)
+    activity_id = serializers.UUIDField(read_only=True)
+    submission_id = serializers.UUIDField(read_only=True, allow_null=True)
+    author_id = serializers.UUIDField(source='author.id', read_only=True)
+    author_name = serializers.CharField(source='author.full_name', read_only=True)
+    author_avatar = serializers.SerializerMethodField()
+    parent_id = serializers.UUIDField(read_only=True, allow_null=True)
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityComment
+        fields = (
+            "id",
+            "activity_id",
+            "submission_id",
+            "author_id",
+            "author_name",
+            "author_avatar",
+            "parent_id",
+            "content",
+            "file_urls",
+            "created_at",
+            "updated_at",
+            "replies",
+        )
+        read_only_fields = ("id", "author_id", "author_name", "author_avatar", "created_at", "updated_at")
+
+    def get_author_avatar(self, obj: ActivityComment):
+        request = self.context.get("request")
+        if obj.author.avatar_url:
+            return obj.author.avatar_url
+        if obj.author.avatar:
+            url = obj.author.avatar.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    def get_replies(self, obj: ActivityComment):
+        """Get nested replies for this comment."""
+        # Only include replies when the parent is None (top-level comments)
+        # and when we're in a list context (not detail)
+        if obj.parent is not None:
+            return []
+
+        replies = obj.replies.all()
+        if replies:
+            return ActivityCommentSerializer(replies, many=True, context=self.context).data
+        return []
+
+
+class ActivityCommentSerializer(serializers.ModelSerializer):
+    """Serializer for activity comments with author details and nested replies."""
+    id = serializers.UUIDField(read_only=True)
+    activity_id = serializers.UUIDField(read_only=True)
+    submission_id = serializers.UUIDField(read_only=True, allow_null=True)
+    author_id = serializers.UUIDField(source='author.id', read_only=True)
+    author_name = serializers.CharField(source='author.full_name', read_only=True)
+    author_avatar = serializers.SerializerMethodField()
+    parent_id = serializers.UUIDField(source='parent.id', read_only=True, allow_null=True)
+    replies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ActivityComment
+        fields = (
+            "id",
+            "activity_id",
+            "submission_id",
+            "author_id",
+            "author_name",
+            "author_avatar",
+            "parent_id",
+            "content",
+            "file_urls",
+            "created_at",
+            "updated_at",
+            "replies",
+        )
+        read_only_fields = ("id", "activity_id", "submission_id", "author_id", "author_name", "author_avatar", "created_at", "updated_at")
+
+    def get_author_avatar(self, obj: ActivityComment):
+        """Get the author's avatar URL."""
+        request = self.context.get("request")
+        if obj.author.avatar_url:
+            return obj.author.avatar_url
+        if obj.author.avatar:
+            url = obj.author.avatar.url
+            return request.build_absolute_uri(url) if request else url
+        return None
+
+    def get_replies(self, obj: ActivityComment):
+        """Get nested replies for this comment."""
+        # Only include replies if we're not already in a nested context
+        # to prevent infinite recursion
+        if self.context.get('include_replies', True):
+            replies = obj.replies.all()
+            # Set include_replies to False for nested replies to prevent recursion
+            context = {**self.context, 'include_replies': False}
+            return ActivityCommentSerializer(replies, many=True, context=context).data
+        return []

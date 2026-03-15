@@ -3,6 +3,8 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
+    ActivityCommentViewSet,
+    ActivityCommentsByActivityView,
     ActivityReminderViewSet,
     AttendanceOverviewView,
     AttendanceRecordBulkUpdateView,
@@ -61,6 +63,7 @@ router.register(r"quizzes", QuizViewSet, basename="quizzes")
 router.register(r"password-reset-requests", PasswordResetRequestViewSet, basename="password-reset-requests")
 router.register(r"push-tokens", PushTokenViewSet, basename="push-tokens")
 router.register(r"reminders", ActivityReminderViewSet, basename="reminders")
+router.register(r"activity-comments", ActivityCommentViewSet, basename="activity-comments")
 
 urlpatterns = [
     path("auth/login/", AuthLoginView.as_view(), name="auth-login"),
@@ -98,5 +101,6 @@ urlpatterns = [
     path("quizzes/quick-create/", QuizQuickCreateView.as_view(), name="quiz-quick-create"),
     path("quizzes/<uuid:pk>/questions/", QuizQuestionsView.as_view(), name="quiz-questions"),
     path("quiz-questions/<uuid:pk>/", QuizQuestionDetailView.as_view(), name="quiz-question-detail"),
+    path("activities/<uuid:pk>/comments/", ActivityCommentsByActivityView.as_view(), name="activity-comments"),
     path("", include(router.urls)),
 ]

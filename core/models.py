@@ -618,3 +618,23 @@ class ActivityReminder(models.Model):
             raise ValidationError("Activity reminder must have an activity")
         if self.reminder_type == "quiz" and not self.quiz:
             raise ValidationError("Quiz reminder must have a quiz")
+
+
+class ActivityComment(models.Model):
+    """Comments on activities by students and teachers."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="comments")
+    submission = models.ForeignKey(Submission, null=True, blank=True, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activity_comments")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
+    content = models.TextField(blank=True, null=True)
+    file_urls = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Comment by {self.author.full_name} on {self.activity.title}"
