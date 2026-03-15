@@ -487,7 +487,7 @@ def _sync_student_activity_items(student: User):
                 "start_at": activity.deadline or timezone.now(),
                 "end_at": activity.deadline or None,
                 "all_day": activity.deadline is None,
-                "is_personal": True,
+                "is_personal": False,  # Activity-generated events are not user-created
                 "color": None,
             },
         )
