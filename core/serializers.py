@@ -318,6 +318,8 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 class QuizSerializer(serializers.ModelSerializer):
     course_section_id = serializers.UUIDField()
     weekly_module_id = serializers.UUIDField(allow_null=True, required=False)
+    question_count = serializers.SerializerMethodField()
+    points = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
@@ -337,7 +339,17 @@ class QuizSerializer(serializers.ModelSerializer):
             "shuffle_choices",
             "show_results",
             "created_at",
+            "question_count",
+            "points",
         )
+
+    def get_question_count(self, obj):
+        return obj.questions.count()
+
+    def get_points(self, obj):
+        from django.db.models import Sum
+        result = obj.questions.aggregate(total=Sum('points'))
+        return result['total'] if result['total'] is not None else 0
 
 
 class SubmissionSerializer(serializers.ModelSerializer):
