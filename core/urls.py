@@ -23,6 +23,7 @@ from .views import (
     ChangePasswordView,
     CourseFileViewSet,
     CourseSectionContentView,
+    CourseSectionGradebookView,
     CourseSectionGradesView,
     CourseSectionGradesExportCSVView,
     DashboardStatsView,
@@ -77,6 +78,7 @@ urlpatterns = [
     path("courses/teacher/", TeacherCoursesView.as_view(), name="teacher-courses"),
     path("course-sections/<uuid:pk>/content/", CourseSectionContentView.as_view(), name="course-section-content"),
     path("course-sections/<uuid:pk>/grades/", CourseSectionGradesView.as_view(), name="course-section-grades"),
+    path("course-sections/<uuid:pk>/gradebook/", CourseSectionGradebookView.as_view(), name="course-section-gradebook"),
     path("course-sections/<uuid:pk>/grades/export/", CourseSectionGradesExportCSVView.as_view(), name="course-section-grades-export"),
     path(
         "course/<uuid:course_id>/section/<uuid:section_id>/grades/export/",

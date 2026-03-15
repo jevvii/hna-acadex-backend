@@ -9,10 +9,10 @@ from django.core.files.base import File
 from django.db.models import Avg, Count, Q, Sum
 from django.db.utils import OperationalError
 from django.core.files.storage import default_storage
-from django.http import StreamingHttpResponse
+from django.http import StreamingHttpResponse, HttpResponse
 from django.utils import timezone
 from datetime import timedelta
-from io import StringIO
+from io import StringIO, BytesIO
 from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
@@ -1406,7 +1406,350 @@ class CourseSectionGradesView(APIView):
         return Response(rows)
 
 
+class CourseSectionGradebookView(APIView):
+    """Returns comprehensive gradebook data including activities and quizzes for each student."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get all published activities and quizzes
+        activities = list(
+            Activity.objects.filter(course_section=course_section, is_published=True)
+            .order_by("created_at", "title")
+            .values("id", "title", "points", "deadline", "created_at")
+        )
+        quizzes = list(
+            Quiz.objects.filter(course_section=course_section, is_published=True)
+            .order_by("created_at", "title")
+            .values("id", "title", "score_selection_policy", "close_at", "created_at")
+        )
+
+        # Get quiz max scores
+        quiz_points_raw = (
+            QuizQuestion.objects.filter(quiz_id__in=[q["id"] for q in quizzes])
+            .values("quiz_id")
+            .annotate(total=Sum("points"))
+        )
+        quiz_points = {str(row["quiz_id"]): Decimal(str(row["total"] or 0)) for row in quiz_points_raw}
+
+        # Get all enrollments (both active and inactive)
+        all_enrollments = list(
+            Enrollment.objects.filter(course_section=course_section)
+            .select_related("student")
+            .order_by("-is_active", "student__full_name", "student__email")
+        )
+        student_ids = [e.student_id for e in all_enrollments]
+
+        # Get all submissions for these activities
+        activity_ids = [a["id"] for a in activities]
+        submissions = Submission.objects.filter(
+            activity_id__in=activity_ids,
+            student_id__in=student_ids
+        ).values("id", "activity_id", "student_id", "score", "status", "submitted_at", "graded_at")
+
+        # Build submission maps: {(student_id, activity_id): submission_data}
+        submission_map: dict[tuple, dict] = {}
+        for s in submissions:
+            key = (str(s["student_id"]), str(s["activity_id"]))
+            submission_map[key] = s
+
+        # Get all quiz attempts
+        quiz_ids = [q["id"] for q in quizzes]
+        quiz_attempts = QuizAttempt.objects.filter(
+            quiz_id__in=quiz_ids,
+            student_id__in=student_ids,
+            is_submitted=True
+        ).values("id", "quiz_id", "student_id", "score", "max_score", "attempt_number", "submitted_at", "pending_manual_grading")
+
+        # Build quiz attempt maps: {(student_id, quiz_id): [attempts]}
+        attempts_by_quiz: dict[tuple, list] = {}
+        for a in quiz_attempts:
+            key = (str(a["student_id"]), str(a["quiz_id"]))
+            if key not in attempts_by_quiz:
+                attempts_by_quiz[key] = []
+            attempts_by_quiz[key].append(a)
+
+        # Build student data
+        active_students = []
+        inactive_students = []
+
+        for enrollment in all_enrollments:
+            _recompute_enrollment_grade(enrollment)
+            student_id = str(enrollment.student_id)
+            enrolled_at = enrollment.enrolled_at
+
+            # Build activity grades for this student
+            activity_grades = []
+            for activity in activities:
+                activity_id = str(activity["id"])
+                activity_deadline = activity["deadline"]
+
+                # Check if activity deadline is before enrollment (pre-enrollment exclusion)
+                if activity_deadline and enrolled_at:
+                    from datetime import datetime
+                    if isinstance(activity_deadline, str):
+                        activity_deadline = datetime.fromisoformat(activity_deadline.replace('Z', '+00:00'))
+                    if isinstance(enrolled_at, str):
+                        enrolled_at_dt = datetime.fromisoformat(enrolled_at.replace('Z', '+00:00'))
+                    else:
+                        enrolled_at_dt = enrolled_at
+                    if activity_deadline < enrolled_at_dt:
+                        activity_grades.append({
+                            "activity_id": activity_id,
+                            "title": activity["title"],
+                            "points": float(activity["points"]),
+                            "deadline": activity["deadline"],
+                            "score": None,
+                            "status": None,
+                            "is_late": False,
+                            "is_excused": False,
+                            "graded_at": None,
+                            "is_na": True,  # Pre-enrollment exclusion
+                        })
+                        continue
+
+                sub = submission_map.get((student_id, activity_id))
+                if sub:
+                    is_late = False
+                    if sub["status"] == Submission.SubmissionStatus.LATE:
+                        is_late = True
+                    score = float(sub["score"]) if sub["score"] is not None else None
+                    graded_at = sub["graded_at"].isoformat() if sub["graded_at"] else None
+
+                    # Determine status
+                    status = sub["status"]
+                    if score is None and sub["status"] == Submission.SubmissionStatus.SUBMITTED:
+                        status = "submitted"  # Needs grading
+
+                    activity_grades.append({
+                        "activity_id": activity_id,
+                        "title": activity["title"],
+                        "points": float(activity["points"]),
+                        "deadline": activity["deadline"],
+                        "score": score,
+                        "status": status if status else "not_submitted",
+                        "is_late": is_late,
+                        "is_excused": False,
+                        "graded_at": graded_at,
+                        "is_na": False,
+                    })
+                else:
+                    activity_grades.append({
+                        "activity_id": activity_id,
+                        "title": activity["title"],
+                        "points": float(activity["points"]),
+                        "deadline": activity["deadline"],
+                        "score": None,
+                        "status": "not_submitted",
+                        "is_late": False,
+                        "is_excused": False,
+                        "graded_at": None,
+                        "is_na": False,
+                    })
+
+            # Build quiz grades for this student
+            quiz_grades = []
+            for quiz in quizzes:
+                quiz_id = str(quiz["id"])
+                max_score = float(quiz_points.get(quiz_id, 0))
+                close_at = quiz["close_at"]
+
+                # Check if quiz close_at is before enrollment (pre-enrollment exclusion)
+                if close_at and enrolled_at:
+                    from datetime import datetime
+                    if isinstance(close_at, str):
+                        close_at_dt = datetime.fromisoformat(close_at.replace('Z', '+00:00'))
+                    else:
+                        close_at_dt = close_at
+                    if isinstance(enrolled_at, str):
+                        enrolled_at_dt = datetime.fromisoformat(enrolled_at.replace('Z', '+00:00'))
+                    else:
+                        enrolled_at_dt = enrolled_at
+                    if close_at_dt < enrolled_at_dt:
+                        quiz_grades.append({
+                            "quiz_id": quiz_id,
+                            "title": quiz["title"],
+                            "max_score": max_score,
+                            "close_at": quiz["close_at"],
+                            "score": None,
+                            "attempts": 0,
+                            "max_attempts": 0,
+                            "is_late": False,
+                            "is_na": True,
+                        })
+                        continue
+
+                attempts = attempts_by_quiz.get((student_id, quiz_id), [])
+                if attempts:
+                    # Calculate score based on policy
+                    scores = [float(a["score"]) for a in attempts if a["score"] is not None]
+                    if scores:
+                        policy = quiz.get("score_selection_policy", "highest")
+                        if policy == "highest":
+                            score = max(scores)
+                        else:  # latest
+                            # Sort by attempt_number descending and get the last submitted
+                            sorted_attempts = sorted(attempts, key=lambda x: x["attempt_number"], reverse=True)
+                            score = float(sorted_attempts[0]["score"]) if sorted_attempts[0]["score"] is not None else None
+                    else:
+                        score = None
+
+                    # Check if any attempt is pending grading
+                    pending_grading = any(a.get("pending_manual_grading", False) for a in attempts)
+
+                    quiz_grades.append({
+                        "quiz_id": quiz_id,
+                        "title": quiz["title"],
+                        "max_score": max_score,
+                        "close_at": quiz["close_at"],
+                        "score": score,
+                        "attempts": len(attempts),
+                        "max_attempts": 0,  # TODO: add max_attempts to Quiz model if needed
+                        "is_late": False,  # TODO: check if submitted after close_at
+                        "is_na": False,
+                        "pending_grading": pending_grading,
+                    })
+                else:
+                    quiz_grades.append({
+                        "quiz_id": quiz_id,
+                        "title": quiz["title"],
+                        "max_score": max_score,
+                        "close_at": quiz["close_at"],
+                        "score": None,
+                        "attempts": 0,
+                        "max_attempts": 0,
+                        "is_late": False,
+                        "is_na": False,
+                    })
+
+            student_data = {
+                "enrollment_id": str(enrollment.id),
+                "student_id": student_id,
+                "student_name": enrollment.student.full_name,
+                "student_email": enrollment.student.email,
+                "student_avatar": enrollment.student.avatar_url if hasattr(enrollment.student, 'avatar_url') else None,
+                "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+                "is_active": enrollment.is_active,
+                "grades": {
+                    "activities": activity_grades,
+                    "quizzes": quiz_grades,
+                },
+                "final_grade": float(enrollment.final_grade) if enrollment.final_grade is not None else None,
+                "final_grade_letter": _letter_grade(enrollment.final_grade),
+                "grade_overridden": enrollment.manual_final_grade is not None,
+                "manual_final_grade": float(enrollment.manual_final_grade) if enrollment.manual_final_grade is not None else None,
+            }
+
+            if enrollment.is_active:
+                active_students.append(student_data)
+            else:
+                inactive_students.append(student_data)
+
+        # Build items list (column headers)
+        items = {
+            "activities": [
+                {
+                    "id": str(a["id"]),
+                    "title": a["title"],
+                    "type": "activity",
+                    "max_points": float(a["points"]),
+                    "deadline": a["deadline"].isoformat() if a["deadline"] else None,
+                    "created_at": a["created_at"].isoformat() if a["created_at"] else None,
+                }
+                for a in activities
+            ],
+            "quizzes": [
+                {
+                    "id": str(q["id"]),
+                    "title": q["title"],
+                    "type": "quiz",
+                    "max_points": float(quiz_points.get(str(q["id"]), 0)),
+                    "close_at": q["close_at"].isoformat() if q["close_at"] else None,
+                    "created_at": q["created_at"].isoformat() if q["created_at"] else None,
+                }
+                for q in quizzes
+            ],
+        }
+
+        # Build summary statistics for each item
+        activity_summary = []
+        for activity in activities:
+            activity_id = str(activity["id"])
+            scores = []
+            missing_count = 0
+            needs_grading_count = 0
+
+            for student in active_students:
+                grade = next((g for g in student["grades"]["activities"] if g["activity_id"] == activity_id), None)
+                if grade:
+                    if grade.get("is_na"):
+                        continue  # Exclude from stats
+                    if grade["score"] is not None:
+                        scores.append(grade["score"])
+                    elif grade["status"] == "not_submitted":
+                        missing_count += 1
+                    elif grade["status"] == "submitted":
+                        needs_grading_count += 1
+                    elif grade["status"] == "late":
+                        needs_grading_count += 1  # Late submissions also need grading if no score
+
+            activity_summary.append({
+                "activity_id": activity_id,
+                "avg_score": float(sum(scores) / len(scores)) if scores else None,
+                "high_score": float(max(scores)) if scores else None,
+                "low_score": float(min(scores)) if scores else None,
+                "missing_count": missing_count,
+                "needs_grading_count": needs_grading_count,
+            })
+
+        quiz_summary = []
+        for quiz in quizzes:
+            quiz_id = str(quiz["id"])
+            scores = []
+            missing_count = 0
+            needs_grading_count = 0
+
+            for student in active_students:
+                grade = next((g for g in student["grades"]["quizzes"] if g["quiz_id"] == quiz_id), None)
+                if grade:
+                    if grade.get("is_na"):
+                        continue
+                    if grade["score"] is not None:
+                        scores.append(grade["score"])
+                    elif grade["attempts"] == 0:
+                        missing_count += 1
+                    if grade.get("pending_grading"):
+                        needs_grading_count += 1
+
+            quiz_summary.append({
+                "quiz_id": quiz_id,
+                "avg_score": float(sum(scores) / len(scores)) if scores else None,
+                "high_score": float(max(scores)) if scores else None,
+                "low_score": float(min(scores)) if scores else None,
+                "missing_count": missing_count,
+                "needs_grading_count": needs_grading_count,
+            })
+
+        return Response({
+            "students": active_students,
+            "inactive_students": inactive_students,
+            "items": items,
+            "summary": {
+                "activities": activity_summary,
+                "quizzes": quiz_summary,
+            },
+        })
+
+
 class CourseSectionGradesExportCSVView(APIView):
+    """Export grades as CSV or XLSX with optional filtering."""
     permission_classes = [permissions.IsAuthenticated]
 
     def _format_num(self, value: Decimal | float | int | None) -> str:
@@ -1430,6 +1773,177 @@ class CourseSectionGradesExportCSVView(APIView):
             return None
         return course_section
 
+    def _generate_csv(self, course_section, enrollments, activities, quizzes, submission_map, quiz_attempt_map, include_inactive=False, include_student_id=False, include_enrolled_at=False):
+        """Generate CSV export."""
+        headers = ["Student Name", "Student Email"]
+        if include_student_id:
+            headers.append("Student ID")
+        if include_enrolled_at:
+            headers.append("Enrolled At")
+        headers.extend(["Section", "Total Grade", "Grade Letter"])
+        headers.extend([f"Activity: {a.title}" for a in activities])
+        headers.extend([f"Quiz: {q.title}" for q in quizzes])
+
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers)
+
+        for enrollment in enrollments:
+            if not enrollment.is_active and not include_inactive:
+                continue
+            computed_total = _compute_enrollment_grade(enrollment)
+            row = [
+                enrollment.student.full_name,
+                enrollment.student.email,
+            ]
+            if include_student_id:
+                row.append(str(enrollment.student_id))
+            if include_enrolled_at:
+                row.append(enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else "")
+            row.extend([
+                course_section.section.name,
+                self._format_num(computed_total),
+                _letter_grade(computed_total) if computed_total else "",
+            ])
+            for activity in activities:
+                sub = submission_map.get((str(enrollment.student_id), str(activity.id)))
+                if sub and sub.score is not None:
+                    row.append(f"{self._format_num(sub.score)}/{self._format_num(activity.points)}")
+                else:
+                    row.append("")
+            for quiz in quizzes:
+                attempt = quiz_attempt_map.get((str(enrollment.student_id), str(quiz.id)))
+                if attempt and attempt.score is not None and attempt.max_score is not None:
+                    row.append(f"{self._format_num(attempt.score)}/{self._format_num(attempt.max_score)}")
+                elif attempt and attempt.score is not None:
+                    row.append(self._format_num(attempt.score))
+                else:
+                    row.append("")
+            writer.writerow(row)
+
+        return "\ufeff" + output.getvalue()
+
+    def _generate_xlsx(self, course_section, enrollments, activities, quizzes, submission_map, quiz_attempt_map, include_inactive=False, include_student_id=False, include_enrolled_at=False):
+        """Generate XLSX export with conditional formatting."""
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            return None
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Grades"
+
+        # Define styles
+        header_fill = PatternFill(start_color="1A3A6B", end_color="1A3A6B", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        missing_fill = PatternFill(start_color="FFCDD2", end_color="FFCDD2", fill_type="solid")  # Light red
+        needs_grading_fill = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid")  # Light yellow
+        passing_fill = PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid")  # Light green
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        # Build headers
+        headers = ["Student Name", "Student Email"]
+        if include_student_id:
+            headers.append("Student ID")
+        if include_enrolled_at:
+            headers.append("Enrolled At")
+        headers.extend(["Section", "Total Grade", "Grade Letter"])
+        headers.extend([f"Activity: {a.title}" for a in activities])
+        headers.extend([f"Quiz: {q.title}" for q in quizzes])
+
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', wrap_text=True)
+            cell.border = thin_border
+
+        # Set column widths
+        ws.column_dimensions['A'].width = 25  # Student Name
+        ws.column_dimensions['B'].width = 30  # Student Email
+        if include_student_id:
+            ws.column_dimensions['C'].width = 36  # Student ID
+        if include_enrolled_at:
+            extra_col = 1 if include_student_id else 0
+            ws.column_dimensions[get_column_letter(3 + extra_col)].width = 20  # Enrolled At
+
+        # Data rows
+        row_num = 2
+        for enrollment in enrollments:
+            if not enrollment.is_active and not include_inactive:
+                continue
+            computed_total = _compute_enrollment_grade(enrollment)
+
+            col = 1
+            ws.cell(row=row_num, column=col, value=enrollment.student.full_name).border = thin_border
+            col += 1
+            ws.cell(row=row_num, column=col, value=enrollment.student.email).border = thin_border
+            col += 1
+            if include_student_id:
+                ws.cell(row=row_num, column=col, value=str(enrollment.student_id)).border = thin_border
+                col += 1
+            if include_enrolled_at:
+                ws.cell(row=row_num, column=col, value=enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else "").border = thin_border
+                col += 1
+            ws.cell(row=row_num, column=col, value=course_section.section.name).border = thin_border
+            col += 1
+            grade_cell = ws.cell(row=row_num, column=col, value=float(computed_total) if computed_total else "")
+            grade_cell.border = thin_border
+            if computed_total and computed_total >= Decimal("70"):
+                grade_cell.fill = passing_fill
+            col += 1
+            ws.cell(row=row_num, column=col, value=_letter_grade(computed_total) if computed_total else "").border = thin_border
+            col += 1
+
+            # Activity scores
+            for activity in activities:
+                sub = submission_map.get((str(enrollment.student_id), str(activity.id)))
+                cell = ws.cell(row=row_num, column=col)
+                cell.border = thin_border
+                if sub and sub.score is not None:
+                    cell.value = f"{float(sub.score):.1f}/{float(activity.points):.0f}"
+                    if sub.score / activity.points >= Decimal("0.7"):
+                        cell.fill = passing_fill
+                else:
+                    cell.value = ""
+                    cell.fill = missing_fill
+                col += 1
+
+            # Quiz scores
+            for quiz in quizzes:
+                attempt = quiz_attempt_map.get((str(enrollment.student_id), str(quiz.id)))
+                cell = ws.cell(row=row_num, column=col)
+                cell.border = thin_border
+                if attempt and attempt.score is not None and attempt.max_score is not None:
+                    cell.value = f"{float(attempt.score):.1f}/{float(attempt.max_score):.0f}"
+                    if attempt.score / attempt.max_score >= Decimal("0.7"):
+                        cell.fill = passing_fill
+                elif attempt and attempt.score is not None:
+                    cell.value = f"{float(attempt.score):.1f}"
+                else:
+                    cell.value = ""
+                    cell.fill = missing_fill
+                col += 1
+
+            row_num += 1
+
+        # Freeze first row (header)
+        ws.freeze_panes = 'A2'
+
+        # Write to BytesIO
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
     def get(self, request, pk=None, course_id=None, section_id=None):
         course_section = self._resolve_course_section(pk=pk, course_id=course_id, section_id=section_id)
         if not course_section:
@@ -1440,13 +1954,12 @@ class CourseSectionGradesExportCSVView(APIView):
         if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        cache_key = f"course-grades-csv:{course_section.id}:{request.user.id}"
-        cached_csv = cache.get(cache_key)
-        file_name = f"{course_section.course.code}_{course_section.section.name}_grades.csv".replace(" ", "_")
-        if cached_csv:
-            response = StreamingHttpResponse(self._stream_text(cached_csv), content_type="text/csv; charset=utf-8")
-            response["Content-Disposition"] = f'attachment; filename="{file_name}"'
-            return response
+        # Query parameters
+        export_format = request.query_params.get("format", "csv").lower()
+        scope = request.query_params.get("scope", "all").lower()  # all, activities, quizzes, final_only
+        include_inactive = request.query_params.get("include_inactive", "false").lower() == "true"
+        include_student_id = request.query_params.get("include_student_id", "false").lower() == "true"
+        include_enrolled_at = request.query_params.get("include_enrolled_at", "false").lower() == "true"
 
         activities = list(
             Activity.objects.filter(course_section=course_section, is_published=True).order_by("created_at", "title")
@@ -1454,10 +1967,20 @@ class CourseSectionGradesExportCSVView(APIView):
         quizzes = list(
             Quiz.objects.filter(course_section=course_section, is_published=True).order_by("created_at", "title")
         )
+
+        # Filter by scope
+        if scope == "activities":
+            quizzes = []
+        elif scope == "quizzes":
+            activities = []
+        elif scope == "final_only":
+            activities = []
+            quizzes = []
+
         enrollments = list(
-            Enrollment.objects.filter(course_section=course_section, is_active=True)
+            Enrollment.objects.filter(course_section=course_section)
             .select_related("student")
-            .order_by("student__full_name", "student__email")
+            .order_by("-is_active", "student__full_name", "student__email")
         )
         student_ids = [e.student_id for e in enrollments]
 
@@ -1466,72 +1989,61 @@ class CourseSectionGradesExportCSVView(APIView):
             submissions = Submission.objects.filter(
                 activity_id__in=[a.id for a in activities],
                 student_id__in=student_ids,
-                score__isnull=False,
             )
             submission_map = {(str(s.student_id), str(s.activity_id)): s for s in submissions}
 
-        latest_quiz_attempt_map: dict[tuple[str, str], QuizAttempt] = {}
+        quiz_attempt_map: dict[tuple[str, str], QuizAttempt] = {}
         if quizzes and student_ids:
             quiz_attempts = (
                 QuizAttempt.objects.filter(
                     quiz_id__in=[q.id for q in quizzes],
                     student_id__in=student_ids,
                     is_submitted=True,
-                    pending_manual_grading=False,
                     score__isnull=False,
                 )
                 .order_by("student_id", "quiz_id", "-attempt_number", "-submitted_at")
             )
             for attempt in quiz_attempts:
                 key = (str(attempt.student_id), str(attempt.quiz_id))
-                if key not in latest_quiz_attempt_map:
-                    latest_quiz_attempt_map[key] = attempt
+                if key not in quiz_attempt_map:
+                    quiz_attempt_map[key] = attempt
 
-        headers = ["Student Name", "Student Email", "Section", "Total Grade"]
-        headers.extend([f"Assignment: {a.title}" for a in activities])
-        headers.extend([f"Quiz: {q.title}" for q in quizzes])
+        base_name = f"{course_section.course.code}_{course_section.section.name}_grades".replace(" ", "_")
 
-        output = StringIO()
-        writer = csv.writer(output)
-        writer.writerow(headers)
+        if export_format == "xlsx":
+            xlsx_data = self._generate_xlsx(
+                course_section, enrollments, activities, quizzes,
+                submission_map, quiz_attempt_map,
+                include_inactive, include_student_id, include_enrolled_at
+            )
+            if xlsx_data is None:
+                return Response({"detail": "XLSX generation not available."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        for enrollment in enrollments:
-            computed_total = _compute_enrollment_grade(enrollment)
-            row = [
-                enrollment.student.full_name,
-                enrollment.student.email,
-                course_section.section.name,
-                self._format_num(computed_total),
-            ]
-            for activity in activities:
-                sub = submission_map.get((str(enrollment.student_id), str(activity.id)))
-                if sub and sub.score is not None:
-                    row.append(f"{self._format_num(sub.score)}/{self._format_num(activity.points)}")
-                else:
-                    row.append("")
-            for quiz in quizzes:
-                attempt = latest_quiz_attempt_map.get((str(enrollment.student_id), str(quiz.id)))
-                if attempt and attempt.score is not None and attempt.max_score is not None:
-                    row.append(f"{self._format_num(attempt.score)}/{self._format_num(attempt.max_score)}")
-                elif attempt and attempt.score is not None:
-                    row.append(self._format_num(attempt.score))
-                else:
-                    row.append("")
-            writer.writerow(row)
+            response = HttpResponse(
+                xlsx_data,
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            response["Content-Disposition"] = f'attachment; filename="{base_name}.xlsx"'
+            return response
 
-        csv_text = "\ufeff" + output.getvalue()
-        cache.set(cache_key, csv_text, timeout=60)
+        # Default to CSV
+        csv_text = self._generate_csv(
+            course_section, enrollments, activities, quizzes,
+            submission_map, quiz_attempt_map,
+            include_inactive, include_student_id, include_enrolled_at
+        )
+
         logger.info(
             "grade_csv_export user_id=%s section_id=%s students=%s activities=%s quizzes=%s",
             request.user.id,
             course_section.id,
-            len(enrollments),
+            len([e for e in enrollments if e.is_active]),
             len(activities),
             len(quizzes),
         )
 
         response = StreamingHttpResponse(self._stream_text(csv_text), content_type="text/csv; charset=utf-8")
-        response["Content-Disposition"] = f'attachment; filename="{file_name}"'
+        response["Content-Disposition"] = f'attachment; filename="{base_name}.csv"'
         return response
 
 
