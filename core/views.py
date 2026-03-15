@@ -3059,6 +3059,11 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
         parent_id = request.data.get('parent_id')
         submission_id = request.data.get('submission_id')
 
+        # Debug logging for submission_id
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[ActivityComment] Creating comment - activity_id: {activity_id}, submission_id: {submission_id}, author: {request.user.id}")
+
         parent_comment = None
         if parent_id:
             parent_comment = ActivityComment.objects.filter(id=parent_id).first()
@@ -3076,6 +3081,8 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
             content=content,
             file_urls=file_urls if file_urls else None,
         )
+
+        logger.info(f"[ActivityComment] Comment created successfully - id: {comment.id}, submission_id: {comment.submission_id}, activity_id: {activity_id}")
 
         serializer = self.get_serializer(comment)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -3174,22 +3181,74 @@ class ActivityCommentsByActivityView(APIView):
             if not teaches:
                 return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Check if teacher wants to filter by a specific submission
+            # Support filtering by submission_id (for submitted work) or student_id (for any student)
             submission_id = request.query_params.get('submission_id')
+            student_id = request.query_params.get('student_id')
+
+            # Debug logging
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[ActivityComments] Teacher {request.user.id} fetching comments for activity {pk}, submission_id: {submission_id}, student_id: {student_id}")
+
+            from django.db.models import Q
 
             if submission_id:
+                # Filter by specific submission (for students who have submitted)
                 # Verify the submission belongs to this activity
                 submission = Submission.objects.filter(id=submission_id, activity=activity).first()
                 if not submission:
+                    logger.warning(f"[ActivityComments] Submission {submission_id} not found for activity {pk}")
                     return Response({"detail": "Submission not found for this activity."}, status=status.HTTP_404_NOT_FOUND)
 
-                # Return only comments for this specific submission
-                # This ensures teachers see the correct per-student conversation
+                # Return comments for this specific submission
+                # This includes: comments on this submission, and any back-and-forth
                 comments = ActivityComment.objects.filter(
                     activity=activity,
                     submission_id=submission_id,
                     parent=None,
                 ).select_related('author').prefetch_related('replies__author').order_by('created_at')
+                logger.info(f"[ActivityComments] Found {comments.count()} comments for submission {submission_id}")
+
+            elif student_id:
+                # Filter by specific student (works even without submission)
+                # Show conversation between this student and the teacher
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[ActivityComments] Filtering by student_id: {student_id}, teacher_id: {request.user.id}")
+
+                student_submissions = Submission.objects.filter(activity=activity, student_id=student_id)
+                submission_ids = [s.id for s in student_submissions]
+                logger.info(f"[ActivityComments] Found {len(submission_ids)} submissions for student")
+
+                # Build filter: comments by this student OR by teacher OR on student's submissions
+                student_filter = Q(author_id=student_id) | Q(author_id=request.user.id)
+                if submission_ids:
+                    student_filter = student_filter | Q(submission_id__in=submission_ids)
+
+                # Log the filter conditions
+                logger.info(f"[ActivityComments] Filter: author_id={student_id} OR author_id={request.user.id}" +
+                           (f" OR submission_id in {submission_ids}" if submission_ids else ""))
+
+                comments = ActivityComment.objects.filter(
+                    activity=activity,
+                    parent=None,
+                ).filter(student_filter).select_related('author').prefetch_related('replies__author').order_by('created_at')
+
+                logger.info(f"[ActivityComments] Found {comments.count()} top-level comments for student {student_id}")
+
+                # Also filter replies to only show student-teacher conversation
+                filtered_comments = []
+                for comment in comments:
+                    logger.info(f"[ActivityComments] Comment {comment.id}: author_id={comment.author_id}, submission_id={comment.submission_id}")
+                    filtered_comment = self._filter_comment_replies_for_teacher(comment, student_id, request.user.id, submission_ids)
+                    if filtered_comment:
+                        filtered_comments.append(filtered_comment)
+
+                logger.info(f"[ActivityComments] Returning {len(filtered_comments)} comments for student {student_id}")
+
+                serializer = ActivityCommentSerializer(filtered_comments, many=True, context={'request': request})
+                return Response(serializer.data)
+
             else:
                 # Teachers see all comments for their course sections
                 comments = ActivityComment.objects.filter(
@@ -3223,6 +3282,44 @@ class ActivityCommentsByActivityView(APIView):
             is_by_student = str(reply.author_id) == str(student_id)
             is_by_teacher = str(reply.author_id) == str(teacher_id)
             is_on_student_submission = submission_id and str(reply.submission_id) == str(submission_id)
+
+            if is_by_student or is_by_teacher or is_on_student_submission:
+                visible_replies.append(reply)
+
+        # Set filtered replies
+        comment.replies._data = visible_replies
+        return comment
+
+    def _filter_comment_replies_for_teacher(self, comment, student_id, teacher_id, submission_ids):
+        """Filter replies to only show student-teacher conversation."""
+        visible_replies = []
+        for reply in comment.replies.all():
+            # Show reply if:
+            # 1. Reply is by the student
+            # 2. Reply is by the teacher
+            # 3. Reply is on one of the student's submissions
+            is_by_student = str(reply.author_id) == str(student_id)
+            is_by_teacher = str(reply.author_id) == str(teacher_id)
+            is_on_student_submission = submission_ids and str(reply.submission_id) in [str(sid) for sid in submission_ids]
+
+            if is_by_student or is_by_teacher or is_on_student_submission:
+                visible_replies.append(reply)
+
+        # Set filtered replies
+        comment.replies._data = visible_replies
+        return comment
+
+    def _filter_comment_replies_for_teacher(self, comment, student_id, teacher_id, submission_ids):
+        """Filter replies to only show student-teacher conversation."""
+        visible_replies = []
+        for reply in comment.replies.all():
+            # Show reply if:
+            # 1. Reply is by the student
+            # 2. Reply is by the teacher
+            # 3. Reply is on one of the student's submissions
+            is_by_student = str(reply.author_id) == str(student_id)
+            is_by_teacher = str(reply.author_id) == str(teacher_id)
+            is_on_student_submission = submission_ids and str(reply.submission_id) in [str(sid) for sid in submission_ids]
 
             if is_by_student or is_by_teacher or is_on_student_submission:
                 visible_replies.append(reply)
