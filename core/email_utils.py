@@ -8,6 +8,9 @@ from brevo_python.rest import ApiException
 
 logger = logging.getLogger(__name__)
 
+# App download link
+APP_DOWNLOAD_URL = "https://expo.dev/accounts/hnaadmin/projects/hna-acadex/builds/d92284b0-cba3-41f4-bc46-6f62f0b40c37"
+
 
 def get_brevo_api_instance():
     """Get Brevo API instance with configured API key."""
@@ -95,7 +98,7 @@ Password: {plain_password}
 
 Please log in and change your password as soon as possible.
 
-Login URL: {frontend_url}
+Download the app: {APP_DOWNLOAD_URL}
 
 If you have any questions, please contact the administrator.
 
@@ -118,6 +121,8 @@ HNA Acadex Team
         .credential-label {{ font-weight: bold; color: #6b7280; }}
         .credential-value {{ font-family: monospace; background-color: #f3f4f6; padding: 8px 12px; border-radius: 4px; display: inline-block; }}
         .warning {{ background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; }}
+        .app-button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 15px 0; }}
+        .app-button:hover {{ background-color: #4338CA; }}
         .footer {{ text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px; }}
     </style>
 </head>
@@ -143,9 +148,9 @@ HNA Acadex Team
             <div class="warning">
                 <strong>Important:</strong> Please log in and change your password as soon as possible.
             </div>
-            <p style="margin-top: 20px;">
-                Log in at: <a href="{frontend_url}">{frontend_url}</a>
-            </p>
+            <div style="text-align: center; margin: 25px 0;">
+                <a href="{APP_DOWNLOAD_URL}" class="app-button">Download the App</a>
+            </div>
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
         <div class="footer">
@@ -171,7 +176,6 @@ def send_password_reset_email(user, new_password):
 
     role_display = get_role_display(user.role)
     subject = f"Password Reset - HNA Acadex {role_display} Account"
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:8081')
 
     plain_message = f"""
 Dear {user.full_name},
@@ -185,7 +189,7 @@ New Password: {new_password}
 
 Please log in and change your password as soon as possible.
 
-Login URL: {frontend_url}
+Download the app: {APP_DOWNLOAD_URL}
 
 If you did not request this password reset, please contact the administrator immediately.
 
@@ -208,6 +212,8 @@ HNA Acadex Team
         .credential-label {{ font-weight: bold; color: #6b7280; }}
         .credential-value {{ font-family: monospace; background-color: #f3f4f6; padding: 8px 12px; border-radius: 4px; display: inline-block; }}
         .warning {{ background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; }}
+        .app-button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 15px 0; }}
+        .app-button:hover {{ background-color: #4338CA; }}
         .footer {{ text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px; }}
     </style>
 </head>
@@ -233,9 +239,9 @@ HNA Acadex Team
             <div class="warning">
                 <strong>Important:</strong> Please log in and change your password as soon as possible.
             </div>
-            <p style="margin-top: 20px;">
-                Log in at: <a href="{frontend_url}">{frontend_url}</a>
-            </p>
+            <div style="text-align: center; margin: 25px 0;">
+                <a href="{APP_DOWNLOAD_URL}" class="app-button">Download the App</a>
+            </div>
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
         <div class="footer">
