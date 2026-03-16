@@ -52,21 +52,14 @@ services:
         sync: false  # Set in Render Dashboard
       - key: DEFAULT_FROM_EMAIL
         value: "hnaacadexadmin@gmail.com"
-      # Celery/Redis Settings
+      # Celery/Redis Settings - Upstash Redis
       - key: CELERY_BROKER_URL
-        value: "redis://hna-acadex-redis:6379/0"
+        sync: false  # Set in Render Dashboard: rediss://default:PASSWORD@HOST:6379
       - key: CELERY_RESULT_BACKEND
-        value: "redis://hna-acadex-redis:6379/0"
+        sync: false  # Set in Render Dashboard: rediss://default:PASSWORD@HOST:6379
       # Firebase - Set in Render Dashboard
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false  # Set in Render Dashboard
-
-  # Redis for Celery
-  - type: redis
-    name: hna-acadex-redis
-    region: oregon
-    plan: free
-    maxmemoryPolicy: allkeys-lru
 
   # Celery Worker for Background Tasks
   - type: worker
@@ -88,9 +81,9 @@ services:
       - key: DJANGO_DEBUG
         value: "0"
       - key: CELERY_BROKER_URL
-        value: "redis://hna-acadex-redis:6379/0"
+        sync: false  # Set same value as web service
       - key: CELERY_RESULT_BACKEND
-        value: "redis://hna-acadex-redis:6379/0"
+        sync: false  # Set same value as web service
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false  # Set same value as web service
 
@@ -114,6 +107,6 @@ services:
       - key: DJANGO_DEBUG
         value: "0"
       - key: CELERY_BROKER_URL
-        value: "redis://hna-acadex-redis:6379/0"
+        sync: false  # Set same value as web service
       - key: CELERY_RESULT_BACKEND
-        value: "redis://hna-acadex-redis:6379/0"
+        sync: false  # Set same value as web service
