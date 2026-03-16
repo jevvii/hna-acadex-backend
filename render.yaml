@@ -28,9 +28,7 @@ services:
       - key: DJANGO_ALLOWED_HOSTS
         value: ".onrender.com"
       - key: CORS_ALLOW_ALL_ORIGINS
-        value: "0"
-      - key: CORS_ALLOWED_ORIGINS
-        value: "exp://exp.host,exp://exp.host/@hnaadmin/hna-acadex,hna-acadex://"
+        value: "1"
       - key: WEB_CONCURRENCY
         value: "2"
       - key: DJANGO_SU_EMAIL
