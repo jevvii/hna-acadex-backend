@@ -36,6 +36,8 @@ def get_role_display(role_value):
 
 def _send_email_async(subject, plain_message, html_message, from_email, to_email):
     """Send email in a background thread to avoid blocking the request."""
+    import logging
+    logger = logging.getLogger(__name__)
     try:
         send_mail(
             subject=subject,
@@ -43,11 +45,11 @@ def _send_email_async(subject, plain_message, html_message, from_email, to_email
             from_email=from_email,
             recipient_list=[to_email],
             html_message=html_message,
-            fail_silently=True,
+            fail_silently=False,
         )
-    except Exception:
-        # Silently fail - email is not critical for user creation
-        pass
+        logger.info(f"Email successfully sent to {to_email}")
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {type(e).__name__}: {e}")
 
 
 def send_credentials_email(user, plain_password):
