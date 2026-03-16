@@ -9,7 +9,7 @@ from brevo_python.rest import ApiException
 logger = logging.getLogger(__name__)
 
 # App download link
-APP_DOWNLOAD_URL = "https://expo.dev/accounts/hnaadmin/projects/hna-acadex/builds/d92284b0-cba3-41f4-bc46-6f62f0b40c37"
+APP_DOWNLOAD_URL = "https://expo.dev/accounts/hnaadmin/projects/hna-acadex/builds/2b140d21-fb77-464f-a1b2-bd15dd21271a"
 
 
 def get_brevo_api_instance():
