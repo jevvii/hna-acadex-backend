@@ -2,7 +2,6 @@
 import secrets
 import string
 import logging
-from django.core.mail import send_mail
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -11,16 +10,13 @@ logger = logging.getLogger(__name__)
 def generate_random_password(length=12):
     """Generate a secure random password."""
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    # Ensure at least one of each character type
     password = [
         secrets.choice(string.ascii_uppercase),
         secrets.choice(string.ascii_lowercase),
         secrets.choice(string.digits),
         secrets.choice("!@#$%^&*"),
     ]
-    # Fill the rest with random characters
     password += [secrets.choice(alphabet) for _ in range(length - 4)]
-    # Shuffle to avoid predictable pattern
     secrets.SystemRandom().shuffle(password)
     return ''.join(password)
 
@@ -36,7 +32,7 @@ def get_role_display(role_value):
 
 
 def send_credentials_email(user, plain_password):
-    """Send login credentials to the user's personal email."""
+    """Send login credentials to the user's personal email via Celery."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -102,12 +98,11 @@ HNA Acadex Team
                 </div>
             </div>
             <div class="warning">
-                <strong>Important:</strong> Please log in and change your password as soon as possible for security reasons.
+                <strong>Important:</strong> Please log in and change your password as soon as possible.
             </div>
             <p style="margin-top: 20px;">
-                You can log in at: <a href="{frontend_url}">{frontend_url}</a>
+                Log in at: <a href="{frontend_url}">{frontend_url}</a>
             </p>
-            <p>If you have any questions, please contact the administrator.</p>
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
         <div class="footer">
@@ -118,24 +113,21 @@ HNA Acadex Team
 </html>
     """
 
-    try:
-        send_mail(
-            subject=subject,
-            message=plain_message.strip(),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.personal_email],
-            html_message=html_message.strip(),
-            fail_silently=False,
-        )
-        logger.info(f"Credentials email sent to {user.personal_email}")
-        return True, f"Credentials sent to {user.personal_email}"
-    except Exception as e:
-        logger.error(f"Failed to send credentials email to {user.personal_email}: {e}")
-        return False, f"Failed to send email: {e}"
+    # Send via Celery task
+    from .tasks import send_email_task
+    send_email_task.delay(
+        subject=subject,
+        plain_message=plain_message.strip(),
+        html_message=html_message.strip(),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to_email=user.personal_email,
+    )
+
+    return True, f"Credentials will be sent to {user.personal_email}"
 
 
 def send_password_reset_email(user, new_password):
-    """Send password reset email to the user's personal email."""
+    """Send password reset email to the user's personal email via Celery."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -201,12 +193,11 @@ HNA Acadex Team
                 </div>
             </div>
             <div class="warning">
-                <strong>Important:</strong> Please log in and change your password as soon as possible for security reasons.
+                <strong>Important:</strong> Please log in and change your password as soon as possible.
             </div>
             <p style="margin-top: 20px;">
-                You can log in at: <a href="{frontend_url}">{frontend_url}</a>
+                Log in at: <a href="{frontend_url}">{frontend_url}</a>
             </p>
-            <p>If you did not request this password reset, please contact the administrator immediately.</p>
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
         <div class="footer">
@@ -217,17 +208,14 @@ HNA Acadex Team
 </html>
     """
 
-    try:
-        send_mail(
-            subject=subject,
-            message=plain_message.strip(),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.personal_email],
-            html_message=html_message.strip(),
-            fail_silently=False,
-        )
-        logger.info(f"Password reset email sent to {user.personal_email}")
-        return True, f"Password reset email sent to {user.personal_email}"
-    except Exception as e:
-        logger.error(f"Failed to send password reset email to {user.personal_email}: {e}")
-        return False, f"Failed to send email: {e}"
+    # Send via Celery task
+    from .tasks import send_email_task
+    send_email_task.delay(
+        subject=subject,
+        plain_message=plain_message.strip(),
+        html_message=html_message.strip(),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to_email=user.personal_email,
+    )
+
+    return True, f"Password reset email will be sent to {user.personal_email}"

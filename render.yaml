@@ -10,7 +10,7 @@ services:
     name: hna-acadex-backend
     runtime: python
     region: oregon
-    plan: free
+    plan: starter
     branch: main
     buildCommand: "./build.sh"
     startCommand: "gunicorn config.wsgi:application --timeout 120"
@@ -50,55 +50,59 @@ services:
         sync: false  # Set in Render Dashboard
       - key: DEFAULT_FROM_EMAIL
         value: "hnaacadexadmin@gmail.com"
-      # Firebase - Set in Render Dashboard
+      # Celery/Redis - Set in Render Dashboard
+      - key: CELERY_BROKER_URL
+        sync: false  # rediss://default:PASSWORD@HOST:6379
+      - key: CELERY_RESULT_BACKEND
+        sync: false  # rediss://default:PASSWORD@HOST:6379
+      # Firebase
       - key: FIREBASE_CREDENTIALS_JSON
-        sync: false  # Set in Render Dashboard
+        sync: false
 
-# NOTE: Background workers require paid plan (Starter $7/month)
-# To enable Celery workers, uncomment the services below and upgrade plan
-#
-#   - type: worker
-#     name: hna-acadex-celery-worker
-#     runtime: python
-#     region: oregon
-#     plan: starter
-#     branch: main
-#     buildCommand: "./build.sh"
-#     startCommand: "celery -A config.celery worker --loglevel=info"
-#     envVars:
-#       - key: DATABASE_URL
-#         fromDatabase:
-#           name: hna-acadex-db
-#           property: connectionString
-#       - key: DJANGO_SECRET_KEY
-#         sync: false
-#       - key: DJANGO_DEBUG
-#         value: "0"
-#       - key: CELERY_BROKER_URL
-#         sync: false
-#       - key: CELERY_RESULT_BACKEND
-#         sync: false
-#       - key: FIREBASE_CREDENTIALS_JSON
-#         sync: false
-#
-#   - type: worker
-#     name: hna-acadex-celery-beat
-#     runtime: python
-#     region: oregon
-#     plan: starter
-#     branch: main
-#     buildCommand: "./build.sh"
-#     startCommand: "celery -A config.celery beat --loglevel=info"
-#     envVars:
-#       - key: DATABASE_URL
-#         fromDatabase:
-#           name: hna-acadex-db
-#           property: connectionString
-#       - key: DJANGO_SECRET_KEY
-#         sync: false
-#       - key: DJANGO_DEBUG
-#         value: "0"
-#       - key: CELERY_BROKER_URL
-#         sync: false
-#       - key: CELERY_RESULT_BACKEND
-#         sync: false
+  # Celery Worker for Background Tasks
+  - type: worker
+    name: hna-acadex-celery-worker
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: "./build.sh"
+    startCommand: "celery -A config.celery worker --loglevel=info"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hna-acadex-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        sync: false  # Copy from web service
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: CELERY_BROKER_URL
+        sync: false  # Copy from web service
+      - key: CELERY_RESULT_BACKEND
+        sync: false  # Copy from web service
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false  # Copy from web service
+
+  # Celery Beat Scheduler
+  - type: worker
+    name: hna-acadex-celery-beat
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: "./build.sh"
+    startCommand: "celery -A config.celery beat --loglevel=info"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hna-acadex-db
+          property: connectionString
+      - key: DJANGO_SECRET_KEY
+        sync: false  # Copy from web service
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: CELERY_BROKER_URL
+        sync: false  # Copy from web service
+      - key: CELERY_RESULT_BACKEND
+        sync: false  # Copy from web service
