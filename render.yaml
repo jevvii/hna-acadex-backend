@@ -14,6 +14,9 @@ services:
     branch: main
     buildCommand: "./build.sh"
     startCommand: "gunicorn config.wsgi:application"
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all IPs (public API for mobile app)
     envVars:
       - key: DATABASE_URL
         fromDatabase:
