@@ -418,10 +418,239 @@ def _recompute_enrollment_grade(enrollment: Enrollment) -> Enrollment:
     return enrollment
 
 
+def _get_grade_summary_metadata(enrollment: Enrollment) -> dict:
+    """
+    Compute grade summary metadata for a student's enrollment.
+    Returns counts of graded/pending/excluded items for frontend badge display.
+    """
+    from datetime import datetime
+
+    # Get activities and quizzes for this course section
+    activities = list(
+        Activity.objects.filter(
+            course_section=enrollment.course_section,
+            is_published=True,
+            points__gt=0,
+        )
+    )
+    quizzes = list(
+        Quiz.objects.filter(
+            course_section=enrollment.course_section,
+            is_published=True,
+        )
+    )
+
+    enrolled_at = enrollment.enrolled_at
+
+    # Count activities
+    graded_activities = 0
+    pending_activities = 0
+    excluded_activities = 0
+    total_activities = len(activities)
+
+    for activity in activities:
+        # Check if activity deadline is before enrollment (pre-enrollment exclusion)
+        if activity.deadline and enrolled_at:
+            activity_deadline = activity.deadline
+            if isinstance(activity_deadline, str):
+                activity_deadline = datetime.fromisoformat(activity_deadline.replace('Z', '+00:00'))
+            enrolled_at_dt = enrolled_at if not isinstance(enrolled_at, str) else datetime.fromisoformat(enrolled_at.replace('Z', '+00:00'))
+            if activity_deadline < enrolled_at_dt:
+                excluded_activities += 1
+                continue
+
+        # Check submission status
+        submission = Submission.objects.filter(
+            activity=activity,
+            student=enrollment.student
+        ).order_by('-attempt_number').first()
+
+        if submission:
+            if submission.score is not None:
+                graded_activities += 1
+            else:
+                # Submitted but not graded yet
+                pending_activities += 1
+
+    # Count quizzes
+    graded_quizzes = 0
+    pending_quizzes = 0
+    excluded_quizzes = 0
+    total_quizzes = len(quizzes)
+
+    for quiz in quizzes:
+        # Check if quiz close_at is before enrollment (pre-enrollment exclusion)
+        if quiz.close_at and enrolled_at:
+            close_at = quiz.close_at
+            if isinstance(close_at, str):
+                close_at = datetime.fromisoformat(close_at.replace('Z', '+00:00'))
+            enrolled_at_dt = enrolled_at if not isinstance(enrolled_at, str) else datetime.fromisoformat(enrolled_at.replace('Z', '+00:00'))
+            if close_at < enrolled_at_dt:
+                excluded_quizzes += 1
+                continue
+
+        # Check quiz attempt
+        attempts = QuizAttempt.objects.filter(
+            quiz=quiz,
+            student=enrollment.student,
+            is_submitted=True,
+        )
+        if attempts.exists():
+            # Check if any attempt has a score
+            has_score = attempts.filter(score__isnull=False).exists()
+            if has_score:
+                graded_quizzes += 1
+            else:
+                pending_quizzes += 1
+
+    graded_items_count = graded_activities + graded_quizzes
+    pending_items_count = pending_activities + pending_quizzes
+    excluded_items_count = excluded_activities + excluded_quizzes
+    total_items_count = (total_activities - excluded_activities) + (total_quizzes - excluded_quizzes)
+
+    # Determine grade status
+    has_pending = pending_items_count > 0
+    has_released_grades = graded_items_count > 0
+    has_no_gradeable_items = total_items_count == 0
+
+    return {
+        "graded_items_count": graded_items_count,
+        "total_items_count": total_items_count,
+        "pending_items_count": pending_items_count,
+        "excluded_items_count": excluded_items_count,
+        "has_pending": has_pending,
+        "has_released_grades": has_released_grades,
+        "has_no_gradeable_items": has_no_gradeable_items,
+        "is_partial": has_pending and has_released_grades,
+        "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+    }
+
+
 def _recompute_course_section_grades(course_section: CourseSection):
     enrollments = Enrollment.objects.filter(course_section=course_section, is_active=True).select_related("student")
     for enrollment in enrollments:
         _recompute_enrollment_grade(enrollment)
+
+
+def _get_grade_summary_metadata(enrollment: Enrollment) -> dict:
+    """
+    Compute grade summary metadata for a student's enrollment.
+    Returns counts of graded/pending/total items without modifying grade computation.
+    """
+    from datetime import datetime
+    from decimal import Decimal
+
+    course_section = enrollment.course_section
+    enrolled_at = enrollment.enrolled_at
+
+    # Get all published activities and quizzes
+    activities = Activity.objects.filter(
+        course_section=course_section,
+        is_published=True,
+        points__gt=0,
+    ).only('id', 'deadline', 'points')
+
+    quizzes = Quiz.objects.filter(
+        course_section=course_section,
+        is_published=True,
+    ).only('id', 'close_at')
+
+    # Get student's submissions and attempts
+    activity_ids = [a.id for a in activities]
+    quiz_ids = [q.id for q in quizzes]
+
+    submissions = {
+        str(s.activity_id): s
+        for s in Submission.objects.filter(
+            activity_id__in=activity_ids,
+            student=enrollment.student
+        )
+    }
+
+    attempts = list(QuizAttempt.objects.filter(
+        quiz_id__in=quiz_ids,
+        student=enrollment.student,
+        is_submitted=True,
+    ))
+
+    attempts_by_quiz: dict[str, list] = {}
+    for a in attempts:
+        key = str(a.quiz_id)
+        if key not in attempts_by_quiz:
+            attempts_by_quiz[key] = []
+        attempts_by_quiz[key].append(a)
+
+    graded_items_count = 0
+    total_items_count = 0
+    pending_count = 0
+    excluded_count = 0
+
+    # Process activities
+    for activity in activities:
+        total_items_count += 1
+
+        # Check if activity deadline is before enrollment (pre-enrollment exclusion)
+        if activity.deadline and enrolled_at:
+            activity_deadline = activity.deadline
+            if isinstance(enrolled_at, str):
+                enrolled_at_dt = datetime.fromisoformat(enrolled_at.replace('Z', '+00:00'))
+            else:
+                enrolled_at_dt = enrolled_at
+            if isinstance(activity_deadline, str):
+                activity_deadline_dt = datetime.fromisoformat(activity_deadline.replace('Z', '+00:00'))
+            else:
+                activity_deadline_dt = activity_deadline
+
+            if activity_deadline_dt < enrolled_at_dt:
+                excluded_count += 1
+                continue
+
+        sub = submissions.get(str(activity.id))
+        if sub:
+            if sub.score is not None:
+                graded_items_count += 1
+            elif sub.status in (Submission.SubmissionStatus.SUBMITTED, Submission.SubmissionStatus.LATE):
+                pending_count += 1
+
+    # Process quizzes
+    for quiz in quizzes:
+        # Quizzes don't have pre-enrollment exclusion in the same way
+        # but we check close_at similar to activities
+        total_items_count += 1
+
+        if quiz.close_at and enrolled_at:
+            close_at = quiz.close_at
+            if isinstance(enrolled_at, str):
+                enrolled_at_dt = datetime.fromisoformat(enrolled_at.replace('Z', '+00:00'))
+            else:
+                enrolled_at_dt = enrolled_at
+            if isinstance(close_at, str):
+                close_at_dt = datetime.fromisoformat(close_at.replace('Z', '+00:00'))
+            else:
+                close_at_dt = close_at
+
+            if close_at_dt < enrolled_at_dt:
+                excluded_count += 1
+                continue
+
+        quiz_attempts = attempts_by_quiz.get(str(quiz.id), [])
+        if quiz_attempts:
+            # Check if any attempt has a score
+            has_score = any(a.score is not None for a in quiz_attempts)
+            if has_score:
+                graded_items_count += 1
+            else:
+                pending_count += 1
+
+    return {
+        "graded_items_count": graded_items_count,
+        "total_items_count": total_items_count,
+        "pending_count": pending_count,
+        "excluded_count": excluded_count,
+        "has_pending": pending_count > 0,
+        "has_grades": graded_items_count > 0,
+        "has_items": total_items_count > 0,
+    }
 
 
 def _sync_student_activity_items(student: User):
@@ -954,6 +1183,10 @@ class StudentCoursesView(APIView):
             sec = cs.section
             course_tag = f"{course.code}@{sec.strand}-{sec.name}" if sec.strand and sec.strand != "NONE" else f"{course.code}@{sec.name}"
             final_grade = float(e.final_grade) if e.final_grade is not None else None
+
+            # Get grade metadata for badge display
+            grade_metadata = _get_grade_summary_metadata(e)
+
             data.append(
                 {
                     "student_id": str(request.user.id),
@@ -973,6 +1206,8 @@ class StudentCoursesView(APIView):
                     "course_tag": course_tag,
                     "semester": cs.semester,
                     "school_year": cs.school_year,
+                    # Grade metadata for badge display
+                    "grade_summary": grade_metadata,
                 }
             )
         return Response(data)
