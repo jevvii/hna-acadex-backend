@@ -1,7 +1,11 @@
 # hna-acadex-backend/core/email_utils.py
 import secrets
 import string
+import logging
+from django.core.mail import send_mail
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def generate_random_password(length=12):
@@ -23,7 +27,6 @@ def generate_random_password(length=12):
 
 def get_role_display(role_value):
     """Get the display name for a role value."""
-    # Role choices mapping
     role_choices = {
         'admin': 'Admin',
         'teacher': 'Teacher',
@@ -33,17 +36,14 @@ def get_role_display(role_value):
 
 
 def send_credentials_email(user, plain_password):
-    """Send login credentials to the user's personal email via Celery task."""
+    """Send login credentials to the user's personal email."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
     role_display = get_role_display(user.role)
-
     subject = f"Welcome to HNA Acadex - Your {role_display} Account Credentials"
-
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:8081')
 
-    # Plain text version
     plain_message = f"""
 Dear {user.full_name},
 
@@ -64,7 +64,6 @@ Best regards,
 HNA Acadex Team
     """
 
-    # HTML version
     html_message = f"""
 <!DOCTYPE html>
 <html>
@@ -91,7 +90,6 @@ HNA Acadex Team
         <div class="content">
             <p>Dear {user.full_name},</p>
             <p>Welcome to HNA Acadex! Your <strong>{role_display}</strong> account has been created.</p>
-
             <div class="credentials">
                 <h3 style="margin-top: 0;">Your Login Credentials</h3>
                 <div class="credential-item">
@@ -103,17 +101,13 @@ HNA Acadex Team
                     <span class="credential-value">{plain_password}</span>
                 </div>
             </div>
-
             <div class="warning">
                 <strong>Important:</strong> Please log in and change your password as soon as possible for security reasons.
             </div>
-
             <p style="margin-top: 20px;">
                 You can log in at: <a href="{frontend_url}">{frontend_url}</a>
             </p>
-
             <p>If you have any questions, please contact the administrator.</p>
-
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
         <div class="footer">
@@ -124,31 +118,31 @@ HNA Acadex Team
 </html>
     """
 
-    # Send via Celery task (more reliable than threading on Render)
-    from .tasks import send_email_task
-    send_email_task.delay(
-        subject=subject,
-        plain_message=plain_message.strip(),
-        html_message=html_message.strip(),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to_email=user.personal_email,
-    )
-
-    return True, f"Credentials will be sent to {user.personal_email}"
+    try:
+        send_mail(
+            subject=subject,
+            message=plain_message.strip(),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.personal_email],
+            html_message=html_message.strip(),
+            fail_silently=False,
+        )
+        logger.info(f"Credentials email sent to {user.personal_email}")
+        return True, f"Credentials sent to {user.personal_email}"
+    except Exception as e:
+        logger.error(f"Failed to send credentials email to {user.personal_email}: {e}")
+        return False, f"Failed to send email: {e}"
 
 
 def send_password_reset_email(user, new_password):
-    """Send password reset email to the user's personal email via Celery task."""
+    """Send password reset email to the user's personal email."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
     role_display = get_role_display(user.role)
-
     subject = f"Password Reset - HNA Acadex {role_display} Account"
-
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:8081')
 
-    # Plain text version
     plain_message = f"""
 Dear {user.full_name},
 
@@ -169,7 +163,6 @@ Best regards,
 HNA Acadex Team
     """
 
-    # HTML version
     html_message = f"""
 <!DOCTYPE html>
 <html>
@@ -196,7 +189,6 @@ HNA Acadex Team
         <div class="content">
             <p>Dear {user.full_name},</p>
             <p>Your password has been reset by the administrator.</p>
-
             <div class="credentials">
                 <h3 style="margin-top: 0;">Your New Login Credentials</h3>
                 <div class="credential-item">
@@ -208,17 +200,13 @@ HNA Acadex Team
                     <span class="credential-value">{new_password}</span>
                 </div>
             </div>
-
             <div class="warning">
                 <strong>Important:</strong> Please log in and change your password as soon as possible for security reasons.
             </div>
-
             <p style="margin-top: 20px;">
                 You can log in at: <a href="{frontend_url}">{frontend_url}</a>
             </p>
-
             <p>If you did not request this password reset, please contact the administrator immediately.</p>
-
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
         <div class="footer">
@@ -229,14 +217,17 @@ HNA Acadex Team
 </html>
     """
 
-    # Send via Celery task (more reliable than threading on Render)
-    from .tasks import send_email_task
-    send_email_task.delay(
-        subject=subject,
-        plain_message=plain_message.strip(),
-        html_message=html_message.strip(),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to_email=user.personal_email,
-    )
-
-    return True, f"Password reset email will be sent to {user.personal_email}"
+    try:
+        send_mail(
+            subject=subject,
+            message=plain_message.strip(),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.personal_email],
+            html_message=html_message.strip(),
+            fail_silently=False,
+        )
+        logger.info(f"Password reset email sent to {user.personal_email}")
+        return True, f"Password reset email sent to {user.personal_email}"
+    except Exception as e:
+        logger.error(f"Failed to send password reset email to {user.personal_email}: {e}")
+        return False, f"Failed to send email: {e}"
