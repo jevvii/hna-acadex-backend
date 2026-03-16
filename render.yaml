@@ -10,7 +10,7 @@ services:
     name: hna-acadex-backend
     runtime: python
     region: oregon
-    plan: starter
+    plan: free
     branch: main
     buildCommand: "./build.sh"
     startCommand: "gunicorn config.wsgi:application --timeout 120"
@@ -35,74 +35,36 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: "exp://exp.host/@hnaadmin/hna-acadex"
-      # Email Settings
-      - key: EMAIL_BACKEND
-        value: "django.core.mail.backends.smtp.EmailBackend"
-      - key: EMAIL_HOST
-        value: "smtp.gmail.com"
-      - key: EMAIL_PORT
-        value: "587"
-      - key: EMAIL_USE_TLS
-        value: "True"
-      - key: EMAIL_HOST_USER
-        value: "hnaacadexadmin@gmail.com"
-      - key: EMAIL_HOST_PASSWORD
-        sync: false  # Set in Render Dashboard
+      # Brevo API for email (fast HTTP-based sending, works on free tier)
+      - key: BREVO_API_KEY
+        sync: false  # Set in Render Dashboard - get from Brevo SMTP & API page
       - key: DEFAULT_FROM_EMAIL
-        value: "hnaacadexadmin@gmail.com"
-      # Celery/Redis - Set in Render Dashboard
-      - key: CELERY_BROKER_URL
-        sync: false  # rediss://default:PASSWORD@HOST:6379
-      - key: CELERY_RESULT_BACKEND
-        sync: false  # rediss://default:PASSWORD@HOST:6379
+        value: "hnaacadexadmin@gmail.com"  # Must be a verified sender in Brevo
       # Firebase
       - key: FIREBASE_CREDENTIALS_JSON
-        sync: false
+        sync: false  # Set in Render Dashboard
 
-  # Celery Worker for Background Tasks
-  - type: worker
-    name: hna-acadex-celery-worker
-    runtime: python
-    region: oregon
-    plan: starter
-    branch: main
-    buildCommand: "./build.sh"
-    startCommand: "celery -A config.celery worker --loglevel=info"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hna-acadex-db
-          property: connectionString
-      - key: DJANGO_SECRET_KEY
-        sync: false  # Copy from web service
-      - key: DJANGO_DEBUG
-        value: "0"
-      - key: CELERY_BROKER_URL
-        sync: false  # Copy from web service
-      - key: CELERY_RESULT_BACKEND
-        sync: false  # Copy from web service
-      - key: FIREBASE_CREDENTIALS_JSON
-        sync: false  # Copy from web service
-
-  # Celery Beat Scheduler
-  - type: worker
-    name: hna-acadex-celery-beat
-    runtime: python
-    region: oregon
-    plan: starter
-    branch: main
-    buildCommand: "./build.sh"
-    startCommand: "celery -A config.celery beat --loglevel=info"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hna-acadex-db
-          property: connectionString
-      - key: DJANGO_SECRET_KEY
-        sync: false  # Copy from web service
-      - key: DJANGO_DEBUG
-        value: "0"
-      - key: CELERY_BROKER_URL
-        sync: false  # Copy from web service
-      - key: CELERY_RESULT_BACKEND
-        sync: false  # Copy from web service
+# NOTE: Background workers require paid plan (Starter $7/month)
+# Using Brevo API for email instead - sends via HTTP (fast, no workers needed)
+#
+# To enable Celery workers in the future, uncomment below and upgrade plan:
+#
+#   - type: worker
+#     name: hna-acadex-celery-worker
+#     runtime: python
+#     region: oregon
+#     plan: starter
+#     branch: main
+#     buildCommand: "./build.sh"
+#     startCommand: "celery -A config.celery worker --loglevel=info"
+#     envVars: [same as web service]
+#
+#   - type: worker
+#     name: hna-acadex-celery-beat
+#     runtime: python
+#     region: oregon
+#     plan: starter
+#     branch: main
+#     buildCommand: "./build.sh"
+#     startCommand: "celery -A config.celery beat --loglevel=info"
+#     envVars: [same as web service]

@@ -3,8 +3,51 @@ import secrets
 import string
 import logging
 from django.conf import settings
+import brevo_python
+from brevo_python.rest import ApiException
 
 logger = logging.getLogger(__name__)
+
+
+def get_brevo_api_instance():
+    """Get Brevo API instance with configured API key."""
+    api_key = getattr(settings, 'BREVO_API_KEY', None)
+    if not api_key:
+        raise ValueError("BREVO_API_KEY not configured in settings")
+
+    configuration = brevo_python.Configuration()
+    configuration.api_key['api-key'] = api_key
+    return brevo_python.ApiClient(configuration)
+
+
+def send_email_via_brevo(to_email, subject, html_content, plain_content=None):
+    """
+    Send email using Brevo's Transactional Emails API.
+
+    This is faster than SMTP and works well on free tier without background workers.
+    """
+    api_instance = brevo_python.TransactionalEmailsApi(get_brevo_api_instance())
+
+    sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'hnaacadexadmin@gmail.com')
+
+    send_smtp_email = brevo_python.SendSmtpEmail(
+        to=[{"email": to_email}],
+        sender={"email": sender_email, "name": "HNA Acadex"},
+        subject=subject,
+        html_content=html_content,
+        text_content=plain_content or html_content,
+    )
+
+    try:
+        api_response = api_instance.send_transac_email(send_smtp_email)
+        logger.info(f"Email sent via Brevo to {to_email}: {api_response}")
+        return True, f"Email sent to {to_email}"
+    except ApiException as e:
+        logger.error(f"Brevo API error sending to {to_email}: {e}")
+        return False, f"Failed to send email: {e}"
+    except Exception as e:
+        logger.error(f"Unexpected error sending email to {to_email}: {e}")
+        return False, f"Failed to send email: {e}"
 
 
 def generate_random_password(length=12):
@@ -32,7 +75,7 @@ def get_role_display(role_value):
 
 
 def send_credentials_email(user, plain_password):
-    """Send login credentials to the user's personal email via Celery."""
+    """Send login credentials to the user's personal email via Brevo API."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -113,21 +156,16 @@ HNA Acadex Team
 </html>
     """
 
-    # Send via Celery task
-    from .tasks import send_email_task
-    send_email_task.delay(
-        subject=subject,
-        plain_message=plain_message.strip(),
-        html_message=html_message.strip(),
-        from_email=settings.DEFAULT_FROM_EMAIL,
+    return send_email_via_brevo(
         to_email=user.personal_email,
+        subject=subject,
+        html_content=html_message.strip(),
+        plain_content=plain_message.strip(),
     )
-
-    return True, f"Credentials will be sent to {user.personal_email}"
 
 
 def send_password_reset_email(user, new_password):
-    """Send password reset email to the user's personal email via Celery."""
+    """Send password reset email to the user's personal email via Brevo API."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -208,14 +246,9 @@ HNA Acadex Team
 </html>
     """
 
-    # Send via Celery task
-    from .tasks import send_email_task
-    send_email_task.delay(
-        subject=subject,
-        plain_message=plain_message.strip(),
-        html_message=html_message.strip(),
-        from_email=settings.DEFAULT_FROM_EMAIL,
+    return send_email_via_brevo(
         to_email=user.personal_email,
+        subject=subject,
+        html_content=html_message.strip(),
+        plain_content=plain_message.strip(),
     )
-
-    return True, f"Password reset email will be sent to {user.personal_email}"
