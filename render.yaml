@@ -13,7 +13,7 @@ services:
     plan: free
     branch: main
     buildCommand: "./build.sh"
-    startCommand: "gunicorn config.wsgi:application"
+    startCommand: "gunicorn config.wsgi:application --timeout 120"
     envVars:
       - key: DATABASE_URL
         fromDatabase:

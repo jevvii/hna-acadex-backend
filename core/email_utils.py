@@ -132,7 +132,7 @@ HNA Acadex Team
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.personal_email],
             html_message=html_message.strip(),
-            fail_silently=False,
+            fail_silently=True,  # Don't block on email failures
         )
         return True, f"Credentials sent successfully to {user.personal_email}"
     except Exception as e:
@@ -238,7 +238,7 @@ HNA Acadex Team
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.personal_email],
             html_message=html_message.strip(),
-            fail_silently=False,
+            fail_silently=True,  # Don't block on email failures
         )
         return True, f"Password reset email sent successfully to {user.personal_email}"
     except Exception as e:
