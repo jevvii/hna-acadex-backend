@@ -131,6 +131,12 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
+# SSL settings for Upstash Redis (rediss://)
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "ssl_cert_reqs": None,  # Required for Upstash SSL connections
+}
+CELERY_REDIS_BACKEND_USE_SSL = True
+
 # Celery Beat Configuration
 CELERY_BEAT_SCHEDULE = {
     "process-reminders-every-minute": {

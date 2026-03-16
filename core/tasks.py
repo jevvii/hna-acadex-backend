@@ -242,3 +242,32 @@ def send_notification_to_users(
         logger.info(f"Sent notification to {count} devices for {len(user_ids)} users")
     except Exception as e:
         logger.error(f"Error sending notification to users: {e}")
+
+
+@shared_task(name="core.tasks.send_email_task")
+def send_email_task(subject, plain_message, html_message, from_email, to_email):
+    """
+    Send email via Celery task (more reliable than background threads).
+
+    Args:
+        subject: Email subject
+        plain_message: Plain text version
+        html_message: HTML version
+        from_email: Sender email address
+        to_email: Recipient email address
+    """
+    from django.core.mail import send_mail
+
+    try:
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=from_email,
+            recipient_list=[to_email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        logger.info(f"Email successfully sent to {to_email}")
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {type(e).__name__}: {e}")
+        raise  # Re-raise so Celery can retry if configured

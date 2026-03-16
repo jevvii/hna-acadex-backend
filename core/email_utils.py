@@ -1,8 +1,6 @@
 # hna-acadex-backend/core/email_utils.py
 import secrets
 import string
-import threading
-from django.core.mail import send_mail
 from django.conf import settings
 
 
@@ -34,26 +32,8 @@ def get_role_display(role_value):
     return role_choices.get(role_value, role_value)
 
 
-def _send_email_async(subject, plain_message, html_message, from_email, to_email):
-    """Send email in a background thread to avoid blocking the request."""
-    import logging
-    logger = logging.getLogger(__name__)
-    try:
-        send_mail(
-            subject=subject,
-            message=plain_message,
-            from_email=from_email,
-            recipient_list=[to_email],
-            html_message=html_message,
-            fail_silently=False,
-        )
-        logger.info(f"Email successfully sent to {to_email}")
-    except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {type(e).__name__}: {e}")
-
-
 def send_credentials_email(user, plain_password):
-    """Send login credentials to the user's personal email asynchronously."""
+    """Send login credentials to the user's personal email via Celery task."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -144,18 +124,21 @@ HNA Acadex Team
 </html>
     """
 
-    # Send email in background thread to avoid blocking the request
-    thread = threading.Thread(
-        target=_send_email_async,
-        args=(subject, plain_message.strip(), html_message.strip(), settings.DEFAULT_FROM_EMAIL, user.personal_email)
+    # Send via Celery task (more reliable than threading on Render)
+    from .tasks import send_email_task
+    send_email_task.delay(
+        subject=subject,
+        plain_message=plain_message.strip(),
+        html_message=html_message.strip(),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to_email=user.personal_email,
     )
-    thread.start()
 
     return True, f"Credentials will be sent to {user.personal_email}"
 
 
 def send_password_reset_email(user, new_password):
-    """Send password reset email to the user's personal email asynchronously."""
+    """Send password reset email to the user's personal email via Celery task."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -246,11 +229,14 @@ HNA Acadex Team
 </html>
     """
 
-    # Send email in background thread to avoid blocking the request
-    thread = threading.Thread(
-        target=_send_email_async,
-        args=(subject, plain_message.strip(), html_message.strip(), settings.DEFAULT_FROM_EMAIL, user.personal_email)
+    # Send via Celery task (more reliable than threading on Render)
+    from .tasks import send_email_task
+    send_email_task.delay(
+        subject=subject,
+        plain_message=plain_message.strip(),
+        html_message=html_message.strip(),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to_email=user.personal_email,
     )
-    thread.start()
 
     return True, f"Password reset email will be sent to {user.personal_email}"
