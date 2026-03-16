@@ -30,7 +30,7 @@ services:
       - key: CORS_ALLOW_ALL_ORIGINS
         value: "0"
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://your-frontend.vercel.app,exp://exp.host"  # UPDATE THIS
+        value: "exp://exp.host,exp://exp.host/@hnaadmin/hna-acadex,hna-acadex://"
       - key: WEB_CONCURRENCY
         value: "2"
       - key: DJANGO_SU_EMAIL
@@ -38,7 +38,7 @@ services:
       - key: DJANGO_SU_PASSWORD
         generateValue: true
       - key: FRONTEND_URL
-        value: "https://your-frontend.vercel.app"  # UPDATE THIS
+        value: "exp://exp.host/@hnaadmin/hna-acadex"
       # Email Settings
       - key: EMAIL_BACKEND
         value: "django.core.mail.backends.smtp.EmailBackend"
