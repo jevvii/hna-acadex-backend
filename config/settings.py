@@ -90,6 +90,30 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Cloudinary Configuration (for media storage in production)
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", None)
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", None)
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", None)
+
+if CLOUDINARY_CLOUD_NAME:
+    # Use Cloudinary for media storage in production
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    CLOUDINARY_STORAGE = {
+        "CLOUD_NAME": CLOUDINARY_CLOUD_NAME,
+        "API_KEY": CLOUDINARY_API_KEY,
+        "API_SECRET": CLOUDINARY_API_SECRET,
+    }
+
+# Cloudinary Configuration for media storage
+# Set CLOUDINARY_URL env var in format: cloudinary://api_key:api_secret@cloud_name
+CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", None)
+if CLOUDINARY_URL:
+    import cloudinary
+    import cloudinary.uploader
+    import cloudinary.api
+    cloudinary.config()
+    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
 

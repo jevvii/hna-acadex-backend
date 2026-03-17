@@ -35,36 +35,18 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: "exp://exp.host/@hnaadmin/hna-acadex"
-      # Brevo API for email (fast HTTP-based sending, works on free tier)
+      # Brevo API for email
       - key: BREVO_API_KEY
-        sync: false  # Set in Render Dashboard - get from Brevo SMTP & API page
+        sync: false  # Set in Render Dashboard
       - key: DEFAULT_FROM_EMAIL
-        value: "hnaacadexadmin@gmail.com"  # Must be a verified sender in Brevo
+        value: "noreply@hnaacadex.org"
+      # Cloudinary for media storage (avatars)
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false  # Set in Render Dashboard
+      - key: CLOUDINARY_API_KEY
+        sync: false  # Set in Render Dashboard
+      - key: CLOUDINARY_API_SECRET
+        sync: false  # Set in Render Dashboard
       # Firebase
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false  # Set in Render Dashboard
-
-# NOTE: Background workers require paid plan (Starter $7/month)
-# Using Brevo API for email instead - sends via HTTP (fast, no workers needed)
-#
-# To enable Celery workers in the future, uncomment below and upgrade plan:
-#
-#   - type: worker
-#     name: hna-acadex-celery-worker
-#     runtime: python
-#     region: oregon
-#     plan: starter
-#     branch: main
-#     buildCommand: "./build.sh"
-#     startCommand: "celery -A config.celery worker --loglevel=info"
-#     envVars: [same as web service]
-#
-#   - type: worker
-#     name: hna-acadex-celery-beat
-#     runtime: python
-#     region: oregon
-#     plan: starter
-#     branch: main
-#     buildCommand: "./build.sh"
-#     startCommand: "celery -A config.celery beat --loglevel=info"
-#     envVars: [same as web service]
