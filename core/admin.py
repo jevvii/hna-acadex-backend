@@ -5,6 +5,7 @@ from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django import forms
 from django.contrib import messages
 from django.utils.html import format_html
+from django.db import models
 from .models import (
     Activity,
     ActivityComment,
@@ -335,12 +336,11 @@ class CourseSectionGroupForm(forms.ModelForm):
 
 
 class CourseSectionGroupInlineEnrollmentForm(forms.Form):
-    """Form for enrolling students to a course group."""
+    """Form for enrolling students to a course group with autocomplete search."""
     students = forms.ModelMultipleChoiceField(
         queryset=User.objects.filter(role=User.Role.STUDENT, status=User.Status.ACTIVE),
-        widget=admin.widgets.FilteredSelectMultiple("Students", is_stacked=False),
         required=True,
-        help_text="Select students to enroll in all courses in this group"
+        help_text="Search and select students to enroll in all courses in this group"
     )
 
 
@@ -382,8 +382,55 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.enroll_students_view),
                 name='core_coursesectiongroup_enroll_students'
             ),
+            path(
+                'autocomplete/students/',
+                self.admin_site.admin_view(self.student_autocomplete_view),
+                name='core_user_autocomplete_students'
+            ),
         ]
         return custom_urls + urls
+
+    def student_autocomplete_view(self, request):
+        """AJAX endpoint for student search autocomplete."""
+        from django.http import JsonResponse
+        term = request.GET.get('term', '').strip()
+        page = int(request.GET.get('page', 1))
+        page_size = 20
+        offset = (page - 1) * page_size
+
+        queryset = User.objects.filter(
+            role=User.Role.STUDENT,
+            status=User.Status.ACTIVE
+        )
+
+        if term:
+            queryset = queryset.filter(
+                models.Q(full_name__icontains=term) |
+                models.Q(email__icontains=term) |
+                models.Q(student_id__icontains=term)
+            )
+
+        # Get total count for pagination info
+        total_count = queryset.count()
+
+        # Apply pagination
+        results = queryset[offset:offset + page_size]
+
+        # Format results for Select2
+        data = {
+            'results': [
+                {
+                    'id': str(student.id),
+                    'text': f"{student.full_name} ({student.email})" + (f" - {student.student_id}" if student.student_id else "")
+                }
+                for student in results
+            ],
+            'pagination': {
+                'more': offset + page_size < total_count
+            },
+            'total_count': total_count,
+        }
+        return JsonResponse(data)
 
     def enroll_students_link(self, obj):
         """Display a link to enroll students (shown after saving)."""

@@ -1,9 +1,110 @@
 {% extends "admin/base_site.html" %}
 {% load i18n admin_urls static %}
 
+{% block extrastyle %}{{ block.super }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<style>
+.select2-container--default .select2-selection--multiple {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-height: 100px;
+}
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: #417690;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background-color: #417690;
+    color: white;
+    border: none;
+    padding: 3px 8px;
+    margin: 3px;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+    color: white;
+    margin-right: 4px;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
+    color: #ffd;
+}
+.select2-results__option {
+    padding: 8px 12px;
+}
+.search-info {
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 15px;
+}
+.search-info strong {
+    color: #417690;
+}
+.student-search-container {
+    margin-bottom: 20px;
+}
+</style>
+{% endblock %}
+
 {% block extrahead %}{{ block.super }}
-<script type="text/javascript" src="{% static 'admin/js/cancel.js' %}"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 {{ media }}
+<script>
+$(document).ready(function() {
+    // Initialize Select2 with AJAX search
+    $('#id_students').select2({
+        ajax: {
+            url: '/admin/core/coursesectiongroup/autocomplete/students/',
+            dataType: 'json',
+            delay: 250,
+            data: function(params) {
+                return {
+                    term: params.term || '',
+                    page: params.page || 1
+                };
+            },
+            processResults: function(data, params) {
+                params.page = params.page || 1;
+                return {
+                    results: data.results,
+                    pagination: {
+                        more: data.pagination.more
+                    }
+                };
+            },
+            cache: true
+        },
+        placeholder: 'Search students by name, email, or student ID...',
+        minimumInputLength: 0,
+        allowClear: true,
+        multiple: true,
+        width: '100%'
+    });
+
+    // Pre-select any existing students from form data
+    {% if form.students.value %}
+    var existingStudents = {{ form.students.value|safe }};
+    if (existingStudents && existingStudents.length > 0) {
+        // Fetch student details for pre-selected values
+        $.ajax({
+            url: '/admin/core/coursesectiongroup/autocomplete/students/',
+            data: { term: '' },
+            dataType: 'json',
+            success: function(data) {
+                // Filter to only show selected students
+                var selectedIds = existingStudents.map(String);
+                data.results.forEach(function(item) {
+                    if (selectedIds.includes(item.id)) {
+                        var option = new Option(item.text, item.id, true, true);
+                        $('#id_students').append(option).trigger('change');
+                    }
+                });
+            }
+        });
+    }
+    {% endif %}
+});
+</script>
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-form{% endblock %}
@@ -50,10 +151,16 @@
         </fieldset>
 
         <div class="module">
-            <h2>Select Students to Enroll</h2>
-            <div class="form-row field-students">
-                {{ form.students }}
-                <p class="help">Select students to enroll in all {{ course_group.course_sections.count }} course(s) in this group. Hold Ctrl/Cmd to select multiple.</p>
+            <h2>Student Enrollment: Enroll Students to All Courses in Group</h2>
+            <div class="search-info">
+                <strong>Tip:</strong> Start typing to search for students by name, email, or student ID.
+                Select multiple students to enroll them in all {{ course_group.course_sections.count }} course(s) in this group.
+            </div>
+            <div class="student-search-container">
+                <label for="id_students"><strong>Select Students:</strong></label><br><br>
+                <select id="id_students" name="students" multiple="multiple" style="width: 100%;">
+                </select>
+                <p class="help">Search and select students to enroll. Use the search box to find students quickly.</p>
             </div>
         </div>
 
