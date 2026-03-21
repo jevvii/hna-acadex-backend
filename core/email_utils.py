@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 # App download link
 APP_DOWNLOAD_URL = "https://expo.dev/accounts/hnaadmin/projects/hna-acadex/builds/e7666875-8ec9-4bf2-a4c0-307c4f18d2e7"
 
+# Email button styles - designed to work in both light and dark modes
+# Using solid colors with high contrast and a border for visibility
+EMAIL_BUTTON_STYLE = """
+    background-color: #4F46E5;
+    color: #ffffff;
+    padding: 14px 28px;
+    text-decoration: none;
+    border-radius: 8px;
+    border: 2px solid #4F46E5;
+    display: inline-block;
+    font-weight: bold;
+    font-size: 16px;
+"""
+
 
 def get_email_backend_type():
     """
@@ -212,19 +226,151 @@ HNA Acadex Team
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
-        .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
-        .credentials {{ background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb; }}
-        .credential-item {{ margin: 10px 0; }}
-        .credential-label {{ font-weight: bold; color: #6b7280; }}
-        .credential-value {{ font-family: monospace; background-color: #f3f4f6; padding: 8px 12px; border-radius: 4px; display: inline-block; }}
-        .warning {{ background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; }}
-        .app-button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 15px 0; }}
-        .app-button:hover {{ background-color: #4338CA; }}
-        .footer {{ text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px; }}
+        /* Base styles */
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9fafb;
+            margin: 0;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        .header {{
+            background-color: #4F46E5;
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }}
+        .header h1 {{
+            margin: 0;
+            font-size: 24px;
+        }}
+        .content {{
+            padding: 30px 20px;
+            background-color: #ffffff;
+        }}
+        .credentials {{
+            background-color: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #e5e7eb;
+        }}
+        .credential-item {{
+            margin: 12px 0;
+        }}
+        .credential-label {{
+            font-weight: bold;
+            color: #6b7280;
+            font-size: 14px;
+        }}
+        .credential-value {{
+            font-family: 'Courier New', monospace;
+            background-color: #f3f4f6;
+            padding: 10px 14px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 15px;
+            color: #111827;
+            border: 1px solid #e5e7eb;
+        }}
+        .warning {{
+            background-color: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        .warning strong {{
+            color: #92400e;
+        }}
+        .button-container {{
+            text-align: center;
+            margin: 30px 0;
+        }}
+        .app-button {{
+            background-color: #4F46E5;
+            color: #ffffff;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            border: 2px solid #4F46E5;
+            display: inline-block;
+            font-weight: bold;
+            font-size: 16px;
+        }}
+        .app-button:hover {{
+            background-color: #4338CA;
+            border-color: #4338CA;
+        }}
+        .footer {{
+            text-align: center;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 20px;
+            border-top: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+        }}
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {{
+            body {{
+                background-color: #1f2937;
+                color: #f3f4f6;
+            }}
+            .container {{
+                background-color: #374151;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            }}
+            .content {{
+                background-color: #374151;
+            }}
+            .credentials {{
+                background-color: #4b5563;
+                border-color: #6b7280;
+            }}
+            .credential-label {{
+                color: #d1d5db;
+            }}
+            .credential-value {{
+                background-color: #4b5563;
+                color: #f9fafb;
+                border-color: #6b7280;
+            }}
+            .warning {{
+                background-color: #78350f;
+                border-color: #fbbf24;
+            }}
+            .warning strong {{
+                color: #fcd34d;
+            }}
+            .app-button {{
+                background-color: #6366f1;
+                border-color: #6366f1;
+                color: #ffffff;
+            }}
+            .app-button:hover {{
+                background-color: #4f46e5;
+                border-color: #4f46e5;
+            }}
+            .footer {{
+                background-color: #374151;
+                border-top-color: #4b5563;
+                color: #9ca3af;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -236,7 +382,7 @@ HNA Acadex Team
             <p>Dear {user.full_name},</p>
             <p>Welcome to HNA Acadex! Your <strong>{role_display}</strong> account has been created.</p>
             <div class="credentials">
-                <h3 style="margin-top: 0;">Your Login Credentials</h3>
+                <h3 style="margin-top: 0; margin-bottom: 16px; color: #374151;">Your Login Credentials</h3>
                 <div class="credential-item">
                     <span class="credential-label">Email:</span><br>
                     <span class="credential-value">{user.email}</span>
@@ -249,8 +395,8 @@ HNA Acadex Team
             <div class="warning">
                 <strong>Important:</strong> Please log in and change your password as soon as possible.
             </div>
-            <div style="text-align: center; margin: 25px 0;">
-                <a href="{APP_DOWNLOAD_URL}" class="app-button">Download the App</a>
+            <div class="button-container">
+                <a href="{APP_DOWNLOAD_URL}" class="app-button" style="background-color: #4F46E5; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; border: 2px solid #4F46E5; display: inline-block; font-weight: bold; font-size: 16px;">Download the App</a>
             </div>
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
@@ -303,19 +449,151 @@ HNA Acadex Team
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background-color: #DC2626; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
-        .content {{ background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }}
-        .credentials {{ background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb; }}
-        .credential-item {{ margin: 10px 0; }}
-        .credential-label {{ font-weight: bold; color: #6b7280; }}
-        .credential-value {{ font-family: monospace; background-color: #f3f4f6; padding: 8px 12px; border-radius: 4px; display: inline-block; }}
-        .warning {{ background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; }}
-        .app-button {{ display: inline-block; background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 15px 0; }}
-        .app-button:hover {{ background-color: #4338CA; }}
-        .footer {{ text-align: center; color: #9ca3af; font-size: 12px; margin-top: 20px; }}
+        /* Base styles */
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9fafb;
+            margin: 0;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        .header {{
+            background-color: #DC2626;
+            color: #ffffff;
+            padding: 30px 20px;
+            text-align: center;
+        }}
+        .header h1 {{
+            margin: 0;
+            font-size: 24px;
+        }}
+        .content {{
+            padding: 30px 20px;
+            background-color: #ffffff;
+        }}
+        .credentials {{
+            background-color: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #e5e7eb;
+        }}
+        .credential-item {{
+            margin: 12px 0;
+        }}
+        .credential-label {{
+            font-weight: bold;
+            color: #6b7280;
+            font-size: 14px;
+        }}
+        .credential-value {{
+            font-family: 'Courier New', monospace;
+            background-color: #f3f4f6;
+            padding: 10px 14px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 15px;
+            color: #111827;
+            border: 1px solid #e5e7eb;
+        }}
+        .warning {{
+            background-color: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }}
+        .warning strong {{
+            color: #92400e;
+        }}
+        .button-container {{
+            text-align: center;
+            margin: 30px 0;
+        }}
+        .app-button {{
+            background-color: #4F46E5;
+            color: #ffffff;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 8px;
+            border: 2px solid #4F46E5;
+            display: inline-block;
+            font-weight: bold;
+            font-size: 16px;
+        }}
+        .app-button:hover {{
+            background-color: #4338CA;
+            border-color: #4338CA;
+        }}
+        .footer {{
+            text-align: center;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 20px;
+            border-top: 1px solid #e5e7eb;
+            background-color: #f9fafb;
+        }}
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {{
+            body {{
+                background-color: #1f2937;
+                color: #f3f4f6;
+            }}
+            .container {{
+                background-color: #374151;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            }}
+            .content {{
+                background-color: #374151;
+            }}
+            .credentials {{
+                background-color: #4b5563;
+                border-color: #6b7280;
+            }}
+            .credential-label {{
+                color: #d1d5db;
+            }}
+            .credential-value {{
+                background-color: #4b5563;
+                color: #f9fafb;
+                border-color: #6b7280;
+            }}
+            .warning {{
+                background-color: #78350f;
+                border-color: #fbbf24;
+            }}
+            .warning strong {{
+                color: #fcd34d;
+            }}
+            .app-button {{
+                background-color: #6366f1;
+                border-color: #6366f1;
+                color: #ffffff;
+            }}
+            .app-button:hover {{
+                background-color: #4f46e5;
+                border-color: #4f46e5;
+            }}
+            .footer {{
+                background-color: #374151;
+                border-top-color: #4b5563;
+                color: #9ca3af;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -327,7 +605,7 @@ HNA Acadex Team
             <p>Dear {user.full_name},</p>
             <p>Your password has been reset by the administrator.</p>
             <div class="credentials">
-                <h3 style="margin-top: 0;">Your New Login Credentials</h3>
+                <h3 style="margin-top: 0; margin-bottom: 16px; color: #374151;">Your New Login Credentials</h3>
                 <div class="credential-item">
                     <span class="credential-label">Email:</span><br>
                     <span class="credential-value">{user.email}</span>
@@ -340,8 +618,8 @@ HNA Acadex Team
             <div class="warning">
                 <strong>Important:</strong> Please log in and change your password as soon as possible.
             </div>
-            <div style="text-align: center; margin: 25px 0;">
-                <a href="{APP_DOWNLOAD_URL}" class="app-button">Download the App</a>
+            <div class="button-container">
+                <a href="{APP_DOWNLOAD_URL}" class="app-button" style="background-color: #4F46E5; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; border: 2px solid #4F46E5; display: inline-block; font-weight: bold; font-size: 16px;">Download the App</a>
             </div>
             <p>Best regards,<br>HNA Acadex Team</p>
         </div>
