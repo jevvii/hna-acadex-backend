@@ -267,6 +267,54 @@ def generate_school_email(full_name: str, role: str, id_number: str) -> str:
     return email
 
 
+def generate_school_email_from_parts(first_name: str, last_name: str, middle_name: str | None, role: str, id_number: str) -> str:
+    """
+    Generate school email from separate name parts.
+
+    This is the preferred function to use when you have the name already
+    separated into components (first_name, last_name, middle_name).
+
+    Format: {initials}{surname}{last_4_digits_of_id}@{domain}
+
+    Args:
+        first_name: First name (may contain multiple words like "Maria Clara")
+        last_name: Last name / Surname (may contain spaces like "Dela Cruz")
+        middle_name: Middle name or initial (optional)
+        role: User role ('student' or 'teacher')
+        id_number: Student ID or Employee ID
+
+    Returns:
+        Generated school email address
+
+    Examples:
+        >>> generate_school_email_from_parts("Juan", "Dela Cruz", None, "student", "120247371")
+        'jdelacruz7371@student.hna.edu.ph'
+        >>> generate_school_email_from_parts("Juan", "Dela Cruz", "B.", "student", "120247371")
+        'jbdelacruz7371@student.hna.edu.ph'
+        >>> generate_school_email_from_parts("Maria Clara", "Santos", None, "teacher", "120247890")
+        'mcsantos7890@hna.edu.ph'
+    """
+    # Generate initials
+    initials = generate_initials(first_name, middle_name)
+
+    # Lowercase surname and remove spaces for email compatibility
+    surname_lower = last_name.lower().replace(' ', '')
+
+    # Get last 4 digits of ID
+    last_4_digits = id_number[-4:] if len(id_number) >= 4 else id_number.zfill(4)
+
+    # Determine domain based on role
+    if role == 'student':
+        domain = '@student.hna.edu.ph'
+    else:
+        domain = '@hna.edu.ph'
+
+    # Construct email
+    email = f"{initials}{surname_lower}{last_4_digits}{domain}"
+
+    return email
+
+
 def validate_full_name_format(full_name: str) -> tuple[bool, str]:
     """
     Validate that full_name follows the 'LAST, FIRST, MIDDLE' format.

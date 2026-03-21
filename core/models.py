@@ -64,7 +64,10 @@ class User(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
     personal_email = models.EmailField(blank=True, null=True, help_text="Personal email for sending login credentials")
-    full_name = models.CharField(max_length=255)
+    # Name fields (separate for flexibility)
+    first_name = models.CharField(max_length=100, help_text="First name (e.g., 'Juan')")
+    last_name = models.CharField(max_length=100, help_text="Last name / Surname (e.g., 'Dela Cruz')")
+    middle_name = models.CharField(max_length=100, blank=True, null=True, help_text="Middle name or initial (optional)")
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     avatar = models.FileField(upload_to="avatars/", blank=True, null=True)
@@ -80,9 +83,28 @@ class User(AbstractUser):
     updated_at = models.DateTimeField(auto_now=True)
 
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["full_name"]
+    REQUIRED_FIELDS = ["first_name", "last_name"]
 
     objects = UserManager()
+
+    class Meta:
+        verbose_name = "Account"
+        verbose_name_plural = "Accounts"
+
+    @property
+    def full_name(self):
+        """Return the full name in 'LAST, FIRST, MIDDLE' format for backward compatibility."""
+        if self.middle_name:
+            return f"{self.last_name}, {self.first_name}, {self.middle_name}"
+        return f"{self.last_name}, {self.first_name}"
+
+    def get_full_name(self):
+        """Return the full name in display format 'First Middle Last'."""
+        parts = [self.first_name]
+        if self.middle_name:
+            parts.append(self.middle_name)
+        parts.append(self.last_name)
+        return " ".join(parts)
 
     def save(self, *args, **kwargs):
         if not self.username:
@@ -500,7 +522,7 @@ class AttendanceRecord(models.Model):
 
     class Meta:
         unique_together = ("meeting", "student")
-        ordering = ["meeting__date", "student__full_name"]
+        ordering = ["meeting__date", "student__last_name", "student__first_name"]
 
 
 class Submission(models.Model):

@@ -42,7 +42,7 @@ from .utils import (
     generate_student_id,
     generate_teacher_id,
     generate_school_email,
-    validate_full_name_format,
+    generate_school_email_from_parts,
 )
 
 # Register auth models to custom admin site
@@ -57,10 +57,21 @@ class CustomUserCreationForm(UserCreationForm):
         label="Personal Email",
         help_text="Personal email for sending login credentials (required for teachers/students)"
     )
-    full_name = forms.CharField(
-        max_length=255,
-        label="Full Name",
-        help_text="Format: LAST, FIRST, MIDDLE (e.g., 'Cruz, Juan, B.' or 'Santos, Maria Clara')"
+    first_name = forms.CharField(
+        max_length=100,
+        label="First Name",
+        help_text="First name (e.g., 'Juan' or 'Maria Clara')"
+    )
+    last_name = forms.CharField(
+        max_length=100,
+        label="Last Name",
+        help_text="Last name / Surname (e.g., 'Dela Cruz' or 'Santos')"
+    )
+    middle_name = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Middle Name",
+        help_text="Middle name or initial (optional)"
     )
     auto_generate_password = forms.BooleanField(
         required=False,
@@ -89,28 +100,17 @@ class CustomUserCreationForm(UserCreationForm):
 
     class Meta:
         model = User
-        fields = ('personal_email', 'full_name', 'role', 'status', 'is_active', 'is_staff')
+        fields = ('personal_email', 'first_name', 'last_name', 'middle_name', 'role', 'status', 'is_active', 'is_staff')
         # Note: email, student_id, employee_id are auto-generated for students/teachers
-
-    def clean_full_name(self):
-        """Validate full_name format."""
-        full_name = self.cleaned_data.get('full_name', '')
-        is_valid, error_msg = validate_full_name_format(full_name)
-        if not is_valid:
-            raise forms.ValidationError(error_msg)
-        return full_name
 
     def clean_personal_email(self):
         """Validate that personal_email is not already in use."""
         personal_email = self.cleaned_data.get('personal_email', '')
         if personal_email:
-            # Check if any existing user has this personal_email
-            # Note: We check both personal_email and email fields since
-            # school emails are auto-generated and stored in email field
             existing_user = User.objects.filter(personal_email=personal_email).first()
             if existing_user:
                 raise forms.ValidationError(
-                    f"This personal email is already used by user: {existing_user.full_name} ({existing_user.email})"
+                    f"This personal email is already used by user: {existing_user.get_full_name()} ({existing_user.email})"
                 )
         return personal_email
 
@@ -156,29 +156,12 @@ class CustomUserChangeForm(UserChangeForm):
         """Validate that personal_email is not already in use by another user."""
         personal_email = self.cleaned_data.get('personal_email', '')
         if personal_email:
-            # Get the current user instance being edited
-            current_user = self.instance if self.instance and self.instance.pk else None
-            # Check if any other user has this personal_email
-            queryset = User.objects.filter(personal_email=personal_email)
-            if current_user:
-                queryset = queryset.exclude(pk=current_user.pk)
-            if queryset.exists():
-                existing_user = queryset.first()
-                raise forms.ValidationError(
-                    f"This personal email is already used by user: {existing_user.full_name} ({existing_user.email})"
-                )
-        return personal_email
-
-    def clean_personal_email(self):
-        """Validate that personal_email is not already in use by another user."""
-        personal_email = self.cleaned_data.get('personal_email', '')
-        if personal_email:
             # Check if any OTHER user has this personal_email
             # Exclude the current user being edited (self.instance)
             existing_user = User.objects.filter(personal_email=personal_email).exclude(pk=self.instance.pk).first()
             if existing_user:
                 raise forms.ValidationError(
-                    f"This personal email is already used by user: {existing_user.full_name} ({existing_user.email})"
+                    f"This personal email is already used by user: {existing_user.get_full_name()} ({existing_user.email})"
                 )
         return personal_email
 
@@ -189,7 +172,7 @@ class UserAdmin(DjangoUserAdmin):
     model = User
     list_display = (
         "email",
-        "full_name",
+        "get_full_name",
         "role",
         "status",
         "personal_email",
@@ -199,7 +182,7 @@ class UserAdmin(DjangoUserAdmin):
     )
     list_filter = ("role", "status", "is_staff", "is_superuser", "is_active")
     ordering = ("-created_at",)
-    search_fields = ("email", "full_name", "employee_id", "student_id", "personal_email")
+    search_fields = ("email", "first_name", "last_name", "middle_name", "employee_id", "student_id", "personal_email")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -207,7 +190,9 @@ class UserAdmin(DjangoUserAdmin):
             "Personal info",
             {
                 "fields": (
-                    "full_name",
+                    "first_name",
+                    "last_name",
+                    "middle_name",
                     "personal_email",
                     "avatar",
                     "avatar_url",
@@ -236,7 +221,9 @@ class UserAdmin(DjangoUserAdmin):
                 "classes": ("wide",),
                 "fields": (
                     "personal_email",
-                    "full_name",
+                    "first_name",
+                    "last_name",
+                    "middle_name",
                     "role",
                     "status",
                     "auto_generate_password",
@@ -311,7 +298,9 @@ class UserAdmin(DjangoUserAdmin):
             auto_generate = form.cleaned_data.get('auto_generate_password', True)
             send_email = form.cleaned_data.get('send_credentials_email', True)
             role = form.cleaned_data.get('role')
-            full_name = form.cleaned_data.get('full_name', '')
+            first_name = form.cleaned_data.get('first_name', '')
+            last_name = form.cleaned_data.get('last_name', '')
+            middle_name = form.cleaned_data.get('middle_name', '')
 
             if auto_generate:
                 # Generate a random password
@@ -324,14 +313,18 @@ class UserAdmin(DjangoUserAdmin):
             if role == User.Role.STUDENT:
                 student_id = generate_student_id()
                 obj.student_id = student_id
-                # Generate school email
-                obj.email = generate_school_email(full_name, 'student', student_id)
+                # Generate school email from name parts
+                obj.email = generate_school_email_from_parts(
+                    first_name, last_name, middle_name, 'student', student_id
+                )
                 obj.username = obj.email  # username mirrors email
             elif role == User.Role.TEACHER:
                 employee_id = generate_teacher_id()
                 obj.employee_id = employee_id
-                # Generate school email
-                obj.email = generate_school_email(full_name, 'teacher', employee_id)
+                # Generate school email from name parts
+                obj.email = generate_school_email_from_parts(
+                    first_name, last_name, middle_name, 'teacher', employee_id
+                )
                 obj.username = obj.email  # username mirrors email
             # For admin users, email must be provided manually (handled by parent class)
 
@@ -424,7 +417,7 @@ class CourseAdmin(admin.ModelAdmin):
 class CourseSectionAdmin(admin.ModelAdmin):
     list_display = ("course", "section", "teacher", "school_year", "semester", "enrollment_count", "is_active")
     list_filter = ("school_year", "semester", "is_active", "course__code")
-    search_fields = ("course__code", "course__title", "section__name", "teacher__full_name")
+    search_fields = ("course__code", "course__title", "section__name", "teacher__first_name", "teacher__last_name")
     autocomplete_fields = ("course", "section", "teacher")
     raw_id_fields = ("teacher",)
 
@@ -554,7 +547,7 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
 
         if term:
             queryset = queryset.filter(
-                models.Q(full_name__icontains=term) |
+                models.Q(first_name__icontains=term) |
                 models.Q(email__icontains=term) |
                 models.Q(student_id__icontains=term)
             )
@@ -669,7 +662,7 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
 class EnrollmentAdmin(admin.ModelAdmin):
     list_display = ("student", "course_section", "display_grade", "is_active", "enrolled_at")
     list_filter = ("is_active", "course_section__school_year", "course_section__semester")
-    search_fields = ("student__full_name", "student__email", "student__student_id")
+    search_fields = ("student__last_name", "student__first_name", "student__email", "student__student_id")
     autocomplete_fields = ("student", "course_section")
     raw_id_fields = ("student",)
     date_hierarchy = "enrolled_at"
@@ -807,7 +800,7 @@ class MeetingSessionAdmin(admin.ModelAdmin):
 class AttendanceRecordAdmin(admin.ModelAdmin):
     list_display = ("meeting", "student", "status", "marked_by", "updated_at")
     list_filter = ("status", "meeting__course_section")
-    search_fields = ("student__full_name", "student__email", "meeting__title")
+    search_fields = ("student__first_name", "student__last_name", "student__email", "meeting__title")
 
 
 class ActivityAdmin(admin.ModelAdmin):
@@ -839,7 +832,7 @@ class QuizChoiceAdmin(admin.ModelAdmin):
 class QuizAttemptAdmin(admin.ModelAdmin):
     list_display = ("quiz", "student", "attempt_number", "score", "max_score", "is_submitted", "pending_manual_grading", "submitted_at")
     list_filter = ("is_submitted", "pending_manual_grading")
-    search_fields = ("quiz__title", "student__full_name", "student__email")
+    search_fields = ("quiz__title", "student__first_name", "student__last_name", "student__email")
 
 
 class QuizAnswerAdmin(admin.ModelAdmin):
@@ -850,7 +843,7 @@ class QuizAnswerAdmin(admin.ModelAdmin):
 class SubmissionAdmin(admin.ModelAdmin):
     list_display = ("activity", "student", "status", "score", "submitted_at", "graded_at")
     list_filter = ("status",)
-    search_fields = ("activity__title", "student__full_name", "student__email")
+    search_fields = ("activity__title", "student__first_name", "student__last_name", "student__email")
 
 
 class AnnouncementAdmin(admin.ModelAdmin):
@@ -876,7 +869,7 @@ class NotificationAdmin(admin.ModelAdmin):
 class PasswordResetRequestAdmin(admin.ModelAdmin):
     list_display = ("user", "personal_email", "status", "created_at", "resolved_at", "resolved_by")
     list_filter = ("status", "created_at")
-    search_fields = ("user__email", "user__full_name", "personal_email")
+    search_fields = ("user__email", "user__first_name", "user__last_name", "personal_email")
     readonly_fields = ("created_at", "resolved_at", "resolved_by")
     ordering = ("-created_at",)
 
@@ -940,14 +933,14 @@ class PasswordResetRequestAdmin(admin.ModelAdmin):
 class PushTokenAdmin(admin.ModelAdmin):
     list_display = ("user", "token", "device_type", "device_name", "is_active", "created_at")
     list_filter = ("device_type", "is_active")
-    search_fields = ("user__email", "user__full_name", "token")
+    search_fields = ("user__email", "user__first_name", "user__last_name", "token")
     readonly_fields = ("created_at", "updated_at")
 
 
 class ActivityReminderAdmin(admin.ModelAdmin):
     list_display = ("user", "reminder_type", "activity", "quiz", "reminder_datetime", "notification_sent", "created_at")
     list_filter = ("reminder_type", "notification_sent")
-    search_fields = ("user__email", "user__full_name", "activity__title", "quiz__title")
+    search_fields = ("user__email", "user__first_name", "user__last_name", "activity__title", "quiz__title")
     readonly_fields = ("created_at", "updated_at")
 
 

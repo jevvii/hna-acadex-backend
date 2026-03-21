@@ -33,6 +33,9 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             "id",
+            "first_name",
+            "last_name",
+            "middle_name",
             "full_name",
             "email",
             "role",
@@ -48,7 +51,7 @@ class UserSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "avatar_url", "requires_setup")
+        read_only_fields = ("id", "created_at", "updated_at", "avatar_url", "requires_setup", "full_name")
 
     def get_avatar_url(self, obj: User):
         request = self.context.get("request")
@@ -67,6 +70,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             "id",
+            "first_name",
+            "last_name",
+            "middle_name",
             "full_name",
             "email",
             "password",
@@ -81,7 +87,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at", "full_name")
 
     def create(self, validated_data):
         password = validated_data.pop("password")

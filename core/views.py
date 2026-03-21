@@ -1042,7 +1042,7 @@ class DashboardStatsView(APIView):
 
 
 class ProfileViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all().order_by("full_name")
+    queryset = User.objects.all().order_by("last_name", "first_name")
 
     def get_permissions(self):
         if self.action in ["list", "create", "destroy", "toggle_status"]:
@@ -1064,7 +1064,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
 
         if user.role != User.Role.ADMIN:
             return qs.filter(id=user.id)
-        return qs.order_by("full_name")
+        return qs.order_by("last_name", "first_name")
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1077,7 +1077,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         if request.user.role != User.Role.ADMIN:
-            allowed_fields = {"full_name", "avatar_url", "theme", "section", "grade_level", "strand"}
+            allowed_fields = {"first_name", "last_name", "middle_name", "avatar_url", "theme", "section", "grade_level", "strand"}
             for key in list(serializer.validated_data.keys()):
                 if key not in allowed_fields:
                     serializer.validated_data.pop(key, None)
@@ -1678,7 +1678,7 @@ class CourseSectionGradebookView(APIView):
         all_enrollments = list(
             Enrollment.objects.filter(course_section=course_section)
             .select_related("student")
-            .order_by("-is_active", "student__full_name", "student__email")
+            .order_by("-is_active", "student__last_name", "student__first_name", "student__email")
         )
         student_ids = [e.student_id for e in all_enrollments]
 
@@ -2215,7 +2215,7 @@ class CourseSectionGradesExportCSVView(APIView):
         enrollments = list(
             Enrollment.objects.filter(course_section=course_section)
             .select_related("student")
-            .order_by("-is_active", "student__full_name", "student__email")
+            .order_by("-is_active", "student__last_name", "student__first_name", "student__email")
         )
         student_ids = [e.student_id for e in enrollments]
 
@@ -2442,7 +2442,7 @@ class ActivitySubmissionsForTeacherView(APIView):
             enrollments__course_section=activity.course_section,
             enrollments__is_active=True,
             role=User.Role.STUDENT,
-        ).distinct().order_by("full_name")
+        ).distinct().order_by("last_name", "first_name")
 
         payload = []
         for student in enrolled_students:
