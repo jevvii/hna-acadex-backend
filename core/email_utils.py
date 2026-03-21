@@ -1,10 +1,21 @@
 # hna-acadex-backend/core/email_utils.py
+"""
+Email utilities for HNA Acadex.
+
+Supports two email backends:
+1. Brevo API (production) - Default, uses Brevo's transactional email API
+2. Gmail SMTP (development) - Uses Django's SMTP backend with Gmail
+
+Toggle via EMAIL_BACKEND_TYPE setting:
+- 'brevo' (default for production)
+- 'smtp' (for development)
+"""
+
 import secrets
 import string
 import logging
 from django.conf import settings
-from brevo import Brevo
-from brevo.transactional_emails import SendTransacEmailRequestSender, SendTransacEmailRequestToItem
+from django.core.mail import EmailMultiAlternatives
 
 logger = logging.getLogger(__name__)
 
@@ -12,12 +23,30 @@ logger = logging.getLogger(__name__)
 APP_DOWNLOAD_URL = "https://expo.dev/accounts/hnaadmin/projects/hna-acadex/builds/e7666875-8ec9-4bf2-a4c0-307c4f18d2e7"
 
 
+def get_email_backend_type():
+    """
+    Get the configured email backend type.
+
+    Returns:
+        str: 'brevo' or 'smtp' based on EMAIL_BACKEND_TYPE setting
+
+    Note:
+        Defaults to 'brevo' for production safety.
+        Set EMAIL_BACKEND_TYPE=smtp in .env for development.
+    """
+    return getattr(settings, 'EMAIL_BACKEND_TYPE', 'brevo').lower()
+
+
 def get_brevo_client():
     """Get Brevo client with configured API key."""
-    api_key = getattr(settings, 'BREVO_API_KEY', None)
-    if not api_key:
-        raise ValueError("BREVO_API_KEY not configured in settings")
-    return Brevo(api_key=api_key)
+    try:
+        from brevo import Brevo
+        api_key = getattr(settings, 'BREVO_API_KEY', None)
+        if not api_key:
+            raise ValueError("BREVO_API_KEY not configured in settings")
+        return Brevo(api_key=api_key)
+    except ImportError:
+        raise ImportError("brevo package not installed. Run: pip install brevo-python")
 
 
 def send_email_via_brevo(to_email, subject, html_content, plain_content=None):
@@ -25,8 +54,10 @@ def send_email_via_brevo(to_email, subject, html_content, plain_content=None):
     Send email using Brevo's Transactional Emails API.
 
     This is faster than SMTP and works well on free tier without background workers.
+    Used for production environments.
     """
     try:
+        from brevo.transactional_emails import SendTransacEmailRequestSender, SendTransacEmailRequestToItem
         client = get_brevo_client()
         sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'hnaacadexadmin@gmail.com')
 
@@ -46,6 +77,81 @@ def send_email_via_brevo(to_email, subject, html_content, plain_content=None):
     except Exception as e:
         logger.error(f"Brevo API error sending to {to_email}: {e}")
         return False, f"Failed to send email: {e}"
+
+
+def send_email_via_smtp(to_email, subject, html_content, plain_content=None):
+    """
+    Send email using Django's SMTP backend.
+
+    This is useful for development when you want to test emails
+    without using Brevo's API. Works with Gmail SMTP (requires app password).
+
+    Setup for Gmail:
+    1. Enable 2-factor authentication on your Google account
+    2. Generate an App Password: https://myaccount.google.com/apppasswords
+    3. Set EMAIL_HOST_PASSWORD in .env to the app password
+    """
+    try:
+        sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'hnaacadexadmin@gmail.com')
+
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body=plain_content or html_content,
+            from_email=sender_email,
+            to=[to_email],
+        )
+
+        if html_content:
+            email.attach_alternative(html_content, "text/html")
+
+        email.send()
+
+        logger.info(f"Email sent via SMTP to {to_email}")
+        return True, f"Email sent to {to_email}"
+    except Exception as e:
+        logger.error(f"SMTP error sending to {to_email}: {e}")
+        return False, f"Failed to send email: {e}"
+
+
+def send_email(to_email, subject, html_content, plain_content=None):
+    """
+    Send email using the configured backend (Brevo or SMTP).
+
+    This is the main entry point for sending emails. It automatically
+    selects the appropriate backend based on EMAIL_BACKEND_TYPE setting.
+
+    Args:
+        to_email: Recipient email address
+        subject: Email subject
+        html_content: HTML version of the email
+        plain_content: Plain text version (optional, defaults to html_content)
+
+    Returns:
+        tuple: (success: bool, message: str)
+
+    Usage:
+        # In settings.py or .env:
+        # For production (Brevo):
+        EMAIL_BACKEND_TYPE=brevo
+        BREVO_API_KEY=your-brevo-api-key
+
+        # For development (Gmail SMTP):
+        EMAIL_BACKEND_TYPE=smtp
+        EMAIL_HOST=smtp.gmail.com
+        EMAIL_PORT=587
+        EMAIL_USE_TLS=True
+        EMAIL_HOST_USER=your-email@gmail.com
+        EMAIL_HOST_PASSWORD=your-app-password
+    """
+    backend_type = get_email_backend_type()
+
+    if backend_type == 'smtp':
+        logger.debug(f"Using SMTP backend for email to {to_email}")
+        return send_email_via_smtp(to_email, subject, html_content, plain_content)
+    else:
+        # Default to Brevo for production
+        logger.debug(f"Using Brevo backend for email to {to_email}")
+        return send_email_via_brevo(to_email, subject, html_content, plain_content)
 
 
 def generate_random_password(length=12):
@@ -73,7 +179,7 @@ def get_role_display(role_value):
 
 
 def send_credentials_email(user, plain_password):
-    """Send login credentials to the user's personal email via Brevo API."""
+    """Send login credentials to the user's personal email."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -156,7 +262,7 @@ HNA Acadex Team
 </html>
     """
 
-    return send_email_via_brevo(
+    return send_email(
         to_email=user.personal_email,
         subject=subject,
         html_content=html_message.strip(),
@@ -165,7 +271,7 @@ HNA Acadex Team
 
 
 def send_password_reset_email(user, new_password):
-    """Send password reset email to the user's personal email via Brevo API."""
+    """Send password reset email to the user's personal email."""
     if not user.personal_email:
         return False, "No personal email address provided."
 
@@ -247,7 +353,7 @@ HNA Acadex Team
 </html>
     """
 
-    return send_email_via_brevo(
+    return send_email(
         to_email=user.personal_email,
         subject=subject,
         html_content=html_message.strip(),

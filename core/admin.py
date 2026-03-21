@@ -100,6 +100,20 @@ class CustomUserCreationForm(UserCreationForm):
             raise forms.ValidationError(error_msg)
         return full_name
 
+    def clean_personal_email(self):
+        """Validate that personal_email is not already in use."""
+        personal_email = self.cleaned_data.get('personal_email', '')
+        if personal_email:
+            # Check if any existing user has this personal_email
+            # Note: We check both personal_email and email fields since
+            # school emails are auto-generated and stored in email field
+            existing_user = User.objects.filter(personal_email=personal_email).first()
+            if existing_user:
+                raise forms.ValidationError(
+                    f"This personal email is already used by user: {existing_user.full_name} ({existing_user.email})"
+                )
+        return personal_email
+
     def clean(self):
         cleaned_data = super().clean()
         role = cleaned_data.get('role')
@@ -137,6 +151,36 @@ class CustomUserChangeForm(UserChangeForm):
     class Meta:
         model = User
         fields = '__all__'
+
+    def clean_personal_email(self):
+        """Validate that personal_email is not already in use by another user."""
+        personal_email = self.cleaned_data.get('personal_email', '')
+        if personal_email:
+            # Get the current user instance being edited
+            current_user = self.instance if self.instance and self.instance.pk else None
+            # Check if any other user has this personal_email
+            queryset = User.objects.filter(personal_email=personal_email)
+            if current_user:
+                queryset = queryset.exclude(pk=current_user.pk)
+            if queryset.exists():
+                existing_user = queryset.first()
+                raise forms.ValidationError(
+                    f"This personal email is already used by user: {existing_user.full_name} ({existing_user.email})"
+                )
+        return personal_email
+
+    def clean_personal_email(self):
+        """Validate that personal_email is not already in use by another user."""
+        personal_email = self.cleaned_data.get('personal_email', '')
+        if personal_email:
+            # Check if any OTHER user has this personal_email
+            # Exclude the current user being edited (self.instance)
+            existing_user = User.objects.filter(personal_email=personal_email).exclude(pk=self.instance.pk).first()
+            if existing_user:
+                raise forms.ValidationError(
+                    f"This personal email is already used by user: {existing_user.full_name} ({existing_user.email})"
+                )
+        return personal_email
 
 
 class UserAdmin(DjangoUserAdmin):

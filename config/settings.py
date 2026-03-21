@@ -127,6 +127,10 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
+# Email Backend Type: 'brevo' (production) or 'smtp' (development)
+# Set to 'smtp' in .env for local development with Gmail
+EMAIL_BACKEND_TYPE = os.getenv("EMAIL_BACKEND_TYPE", "brevo").lower()
+
 # Brevo API Configuration (alternative to SMTP)
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", None)
 
