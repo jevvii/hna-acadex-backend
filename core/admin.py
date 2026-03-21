@@ -1,6 +1,7 @@
 # hna-acadex-backend/core/admin.py
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin, GroupAdmin as DjangoGroupAdmin
+from django.contrib.auth.models import Group
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django import forms
 from django.contrib import messages
@@ -35,6 +36,10 @@ from .models import (
     WeeklyModule,
 )
 from .email_utils import generate_random_password, send_credentials_email
+from .admin_site import admin_site
+
+# Register auth models to custom admin site
+admin_site.register(Group, DjangoGroupAdmin)
 
 
 class CustomUserCreationForm(UserCreationForm):
@@ -113,7 +118,6 @@ class CustomUserChangeForm(UserChangeForm):
         fields = '__all__'
 
 
-@admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     form = CustomUserChangeForm
     add_form = CustomUserCreationForm
@@ -294,25 +298,74 @@ class UserAdmin(DjangoUserAdmin):
             super().save_model(request, obj, form, change)
 
 
-@admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ("name", "grade_level", "strand", "school_year", "is_active")
+    list_display = ("name", "display_grade_strand", "school_year", "is_active", "course_count")
     list_filter = ("grade_level", "strand", "school_year", "is_active")
     search_fields = ("name",)
 
+    def display_grade_strand(self, obj):
+        if obj.strand and obj.strand != 'NONE':
+            return f"{obj.get_grade_level_display()} - {obj.get_strand_display()}"
+        return obj.get_grade_level_display()
+    display_grade_strand.short_description = "Grade & Strand"
 
-@admin.register(Course)
+    def course_count(self, obj):
+        return obj.course_sections.filter(is_active=True).count()
+    course_count.short_description = "Active Classes"
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('course_sections')
+
+
 class CourseAdmin(admin.ModelAdmin):
     list_display = ("code", "title", "school_year", "semester", "is_active")
     list_filter = ("school_year", "semester", "is_active")
     search_fields = ("code", "title")
+    fieldsets = (
+        ("Course Details", {
+            "fields": ("code", "title", "description")
+        }),
+        ("Academic Period", {
+            "fields": ("school_year", "semester", "num_weeks")
+        }),
+        ("Display Settings", {
+            "fields": ("cover_image_url", "color_overlay"),
+            "classes": ("collapse",)
+        }),
+        ("Status", {
+            "fields": ("is_active",)
+        }),
+    )
 
 
-@admin.register(CourseSection)
 class CourseSectionAdmin(admin.ModelAdmin):
-    list_display = ("course", "section", "teacher", "school_year", "semester", "is_active")
-    list_filter = ("school_year", "semester", "is_active")
+    list_display = ("course", "section", "teacher", "school_year", "semester", "enrollment_count", "is_active")
+    list_filter = ("school_year", "semester", "is_active", "course__code")
     search_fields = ("course__code", "course__title", "section__name", "teacher__full_name")
+    autocomplete_fields = ("course", "section", "teacher")
+    raw_id_fields = ("teacher",)
+
+    fieldsets = (
+        ("Class Offering", {
+            "fields": ("course", "section", "teacher"),
+            "description": "A class offering combines a subject (course) with a specific class section and teacher."
+        }),
+        ("Academic Period", {
+            "fields": ("school_year", "semester", "is_active")
+        }),
+    )
+
+    def get_queryset(self, request):
+        from django.db.models import Count, Q
+        qs = super().get_queryset(request)
+        return qs.select_related("course", "section", "teacher").annotate(
+            _enrollment_count=Count("enrollments", filter=Q(enrollments__is_active=True))
+        )
+
+    def enrollment_count(self, obj):
+        return obj._enrollment_count
+    enrollment_count.short_description = "Students"
+    enrollment_count.admin_order_field = "_enrollment_count"
 
 
 class CourseSectionGroupForm(forms.ModelForm):
@@ -344,34 +397,47 @@ class CourseSectionGroupInlineEnrollmentForm(forms.Form):
     )
 
 
-@admin.register(CourseSectionGroup)
 class CourseSectionGroupAdmin(admin.ModelAdmin):
     form = CourseSectionGroupForm
-    list_display = ("name", "school_year", "semester", "course_count", "is_active", "created_at")
+    list_display = ("name", "school_year", "semester", "course_count", "student_count", "is_active", "created_at")
     list_filter = ("school_year", "semester", "is_active")
     search_fields = ("name", "description")
     filter_horizontal = ("course_sections",)
-    readonly_fields = ("created_at", "updated_at", "course_count", "enroll_students_link")
+    readonly_fields = ("created_at", "updated_at", "course_count", "student_count", "enroll_students_link")
 
     fieldsets = (
         (None, {
-            "fields": ("name", "description", "is_active")
+            "fields": ("name", "description", "is_active"),
+            "description": "An Enrollment Group allows you to enroll students to multiple classes at once."
         }),
         ("Academic Period", {
             "fields": ("school_year", "semester")
         }),
-        ("Course Sections", {
-            "fields": ("course_sections",)
+        ("Class Offerings", {
+            "fields": ("course_sections",),
+            "description": "Select up to 10 class offerings to include in this group."
         }),
         ("Info", {
-            "fields": ("created_at", "updated_at", "course_count"),
+            "fields": ("created_at", "updated_at", "course_count", "student_count"),
             "classes": ("collapse",)
         }),
     )
 
     def course_count(self, obj):
         return obj.course_sections.count()
-    course_count.short_description = "Number of Courses"
+    course_count.short_description = "Classes"
+
+    def student_count(self, obj):
+        # Count unique students enrolled in any course in the group
+        return Enrollment.objects.filter(
+            course_section__in=obj.course_sections.all(),
+            is_active=True
+        ).values("student").distinct().count()
+    student_count.short_description = "Enrolled Students"
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related("course_sections")
 
     def get_urls(self):
         from django.urls import path
@@ -437,7 +503,7 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
         from django.urls import reverse
         from django.utils.html import format_html
         if obj.pk:
-            url = reverse('admin:core_coursesectiongroup_enroll_students', args=[obj.pk])
+            url = reverse('hna_acadex_admin:core_coursesectiongroup_enroll_students', args=[obj.pk])
             return format_html('<a class="button" href="{}">Enroll Students to All Courses in Group</a>', url)
         return "-"
     enroll_students_link.short_description = "Student Enrollment"
@@ -503,7 +569,7 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
                     f"Successfully enrolled {students.count()} student(s) to {course_sections.count()} course(s). "
                     f"Created {created_count} new enrollments, {skipped_count} already existed."
                 )
-                return HttpResponseRedirect(reverse('admin:core_coursesectiongroup_changelist'))
+                return HttpResponseRedirect(reverse('hna_acadex_admin:core_coursesectiongroup_changelist'))
         else:
             form = CourseSectionGroupInlineEnrollmentForm()
 
@@ -517,116 +583,213 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
         return render(request, 'admin/course_section_group_enroll.html', context)
 
 
-@admin.register(Enrollment)
 class EnrollmentAdmin(admin.ModelAdmin):
-    list_display = ("student", "course_section", "final_grade", "is_active", "enrolled_at")
-    list_filter = ("is_active", "course_section__school_year")
-    search_fields = ("student__full_name", "student__email")
+    list_display = ("student", "course_section", "display_grade", "is_active", "enrolled_at")
+    list_filter = ("is_active", "course_section__school_year", "course_section__semester")
+    search_fields = ("student__full_name", "student__email", "student__student_id")
+    autocomplete_fields = ("student", "course_section")
+    raw_id_fields = ("student",)
+    date_hierarchy = "enrolled_at"
+
+    actions = ["activate_enrollments", "deactivate_enrollments", "bulk_enroll_to_classes"]
+
+    fieldsets = (
+        ("Enrollment Details", {
+            "fields": ("student", "course_section"),
+            "description": "Enroll a student in a class offering."
+        }),
+        ("Grade Information", {
+            "fields": ("final_grade", "manual_final_grade"),
+            "classes": ("collapse",)
+        }),
+        ("Status", {
+            "fields": ("is_active",)
+        }),
+    )
+
+    def display_grade(self, obj):
+        if obj.manual_final_grade:
+            return f"{obj.manual_final_grade}% (Manual)"
+        return f"{obj.final_grade}%" if obj.final_grade else "-"
+    display_grade.short_description = "Final Grade"
+
+    def activate_enrollments(self, request, queryset):
+        count = queryset.update(is_active=True)
+        self.message_user(request, f"Activated {count} enrollment(s).", level=messages.SUCCESS)
+    activate_enrollments.short_description = "Activate selected enrollments"
+
+    def deactivate_enrollments(self, request, queryset):
+        count = queryset.update(is_active=False)
+        self.message_user(request, f"Deactivated {count} enrollment(s).", level=messages.SUCCESS)
+    deactivate_enrollments.short_description = "Deactivate selected enrollments"
+
+    def bulk_enroll_to_classes(self, request, queryset):
+        """
+        Bulk enroll selected students to multiple class offerings.
+        Redirects to an intermediate page for class selection.
+        """
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+
+        # Get unique students from selected enrollments
+        students = queryset.values_list('student', flat=True).distinct()
+
+        # Store student IDs in session for the intermediate page
+        request.session['bulk_enroll_students'] = list(students)
+
+        # Redirect to intermediate page for class selection
+        return HttpResponseRedirect(reverse('hna_acadex_admin:core_enrollment_bulk_enroll'))
+    bulk_enroll_to_classes.short_description = "Bulk enroll selected students to more classes"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                'bulk-enroll/',
+                self.admin_site.admin_view(self.bulk_enroll_view),
+                name='core_enrollment_bulk_enroll'
+            ),
+        ]
+        return custom_urls + urls
+
+    def bulk_enroll_view(self, request):
+        """Intermediate page for bulk enrollment."""
+        from django.shortcuts import render
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        from django.db import transaction
+
+        if request.method == 'POST':
+            student_ids = request.session.get('bulk_enroll_students', [])
+            course_section_ids = request.POST.getlist('course_sections')
+
+            if not student_ids:
+                messages.error(request, "No students selected.")
+                return HttpResponseRedirect(reverse('hna_acadex_admin:core_enrollment_changelist'))
+
+            if not course_section_ids:
+                messages.error(request, "No classes selected.")
+                return HttpResponseRedirect(request.path)
+
+            created_count = 0
+            with transaction.atomic():
+                for student_id in student_ids:
+                    for cs_id in course_section_ids:
+                        _, created = Enrollment.objects.get_or_create(
+                            student_id=student_id,
+                            course_section_id=cs_id,
+                            defaults={'is_active': True}
+                        )
+                        if created:
+                            created_count += 1
+
+            messages.success(request, f"Created {created_count} new enrollment(s).")
+            if 'bulk_enroll_students' in request.session:
+                del request.session['bulk_enroll_students']
+            return HttpResponseRedirect(reverse('hna_acadex_admin:core_enrollment_changelist'))
+
+        # GET - show form
+        course_sections = CourseSection.objects.filter(is_active=True).select_related('course', 'section', 'teacher')
+        student_ids = request.session.get('bulk_enroll_students', [])
+        students = User.objects.filter(id__in=student_ids)
+
+        context = {
+            'students': students,
+            'course_sections': course_sections,
+            'opts': self.model._meta,
+            'title': 'Bulk Enroll Students',
+            'has_view_permission': True,
+        }
+        return render(request, 'admin/enrollment_bulk_enroll.html', context)
 
 
-@admin.register(WeeklyModule)
 class WeeklyModuleAdmin(admin.ModelAdmin):
     list_display = ("course_section", "week_number", "title", "is_exam_week", "is_published")
     list_filter = ("is_exam_week", "is_published")
 
 
-@admin.register(AssignmentGroup)
 class AssignmentGroupAdmin(admin.ModelAdmin):
     list_display = ("course_section", "name", "weight_percent", "is_active", "created_at")
     list_filter = ("is_active", "course_section")
     search_fields = ("name", "course_section__course__title", "course_section__section__name")
 
 
-@admin.register(MeetingSession)
 class MeetingSessionAdmin(admin.ModelAdmin):
     list_display = ("course_section", "date", "title", "created_by", "created_at")
     list_filter = ("date", "course_section")
     search_fields = ("title", "course_section__course__title", "course_section__section__name")
 
 
-@admin.register(AttendanceRecord)
 class AttendanceRecordAdmin(admin.ModelAdmin):
     list_display = ("meeting", "student", "status", "marked_by", "updated_at")
     list_filter = ("status", "meeting__course_section")
     search_fields = ("student__full_name", "student__email", "meeting__title")
 
 
-@admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
     list_display = ("title", "course_section", "points", "deadline", "is_published")
     list_filter = ("is_published",)
 
 
-@admin.register(CourseFile)
 class CourseFileAdmin(admin.ModelAdmin):
     list_display = ("file_name", "course_section", "category", "is_visible", "created_at")
     list_filter = ("category", "is_visible")
 
 
-@admin.register(Quiz)
 class QuizAdmin(admin.ModelAdmin):
     list_display = ("title", "course_section", "attempt_limit", "is_published", "created_at")
     list_filter = ("is_published",)
 
 
-@admin.register(QuizQuestion)
 class QuizQuestionAdmin(admin.ModelAdmin):
     list_display = ("quiz", "question_type", "question_text", "points", "sort_order")
     list_filter = ("question_type",)
     search_fields = ("question_text", "quiz__title")
 
 
-@admin.register(QuizChoice)
 class QuizChoiceAdmin(admin.ModelAdmin):
     list_display = ("question", "choice_text", "is_correct", "sort_order")
     list_filter = ("is_correct",)
 
 
-@admin.register(QuizAttempt)
 class QuizAttemptAdmin(admin.ModelAdmin):
     list_display = ("quiz", "student", "attempt_number", "score", "max_score", "is_submitted", "pending_manual_grading", "submitted_at")
     list_filter = ("is_submitted", "pending_manual_grading")
     search_fields = ("quiz__title", "student__full_name", "student__email")
 
 
-@admin.register(QuizAnswer)
 class QuizAnswerAdmin(admin.ModelAdmin):
     list_display = ("attempt", "question", "is_correct", "points_awarded", "needs_manual_grading", "graded_at")
     list_filter = ("needs_manual_grading", "is_correct")
 
 
-@admin.register(Submission)
 class SubmissionAdmin(admin.ModelAdmin):
     list_display = ("activity", "student", "status", "score", "submitted_at", "graded_at")
     list_filter = ("status",)
     search_fields = ("activity__title", "student__full_name", "student__email")
 
 
-@admin.register(Announcement)
 class AnnouncementAdmin(admin.ModelAdmin):
     list_display = ("title", "course_section", "school_wide", "audience", "is_published", "created_at")
     list_filter = ("school_wide", "audience", "is_published")
 
 
-@admin.register(CalendarEvent)
 class CalendarEventAdmin(admin.ModelAdmin):
     list_display = ("title", "creator", "event_type", "start_at", "all_day", "is_personal")
     list_filter = ("event_type", "all_day", "is_personal")
 
 
-@admin.register(TodoItem)
 class TodoItemAdmin(admin.ModelAdmin):
     list_display = ("title", "user", "due_at", "is_done", "created_at")
     list_filter = ("is_done",)
 
 
-@admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ("recipient", "type", "title", "is_read", "created_at")
     list_filter = ("type", "is_read")
 
 
-@admin.register(PasswordResetRequest)
 class PasswordResetRequestAdmin(admin.ModelAdmin):
     list_display = ("user", "personal_email", "status", "created_at", "resolved_at", "resolved_by")
     list_filter = ("status", "created_at")
@@ -691,7 +854,6 @@ class PasswordResetRequestAdmin(admin.ModelAdmin):
     decline_requests.short_description = "Decline selected password reset requests"
 
 
-@admin.register(PushToken)
 class PushTokenAdmin(admin.ModelAdmin):
     list_display = ("user", "token", "device_type", "device_name", "is_active", "created_at")
     list_filter = ("device_type", "is_active")
@@ -699,9 +861,39 @@ class PushTokenAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
 
-@admin.register(ActivityReminder)
 class ActivityReminderAdmin(admin.ModelAdmin):
     list_display = ("user", "reminder_type", "activity", "quiz", "reminder_datetime", "notification_sent", "created_at")
     list_filter = ("reminder_type", "notification_sent")
     search_fields = ("user__email", "user__full_name", "activity__title", "quiz__title")
     readonly_fields = ("created_at", "updated_at")
+
+
+# Register all models to the custom admin site
+# Enrollment category models
+admin_site.register(User, UserAdmin)
+admin_site.register(Section, SectionAdmin)
+admin_site.register(Course, CourseAdmin)
+admin_site.register(CourseSection, CourseSectionAdmin)
+admin_site.register(CourseSectionGroup, CourseSectionGroupAdmin)
+admin_site.register(Enrollment, EnrollmentAdmin)
+
+# Core category models
+admin_site.register(WeeklyModule, WeeklyModuleAdmin)
+admin_site.register(AssignmentGroup, AssignmentGroupAdmin)
+admin_site.register(MeetingSession, MeetingSessionAdmin)
+admin_site.register(AttendanceRecord, AttendanceRecordAdmin)
+admin_site.register(Activity, ActivityAdmin)
+admin_site.register(CourseFile, CourseFileAdmin)
+admin_site.register(Quiz, QuizAdmin)
+admin_site.register(QuizQuestion, QuizQuestionAdmin)
+admin_site.register(QuizChoice, QuizChoiceAdmin)
+admin_site.register(QuizAttempt, QuizAttemptAdmin)
+admin_site.register(QuizAnswer, QuizAnswerAdmin)
+admin_site.register(Submission, SubmissionAdmin)
+admin_site.register(Announcement, AnnouncementAdmin)
+admin_site.register(CalendarEvent, CalendarEventAdmin)
+admin_site.register(TodoItem, TodoItemAdmin)
+admin_site.register(Notification, NotificationAdmin)
+admin_site.register(PasswordResetRequest, PasswordResetRequestAdmin)
+admin_site.register(PushToken, PushTokenAdmin)
+admin_site.register(ActivityReminder, ActivityReminderAdmin)

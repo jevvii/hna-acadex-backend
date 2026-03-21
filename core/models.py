@@ -95,13 +95,36 @@ class User(AbstractUser):
 
 class Section(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100)
-    grade_level = models.CharField(max_length=20, choices=User.GradeLevel.choices)
-    strand = models.CharField(max_length=10, choices=User.Strand.choices, default=User.Strand.NONE)
-    school_year = models.CharField(max_length=20)
+    name = models.CharField(
+        max_length=100,
+        verbose_name="Section Name",
+        help_text="The class section identifier (e.g., 'ICT-A', 'STEM-B1')"
+    )
+    grade_level = models.CharField(
+        max_length=20,
+        choices=User.GradeLevel.choices,
+        verbose_name="Grade Level",
+        help_text="The grade level this section belongs to"
+    )
+    strand = models.CharField(
+        max_length=10,
+        choices=User.Strand.choices,
+        default=User.Strand.NONE,
+        verbose_name="Strand/Track",
+        help_text="Academic strand for senior high school (e.g., ICT, STEM, ABM)"
+    )
+    school_year = models.CharField(
+        max_length=20,
+        verbose_name="School Year",
+        help_text="Academic year (e.g., '2024-2025')"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Class Section"
+        verbose_name_plural = "Class Sections"
 
     def __str__(self):
         return f"{self.name} ({self.school_year})"
@@ -109,8 +132,16 @@ class Section(models.Model):
 
 class Course(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    code = models.CharField(max_length=50)
-    title = models.CharField(max_length=255)
+    code = models.CharField(
+        max_length=50,
+        verbose_name="Course Code",
+        help_text="Unique identifier code (e.g., 'CP102', 'MATH101')"
+    )
+    title = models.CharField(
+        max_length=255,
+        verbose_name="Course Title",
+        help_text="Full name of the course (e.g., 'Introduction to Programming')"
+    )
     description = models.TextField(blank=True, null=True)
     cover_image_url = models.URLField(blank=True, null=True)
     color_overlay = models.CharField(max_length=20, blank=True, null=True)
@@ -123,14 +154,30 @@ class Course(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "Subject"
+        verbose_name_plural = "Subjects"
+
     def __str__(self):
         return f"{self.code} - {self.title}"
 
 
 class CourseSection(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="course_sections")
-    section = models.ForeignKey(Section, on_delete=models.CASCADE, related_name="course_sections")
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="course_sections",
+        verbose_name="Subject",
+        help_text="Select the subject to be taught"
+    )
+    section = models.ForeignKey(
+        Section,
+        on_delete=models.CASCADE,
+        related_name="course_sections",
+        verbose_name="Class Section",
+        help_text="Select the class section that will take this subject"
+    )
     teacher = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -138,6 +185,8 @@ class CourseSection(models.Model):
         blank=True,
         related_name="teaching_course_sections",
         limit_choices_to={"role": User.Role.TEACHER},
+        verbose_name="Teacher",
+        help_text="Assign a teacher to teach this subject to this class section"
     )
     school_year = models.CharField(max_length=20)
     semester = models.CharField(max_length=20, blank=True, null=True)
@@ -145,6 +194,8 @@ class CourseSection(models.Model):
 
     class Meta:
         unique_together = ("course", "section", "school_year", "semester")
+        verbose_name = "Class Offering"
+        verbose_name_plural = "Class Offerings"
 
     def __str__(self):
         return f"{self.course.code}@{self.section.name}"
@@ -157,8 +208,16 @@ class Enrollment(models.Model):
         on_delete=models.CASCADE,
         related_name="enrollments",
         limit_choices_to={"role": User.Role.STUDENT},
+        verbose_name="Student",
+        help_text="Select a student to enroll"
     )
-    course_section = models.ForeignKey(CourseSection, on_delete=models.CASCADE, related_name="enrollments")
+    course_section = models.ForeignKey(
+        CourseSection,
+        on_delete=models.CASCADE,
+        related_name="enrollments",
+        verbose_name="Class Offering",
+        help_text="Select the class offering to enroll the student in"
+    )
     final_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     manual_final_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -166,6 +225,8 @@ class Enrollment(models.Model):
 
     class Meta:
         unique_together = ("student", "course_section")
+        verbose_name = "Student Enrollment"
+        verbose_name_plural = "Student Enrollments"
 
 
 class WeeklyModule(models.Model):
@@ -664,6 +725,8 @@ class CourseSectionGroup(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        verbose_name = "Enrollment Group"
+        verbose_name_plural = "Enrollment Groups"
 
     def __str__(self):
         return f"{self.name} ({self.school_year})"

@@ -1,0 +1,124 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:core_enrollment_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; Bulk Enroll Students
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if students %}
+<div class="module">
+    <h2>Selected Students ({{ students.count }})</h2>
+    <table id="students-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Student ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+            <tr>
+                <td>{{ student.full_name }}</td>
+                <td>{{ student.email }}</td>
+                <td>{{ student.student_id|default:"-" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="module">
+    <p>No students selected. Please select enrollments from the enrollment list first.</p>
+    <a href="{% url 'admin:core_enrollment_changelist' %}" class="button">Back to Enrollments</a>
+</div>
+{% endif %}
+
+{% if students %}
+<form method="post">
+    {% csrf_token %}
+    <div class="module">
+        <h2>Select Class Offerings to Enroll In</h2>
+        <p>Choose the class offerings to enroll these students in:</p>
+        <p><label><input type="checkbox" id="select_all"> <strong>Select All</strong></label></p>
+        <table id="result_list">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="select_all_header"></th>
+                    <th>Subject</th>
+                    <th>Section</th>
+                    <th>Teacher</th>
+                    <th>School Year</th>
+                    <th>Semester</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cs in course_sections %}
+                <tr>
+                    <td><input type="checkbox" name="course_sections" value="{{ cs.id }}" class="course-section-checkbox"></td>
+                    <td>{{ cs.course.code }} - {{ cs.course.title }}</td>
+                    <td>{{ cs.section.name }}</td>
+                    <td>{{ cs.teacher.full_name|default:"No Teacher" }}</td>
+                    <td>{{ cs.school_year }}</td>
+                    <td>{{ cs.semester|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6">No active class offerings available.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="submit-row">
+        <input type="submit" value="Enroll Students" class="default">
+        <a href="{% url 'admin:core_enrollment_changelist' %}" class="closelink">Cancel</a>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Select all checkbox functionality
+    var selectAllHeader = document.getElementById('select_all_header');
+    var selectAllLabel = document.getElementById('select_all');
+    var checkboxes = document.querySelectorAll('.course-section-checkbox');
+
+    function toggleAll(checked) {
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = checked;
+        }
+    }
+
+    if (selectAllHeader) {
+        selectAllHeader.addEventListener('change', function() {
+            toggleAll(this.checked);
+        });
+    }
+
+    if (selectAllLabel) {
+        selectAllLabel.addEventListener('change', function() {
+            toggleAll(this.checked);
+        });
+    }
+
+    // Update select all checkbox state when individual checkboxes change
+    checkboxes.forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            var allChecked = document.querySelectorAll('.course-section-checkbox:checked').length === checkboxes.length;
+            if (selectAllHeader) selectAllHeader.checked = allChecked;
+            if (selectAllLabel) selectAllLabel.checked = allChecked;
+        });
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
