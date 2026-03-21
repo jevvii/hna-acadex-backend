@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+.sis-import-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.sis-import-header {
+    margin-bottom: 30px;
+}
+
+.sis-import-header h1 {
+    margin: 0;
+    color: #333;
+}
+
+.sis-import-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.sis-import-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.sis-import-card:hover {
+    border-color: #417690;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transform: translateY(-2px);
+}
+
+.sis-import-card h2 {
+    margin: 0 0 10px 0;
+    font-size: 1.3em;
+    color: #417690;
+}
+
+.sis-import-card p {
+    margin: 0;
+    color: #666;
+    font-size: 0.95em;
+}
+
+.sis-import-card-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+    color: #417690;
+}
+
+.breadcrumbs {
+    padding: 10px 0;
+    margin-bottom: 20px;
+}
+
+.breadcrumbs a {
+    color: #417690;
+    text-decoration: none;
+}
+
+.breadcrumbs a:hover {
+    text-decoration: underline;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; SIS Import
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="sis-import-container">
+    <div class="sis-import-header">
+        <h1>Student Information System (SIS) Import</h1>
+        <p>Import data from CSV files to bulk-create or bulk-update records.</p>
+    </div>
+
+    <div class="sis-import-cards">
+        {% for import_type in import_types %}
+        <a href="{% url import_type.url_name %}" class="sis-import-card">
+            <div class="sis-import-card-icon">📁</div>
+            <h2>{{ import_type.name }}</h2>
+            <p>{{ import_type.description }}</p>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div style="margin-top: 30px; padding: 20px; background: #f8f8f8; border-radius: 8px;">
+        <h3>How it works</h3>
+        <ol style="margin-left: 20px; line-height: 1.8;">
+            <li><strong>Upload</strong> - Select a CSV file to upload</li>
+            <li><strong>Preview</strong> - Review the data before importing</li>
+            <li><strong>Confirm</strong> - Click "Import" to process the records</li>
+            <li><strong>Result</strong> - See how many records were created, updated, or had errors</li>
+        </ol>
+        <p style="margin-top: 15px;"><strong>Note:</strong> Maximum 500 rows per file. Files must be UTF-8 encoded.</p>
+    </div>
+</div>
+{% endblock %}

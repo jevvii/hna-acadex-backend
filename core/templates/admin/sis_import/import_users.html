@@ -1,0 +1,600 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+.sis-import-container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.sis-import-header {
+    margin-bottom: 20px;
+}
+
+.sis-import-header h1 {
+    margin: 0;
+    color: #333;
+}
+
+.import-steps {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #f8f8f8;
+    border-radius: 8px;
+}
+
+.step {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9em;
+}
+
+.step.active {
+    background: #417690;
+    color: white;
+}
+
+.step.completed {
+    background: #4caf50;
+    color: white;
+}
+
+.step.inactive {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.upload-section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.file-input-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.file-input-wrapper input[type="file"] {
+    width: 100%;
+    padding: 15px;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    background: #fafafa;
+    cursor: pointer;
+}
+
+.file-input-wrapper input[type="file"]:hover {
+    border-color: #417690;
+}
+
+.checkbox-wrapper {
+    margin: 15px 0;
+    padding: 15px;
+    background: #e3f2fd;
+    border-radius: 8px;
+    border-left: 4px solid #2196f3;
+}
+
+.checkbox-wrapper label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+}
+
+.checkbox-wrapper .help-text {
+    color: #666;
+    font-size: 0.9em;
+    margin-top: 5px;
+}
+
+.format-info {
+    margin-top: 15px;
+    padding: 15px;
+    background: #fff3cd;
+    border-radius: 8px;
+    border-left: 4px solid #ffc107;
+}
+
+.format-info h4 {
+    margin: 0 0 10px 0;
+    color: #856404;
+}
+
+.format-info table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.format-info th, .format-info td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.format-info th {
+    background: #f8f8f8;
+    font-weight: 600;
+}
+
+.format-info .required {
+    color: #d32f2f;
+    font-weight: 500;
+}
+
+.preview-section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.preview-section h2 {
+    margin: 0 0 15px 0;
+    color: #333;
+}
+
+.preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+}
+
+.preview-table th, .preview-table td {
+    padding: 8px;
+    border: 1px solid #ddd;
+    text-align: left;
+}
+
+.preview-table th {
+    background: #f8f8f8;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.preview-table tr.error {
+    background: #ffebee;
+}
+
+.preview-table tr.warning {
+    background: #fff3e0;
+}
+
+.preview-table tr.success {
+    background: #e8f5e9;
+}
+
+.error-message {
+    color: #d32f2f;
+    font-size: 0.85em;
+}
+
+.warning-message {
+    color: #ff8f00;
+    font-size: 0.85em;
+}
+
+.result-section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.result-section h2 {
+    margin: 0 0 15px 0;
+}
+
+.result-summary {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.result-stat {
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    flex: 1;
+}
+
+.result-stat.created {
+    background: #e8f5e9;
+    border: 1px solid #4caf50;
+}
+
+.result-stat.updated {
+    background: #e3f2fd;
+    border: 1px solid #2196f3;
+}
+
+.result-stat.skipped {
+    background: #fff3e0;
+    border: 1px solid #ff9800;
+}
+
+.result-stat.failed {
+    background: #ffebee;
+    border: 1px solid #f44336;
+}
+
+.result-stat .count {
+    font-size: 2em;
+    font-weight: bold;
+}
+
+.result-stat .label {
+    color: #666;
+    margin-top: 5px;
+}
+
+.submit-row {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+}
+
+.submit-row input[type="submit"] {
+    padding: 10px 20px;
+    font-size: 1em;
+    cursor: pointer;
+    background: #417690;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    margin-right: 10px;
+}
+
+.submit-row input[type="submit"]:hover {
+    background: #355c6e;
+}
+
+.submit-row input[type="submit"].default {
+    background: #4caf50;
+}
+
+.submit-row input[type="submit"].default:hover {
+    background: #388e3c;
+}
+
+.submit-row a.closelink {
+    display: inline-block;
+    padding: 10px 20px;
+    color: #417690;
+    text-decoration: none;
+}
+
+.submit-row a.closelink:hover {
+    text-decoration: underline;
+}
+
+.download-link {
+    display: inline-block;
+    margin-left: 15px;
+    color: #417690;
+    text-decoration: none;
+}
+
+.download-link:hover {
+    text-decoration: underline;
+}
+
+.breadcrumbs {
+    padding: 10px 0;
+    margin-bottom: 20px;
+}
+
+.breadcrumbs a {
+    color: #417690;
+    text-decoration: none;
+}
+
+.breadcrumbs a:hover {
+    text-decoration: underline;
+}
+
+.email-note {
+    background: #e8f5e9;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+    font-size: 0.9em;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'hna_acadex_admin:sis_import_index' %}">SIS Import</a>
+    &rsaquo; Import Users
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="sis-import-container">
+    <div class="sis-import-header">
+        <h1>{{ title }}</h1>
+    </div>
+
+    <div class="import-steps">
+        <span class="step {% if step == 'upload' %}active{% else %}{% if step == 'preview' or step == 'result' %}completed{% else %}inactive{% endif %}{% endif %}">1. Upload</span>
+        <span class="step {% if step == 'preview' %}active{% else %}{% if step == 'result' %}completed{% else %}inactive{% endif %}{% endif %}">2. Preview</span>
+        <span class="step {% if step == 'result' %}active{% else %}inactive{% endif %}">3. Result</span>
+    </div>
+
+    {% if step == 'upload' %}
+    <div class="upload-section">
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="file-input-wrapper">
+                {{ form.csv_file }}
+            </div>
+
+            <div class="checkbox-wrapper">
+                <label>
+                    {{ form.send_credentials }}
+                    <strong>Send login credentials via email</strong>
+                </label>
+                <div class="help-text">
+                    If checked, each user will receive an email with their school email and auto-generated password at their personal email address.
+                </div>
+            </div>
+
+            <div class="format-info">
+                <h4>CSV Format</h4>
+                <p>Upload a CSV file with the following columns:</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Column</th>
+                            <th>Required</th>
+                            <th>Description</th>
+                            <th>Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>role</td>
+                            <td class="required">Yes</td>
+                            <td>student or teacher (NOT admin)</td>
+                            <td>student</td>
+                        </tr>
+                        <tr>
+                            <td>first_name</td>
+                            <td class="required">Yes</td>
+                            <td>First name</td>
+                            <td>Juan</td>
+                        </tr>
+                        <tr>
+                            <td>last_name</td>
+                            <td class="required">Yes</td>
+                            <td>Last name / Surname</td>
+                            <td>Dela Cruz</td>
+                        </tr>
+                        <tr>
+                            <td>personal_email</td>
+                            <td class="required">Yes</td>
+                            <td>Personal email for credentials</td>
+                            <td>juan@gmail.com</td>
+                        </tr>
+                        <tr>
+                            <td>middle_name</td>
+                            <td>No</td>
+                            <td>Middle name or initial</td>
+                            <td>B.</td>
+                        </tr>
+                        <tr>
+                            <td>grade_level</td>
+                            <td>No</td>
+                            <td>Grade 7-12</td>
+                            <td>Grade 7</td>
+                        </tr>
+                        <tr>
+                            <td>strand</td>
+                            <td>No</td>
+                            <td>STEM, ABM, HUMSS, TVL, GAS, NONE</td>
+                            <td>STEM</td>
+                        </tr>
+                        <tr>
+                            <td>section</td>
+                            <td>No</td>
+                            <td>Section name</td>
+                            <td>ICT-A</td>
+                        </tr>
+                        <tr>
+                            <td>status</td>
+                            <td>No</td>
+                            <td>active or inactive</td>
+                            <td>active</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 15px;"><strong>Note:</strong> Student ID, Employee ID, and School Email are auto-generated.</p>
+            </div>
+
+            <div class="submit-row">
+                <input type="submit" value="Preview Import" class="default">
+                <a href="{% url 'hna_acadex_admin:sis_import_download_users_template' %}" class="download-link">Download Template CSV</a>
+            </div>
+        </form>
+    </div>
+
+    {% elif step == 'preview' %}
+    <div class="preview-section">
+        <h2>Preview ({{ validation_result.rows|length }} rows)</h2>
+
+        {% if validation_result.error_count > 0 %}
+        <div style="background: #ffebee; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f44336;">
+            <strong>{{ validation_result.error_count }} error(s)</strong> found. Please fix the errors and re-upload.
+        </div>
+        {% else %}
+        <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
+            All {{ validation_result.rows|length }} rows are valid. Click "Import" to proceed.
+            {% if send_credentials %}
+            <div class="email-note">
+                <strong>Email will be sent:</strong> Login credentials will be sent to each user's personal email address.
+            </div>
+            {% endif %}
+            {% if validation_result.warning_count > 0 %}
+            <br><strong>{{ validation_result.warning_count }} warning(s)</strong> - some records may be skipped.
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div style="overflow-x: auto;">
+            <table class="preview-table">
+                <thead>
+                    <tr>
+                        <th>Row</th>
+                        <th>Role</th>
+                        <th>First Name</th>
+                        <th>Last Name</th>
+                        <th>Personal Email</th>
+                        <th>Grade</th>
+                        <th>Strand</th>
+                        <th>Status</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in validation_result.rows %}
+                    <tr class="{% if row.action == 'error' %}error{% elif row.warnings %}warning{% else %}success{% endif %}">
+                        <td>{{ row.row_number }}</td>
+                        <td>{{ row.data.role }}</td>
+                        <td>{{ row.data.first_name }}</td>
+                        <td>{{ row.data.last_name }}</td>
+                        <td>{{ row.data.personal_email }}</td>
+                        <td>{{ row.data.grade_level|default:"-" }}</td>
+                        <td>{{ row.data.strand|default:"-" }}</td>
+                        <td>{{ row.data.status|default:"active" }}</td>
+                        <td>
+                            {% if row.action == 'error' %}
+                                <span class="error-message">{{ row.message }}</span>
+                            {% else %}
+                                <span style="color: #4caf50;">Valid</span>
+                            {% endif %}
+                            {% if row.warnings %}
+                                <br><span class="warning-message">{{ row.warnings|join:"; " }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="import">
+            <input type="hidden" name="send_credentials" value="{% if send_credentials %}on{% endif %}">
+
+            <div class="submit-row">
+                {% if validation_result.error_count == 0 %}
+                <input type="submit" value="Import" class="default">
+                {% endif %}
+                <a href="{% url 'hna_acadex_admin:sis_import_users' %}" class="closelink">Cancel and Re-upload</a>
+            </div>
+        </form>
+    </div>
+
+    {% elif step == 'result' %}
+    <div class="result-section">
+        <h2>Import Results</h2>
+
+        {% if send_credentials %}
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+            <strong>Credentials emails sent:</strong> Login credentials have been sent to each user's personal email.
+        </div>
+        {% endif %}
+
+        <div class="result-summary">
+            <div class="result-stat created">
+                <div class="count">{{ result.created_count }}</div>
+                <div class="label">Created</div>
+            </div>
+            <div class="result-stat updated">
+                <div class="count">{{ result.updated_count }}</div>
+                <div class="label">Updated</div>
+            </div>
+            <div class="result-stat skipped">
+                <div class="count">{{ result.skipped_count }}</div>
+                <div class="label">Skipped</div>
+            </div>
+            <div class="result-stat failed">
+                <div class="count">{{ result.failed_count }}</div>
+                <div class="label">Failed</div>
+            </div>
+        </div>
+
+        {% if result.created %}
+        <h3>Created Users</h3>
+        <table class="preview-table">
+            <thead>
+                <tr>
+                    <th>Row</th>
+                    <th>Role</th>
+                    <th>Name</th>
+                    <th>Personal Email</th>
+                    <th>Generated School Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in result.created %}
+                <tr>
+                    <td>{{ row.row_number }}</td>
+                    <td>{{ row.data.role }}</td>
+                    <td>{{ row.data.first_name }} {{ row.data.last_name }}</td>
+                    <td>{{ row.data.personal_email }}</td>
+                    <td style="font-size: 0.85em;">{{ row.message|slice:"38:" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if result.failed %}
+        <h3>Failed Records</h3>
+        <table class="preview-table">
+            <thead>
+                <tr>
+                    <th>Row</th>
+                    <th>Personal Email</th>
+                    <th>Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in result.failed %}
+                <tr class="error">
+                    <td>{{ row.row_number }}</td>
+                    <td>{{ row.data.personal_email|default:"-" }}</td>
+                    <td>{{ row.message }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <div class="submit-row">
+            <a href="{% url 'hna_acadex_admin:sis_import_users' %}" class="closelink">Import More Users</a>
+            <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="closelink">Back to SIS Import</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

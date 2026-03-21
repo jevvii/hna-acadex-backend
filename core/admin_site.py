@@ -2,16 +2,19 @@
 """
 Custom AdminSite that creates separate categories for better organization:
 - Users: User management (appears first)
+- SIS Import: Bulk import functionality
 - Enrollment: Enrollment-related models
 - Core: All other models
 """
 from django.contrib.admin import AdminSite
+from django.urls import path, reverse
+from django.utils.translation import gettext_lazy as _
 
 
 class HnaAcadexAdminSite(AdminSite):
     """
     Custom admin site that organizes models into logical categories
-    for easier navigation.
+    for easier navigation and includes SIS Import functionality.
     """
 
     site_header = "HNA Acadex Administration"
@@ -32,9 +35,34 @@ class HnaAcadexAdminSite(AdminSite):
         'enrollment',
     }
 
+    def get_urls(self):
+        """Add SIS Import URLs to the admin site."""
+        from django.urls import include
+        from core.sis_import import views as sis_import_views
+
+        # Get default admin URLs
+        urls = super().get_urls()
+
+        # Add SIS Import URLs
+        sis_import_urls = [
+            path('sis-import/', self.admin_view(sis_import_views.sis_import_index), name='sis_import_index'),
+            path('sis-import/courses/', self.admin_view(sis_import_views.sis_import_courses), name='sis_import_courses'),
+            path('sis-import/users/', self.admin_view(sis_import_views.sis_import_users), name='sis_import_users'),
+            path('sis-import/sections/', self.admin_view(sis_import_views.sis_import_sections), name='sis_import_sections'),
+            path('sis-import/enrollments/', self.admin_view(sis_import_views.sis_import_enrollments), name='sis_import_enrollments'),
+            # Template download URLs
+            path('sis-import/template/courses/', self.admin_view(sis_import_views.download_courses_template), name='sis_import_download_courses_template'),
+            path('sis-import/template/users/', self.admin_view(sis_import_views.download_users_template), name='sis_import_download_users_template'),
+            path('sis-import/template/sections/', self.admin_view(sis_import_views.download_sections_template), name='sis_import_download_sections_template'),
+            path('sis-import/template/enrollments/', self.admin_view(sis_import_views.download_enrollments_template), name='sis_import_download_enrollments_template'),
+        ]
+
+        # Return SIS Import URLs first, then default URLs
+        return sis_import_urls + urls
+
     def get_app_list(self, request):
         """
-        Override to create virtual 'Users' and 'Enrollment' app groups
+        Override to create virtual 'Users', 'SIS Import', and 'Enrollment' app groups
         and reorder apps for better organization.
         """
         app_list = super().get_app_list(request)
@@ -75,6 +103,15 @@ class HnaAcadexAdminSite(AdminSite):
             'models': users_models,
         }
 
+        # Create virtual SIS Import app (as a model-less app with a single link)
+        sis_import_app = {
+            'name': 'SIS Import',
+            'app_label': 'sis_import',
+            'app_url': reverse('admin:sis_import_index'),
+            'has_module_perms': True,
+            'models': [],  # No models, just a link to the import page
+        }
+
         # Create virtual Enrollment app
         enrollment_app = {
             'name': 'Enrollment',
@@ -84,12 +121,15 @@ class HnaAcadexAdminSite(AdminSite):
             'models': enrollment_models,
         }
 
-        # Reorder: Users first, then Enrollment, then Core (and other apps)
+        # Reorder: Users first, then SIS Import, then Enrollment, then Core (and other apps)
         new_app_list = []
 
         # Add Users first if it has models
         if users_models:
             new_app_list.append(users_app)
+
+        # Add SIS Import (always visible)
+        new_app_list.append(sis_import_app)
 
         # Add Enrollment next if it has models
         if enrollment_models:
