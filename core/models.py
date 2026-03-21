@@ -93,6 +93,34 @@ class User(AbstractUser):
         return f"{self.full_name} ({self.email})"
 
 
+class IDCounter(models.Model):
+    """Track sequential IDs per year and type.
+
+    This model ensures unique and sequential ID generation for students
+    and teachers. Each year gets a fresh sequence starting from 0001.
+
+    Format: {prefix}{year}{sequential:04d}
+    Example: 120240001 (first student of 2024)
+    """
+
+    class Type(models.TextChoices):
+        STUDENT = "student", "Student"
+        TEACHER = "teacher", "Teacher"
+
+    year = models.IntegerField(help_text="The year for this ID sequence")
+    id_type = models.CharField(max_length=10, choices=Type.choices, help_text="Student or Teacher ID type")
+    prefix = models.IntegerField(default=1, help_text="Prefix number (1, 2, 3... for overflow handling)")
+    sequential = models.IntegerField(default=0, help_text="Sequential number (0001-9999)")
+
+    class Meta:
+        unique_together = ('year', 'id_type')
+        verbose_name = "ID Counter"
+        verbose_name_plural = "ID Counters"
+
+    def __str__(self):
+        return f"{self.id_type} IDs for {self.year}: prefix={self.prefix}, seq={self.sequential}"
+
+
 class Section(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
@@ -699,6 +727,37 @@ class ActivityComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author.full_name} on {self.activity.title}"
+
+
+class IDCounter(models.Model):
+    """Track sequential IDs per year and type (student/teacher)."""
+
+    class Type(models.TextChoices):
+        STUDENT = "student", "Student"
+        TEACHER = "teacher", "Teacher"
+
+    year = models.IntegerField(help_text="Year for this counter (e.g., 2024)")
+    id_type = models.CharField(
+        max_length=10,
+        choices=Type.choices,
+        help_text="Type of ID: student or teacher"
+    )
+    prefix = models.IntegerField(
+        default=1,
+        help_text="Prefix for ID (starts at 1, increments when sequential overflows 9999)"
+    )
+    sequential = models.IntegerField(
+        default=0,
+        help_text="Sequential number (1-9999)"
+    )
+
+    class Meta:
+        unique_together = ('year', 'id_type')
+        verbose_name = "ID Counter"
+        verbose_name_plural = "ID Counters"
+
+    def __str__(self):
+        return f"{self.id_type} IDs for {self.year}: prefix={self.prefix}, seq={self.sequential}"
 
 
 class CourseSectionGroup(models.Model):

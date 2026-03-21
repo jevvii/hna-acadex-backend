@@ -20,6 +20,7 @@ from .models import (
     CourseSection,
     CourseSectionGroup,
     Enrollment,
+    IDCounter,
     Notification,
     MeetingSession,
     PasswordResetRequest,
@@ -37,18 +38,29 @@ from .models import (
 )
 from .email_utils import generate_random_password, send_credentials_email
 from .admin_site import admin_site
+from .utils import (
+    generate_student_id,
+    generate_teacher_id,
+    generate_school_email,
+    validate_full_name_format,
+)
 
 # Register auth models to custom admin site
 admin_site.register(Group, DjangoGroupAdmin)
 
 
 class CustomUserCreationForm(UserCreationForm):
-    """Custom form for creating users with auto-generated password."""
+    """Custom form for creating users with auto-generated password and IDs."""
 
     personal_email = forms.EmailField(
         required=False,
         label="Personal Email",
         help_text="Personal email for sending login credentials (required for teachers/students)"
+    )
+    full_name = forms.CharField(
+        max_length=255,
+        label="Full Name",
+        help_text="Format: LAST, FIRST, MIDDLE (e.g., 'Cruz, Juan, B.' or 'Santos, Maria Clara')"
     )
     auto_generate_password = forms.BooleanField(
         required=False,
@@ -77,7 +89,16 @@ class CustomUserCreationForm(UserCreationForm):
 
     class Meta:
         model = User
-        fields = ('email', 'personal_email', 'full_name', 'role', 'status', 'is_active', 'is_staff')
+        fields = ('personal_email', 'full_name', 'role', 'status', 'is_active', 'is_staff')
+        # Note: email, student_id, employee_id are auto-generated for students/teachers
+
+    def clean_full_name(self):
+        """Validate full_name format."""
+        full_name = self.cleaned_data.get('full_name', '')
+        is_valid, error_msg = validate_full_name_format(full_name)
+        if not is_valid:
+            raise forms.ValidationError(error_msg)
+        return full_name
 
     def clean(self):
         cleaned_data = super().clean()
@@ -170,7 +191,6 @@ class UserAdmin(DjangoUserAdmin):
             {
                 "classes": ("wide",),
                 "fields": (
-                    "email",
                     "personal_email",
                     "full_name",
                     "role",
@@ -241,37 +261,54 @@ class UserAdmin(DjangoUserAdmin):
     send_credentials_action.short_description = "Send login credentials via email"
 
     def save_model(self, request, obj, form, change):
-        """Override save_model to handle auto-generated passwords and email sending."""
+        """Override save_model to handle auto-generated passwords, IDs, and emails."""
         if not change:
             # Creating a new user
             auto_generate = form.cleaned_data.get('auto_generate_password', True)
             send_email = form.cleaned_data.get('send_credentials_email', True)
+            role = form.cleaned_data.get('role')
+            full_name = form.cleaned_data.get('full_name', '')
 
             if auto_generate:
                 # Generate a random password
                 plain_password = generate_random_password()
-                obj.set_password(plain_password)
             else:
                 # Use the manually entered password
                 plain_password = form.cleaned_data.get('password1')
+
+            # Auto-generate ID and email for students and teachers
+            if role == User.Role.STUDENT:
+                student_id = generate_student_id()
+                obj.student_id = student_id
+                # Generate school email
+                obj.email = generate_school_email(full_name, 'student', student_id)
+                obj.username = obj.email  # username mirrors email
+            elif role == User.Role.TEACHER:
+                employee_id = generate_teacher_id()
+                obj.employee_id = employee_id
+                # Generate school email
+                obj.email = generate_school_email(full_name, 'teacher', employee_id)
+                obj.username = obj.email  # username mirrors email
+            # For admin users, email must be provided manually (handled by parent class)
 
             # Save the user first
             super().save_model(request, obj, form, change)
 
             # Send credentials email if requested
             if send_email and obj.personal_email:
-                if obj.role in [User.Role.TEACHER, User.Role.STUDENT]:
+                if role in [User.Role.TEACHER, User.Role.STUDENT]:
                     success, message = send_credentials_email(obj, plain_password)
                     if success:
                         self.message_user(
                             request,
-                            f"User created successfully. Credentials sent to {obj.personal_email}",
+                            f"User created successfully. School email: {obj.email}. "
+                            f"Credentials sent to {obj.personal_email}",
                             level=messages.SUCCESS
                         )
                     else:
                         self.message_user(
                             request,
-                            f"User created but email failed: {message}",
+                            f"User created with school email: {obj.email}. Email failed: {message}",
                             level=messages.WARNING
                         )
                 else:
@@ -282,17 +319,19 @@ class UserAdmin(DjangoUserAdmin):
                     )
             else:
                 if send_email and not obj.personal_email:
-                    self.message_user(
-                        request,
-                        f"User created. Credentials not sent - no personal email provided.",
-                        level=messages.INFO
-                    )
-                else:
-                    self.message_user(
-                        request,
-                        f"User created with {'auto-generated' if auto_generate else 'manual'} password.",
-                        level=messages.SUCCESS
-                    )
+                    if role in [User.Role.TEACHER, User.Role.STUDENT]:
+                        self.message_user(
+                            request,
+                            f"User created with school email: {obj.email}. "
+                            f"Credentials not sent - no personal email provided.",
+                            level=messages.INFO
+                        )
+                    else:
+                        self.message_user(
+                            request,
+                            f"User created with {'auto-generated' if auto_generate else 'manual'} password.",
+                            level=messages.SUCCESS
+                        )
         else:
             # Updating existing user
             super().save_model(request, obj, form, change)
@@ -868,6 +907,26 @@ class ActivityReminderAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
 
+class IDCounterAdmin(admin.ModelAdmin):
+    """Admin view for ID counters (read-only for audit purposes)."""
+    list_display = ("year", "id_type", "prefix", "sequential", "last_id_display")
+    list_filter = ("year", "id_type")
+    readonly_fields = ("year", "id_type", "prefix", "sequential")
+
+    def last_id_display(self, obj):
+        """Display the last generated ID."""
+        return f"{obj.prefix}{obj.year}{obj.sequential:04d}"
+    last_id_display.short_description = "Last Generated ID"
+
+    def has_add_permission(self, request):
+        """Prevent manual creation via admin."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion via admin."""
+        return False
+
+
 # Register all models to the custom admin site
 # Enrollment category models
 admin_site.register(User, UserAdmin)
@@ -897,3 +956,4 @@ admin_site.register(Notification, NotificationAdmin)
 admin_site.register(PasswordResetRequest, PasswordResetRequestAdmin)
 admin_site.register(PushToken, PushTokenAdmin)
 admin_site.register(ActivityReminder, ActivityReminderAdmin)
+admin_site.register(IDCounter, IDCounterAdmin)
