@@ -3,122 +3,467 @@
 
 {% block extrastyle %}{{ block.super }}
 <style>
-/* Teacher Portal - Dark Blue Theme */
 :root {
-    --tp-primary:       #1565C0;
-    --tp-primary-light: #7CA4D4;
-    --tp-primary-dark:  #0D2A6E;
-    --tp-midnight:      #0D1B3E;
-    --tp-deep:          #112559;
-    --tp-frost:         #90BEF7;
-    --tp-azure:         #DBEAFE;
-    --tp-ghost:         #F0F4FF;
-    --tp-mist:          #C8D8F0;
-    --tp-slate:         #1A2F5A;
+  --tp-midnight:  #0D1B3E;
+  --tp-deep:      #112559;
+  --tp-navy:      #0D2A6E;
+  --tp-cobalt:    #0D47A1;
+  --tp-royal:     #1565C0;
+  --tp-sky:       #7CA4D4;
+  --tp-frost:     #90BEF7;
+  --tp-azure:     #DBEAFE;
+  --tp-mist:      #C8D8F0;
+  --tp-ice:       #E8F0FE;
+  --tp-ghost:     #F0F4FF;
+  --tp-slate:     #1A2F5A;
+  --tp-success:   #388E3C;
+  --tp-error-bg:  #FFEBEE;
+  --tp-valid-bg:  #E8F5E9;
 }
 
-/* Page background */
-body.change-list, body.change-form, body {
-    background-color: #F0F4FF;
-}
-
-/* Override admin colors with teacher portal theme */
+/* ── HEADER ── */
 #header {
-    background: #0D1B3E;
+  background: var(--tp-midnight);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 0 rgba(144,190,247,.12);
+}
+
+#site-name { margin: 0; font-size: 0; }
+
+#site-name a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+
+#user-tools {
+  font-size: 12px;
+  color: var(--tp-sky);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tp-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--tp-royal);
+  border: 2px solid rgba(255,255,255,.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.tp-username {
+  color: var(--tp-frost);
+  font-weight: 500;
+}
+
+#logout-form { display: inline; }
+
+#logout-form button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--tp-sky);
+  text-decoration: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+#logout-form button:hover { color: var(--tp-frost); }
+
+/* ── SECONDARY NAV (advisory banner repurposed) ── */
+.advisory-banner {
+  background: var(--tp-deep);
+  border-bottom: 1px solid rgba(144,190,247,.15);
+  padding: 0 24px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 12px;
+}
+
+.advisory-banner .tp-nav-link {
+  color: var(--tp-sky);
+  text-decoration: none;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  transition: color .15s;
+}
+
+.advisory-banner .tp-nav-link:hover,
+.advisory-banner .tp-nav-link.active {
+  color: var(--tp-frost);
+  border-bottom-color: var(--tp-royal);
+}
+
+.advisory-banner .tp-section-info {
+  margin-left: auto;
+  color: var(--tp-sky);
+  font-size: 11px;
+}
+
+.advisory-banner .tp-section-info strong { color: var(--tp-frost); }
+
+/* ── BREADCRUMBS ── */
+.breadcrumbs {
+  background: var(--tp-ghost);
+  border-bottom: 1px solid var(--tp-mist);
+  padding: 8px 24px;
+  font-size: 12px;
+  color: var(--tp-sky);
+}
+
+.breadcrumbs a { color: var(--tp-royal); text-decoration: none; }
+.breadcrumbs a:hover { color: var(--tp-navy); text-decoration: underline; }
+
+/* ── PAGE BODY ── */
+#content-main, #content {
+  background: var(--tp-ghost);
+  padding: 20px 24px;
+}
+
+/* ── CONTENT TITLE ── */
+#content h1, #content-main h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--tp-slate);
+  margin-bottom: 16px;
+}
+
+/* ── MODULE (card) ── */
+.module {
+  background: #fff;
+  border: 0.5px solid var(--tp-mist);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(13,27,62,.06);
+  margin-bottom: 16px;
 }
 
 .module h2, .module caption, .inline-group h2 {
-    background: var(--tp-primary);
+  background: var(--tp-royal);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 9px 14px;
+  border-radius: 8px 8px 0 0;
 }
 
-a:link, a:visited {
-    color: var(--tp-primary);
+/* ── LINKS ── */
+a:link, a:visited { color: var(--tp-royal); }
+a:hover { color: var(--tp-navy); }
+
+/* ── BUTTONS ── */
+.button, input[type='submit'], input[type='button'], .submit-row input, a.button {
+  background: var(--tp-royal) !important;
+  border: 1px solid var(--tp-cobalt) !important;
+  border-radius: 6px !important;
+  color: #fff !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 7px 14px !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  transition: background .15s !important;
 }
 
-a:hover {
-    color: var(--tp-primary-dark);
+.button:hover, input[type='submit']:hover, input[type='button']:hover, a.button:hover {
+  background: var(--tp-cobalt) !important;
+  color: #fff !important;
 }
 
-/* Buttons with visible white text */
-.button, input[type="submit"], input[type="button"], .submit-row input, a.button {
-    background: var(--tp-primary) !important;
-    border-color: var(--tp-primary-dark) !important;
-    color: #fff !important;
+.button.default, input[type='submit'].default {
+  background: var(--tp-navy) !important;
 }
 
-.button:hover, input[type="submit"]:hover, input[type="button"]:hover, a.button:hover {
-    background: var(--tp-primary-dark) !important;
-    color: #fff !important;
+/* ── FORM INPUTS ── */
+input[type='text'], input[type='email'], input[type='password'],
+input[type='number'], input[type='search'], select, textarea {
+  border: 1px solid var(--tp-mist);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--tp-slate);
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s;
 }
 
-.button.default, input[type="submit"].default {
-    background: var(--tp-primary) !important;
+input[type='text']:focus, input[type='email']:focus,
+input[type='password']:focus, select:focus, textarea:focus {
+  border-color: var(--tp-royal);
+  box-shadow: 0 0 0 3px rgba(21,101,192,.15);
+  outline: none;
 }
 
-/* Advisory context banner */
-.advisory-banner {
-    background: #112559;
-    border-bottom: 1px solid #1E3A6E;
-    padding: 10px 20px;
-    font-size: 14px;
-    color: #7CA4D4;
+/* ── TABLES ── */
+#result_list, table.results, .tp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
 }
 
-.advisory-banner strong {
-    color: #90BEF7;
+#result_list thead th, table.results thead th, .tp-table thead th {
+  background: var(--tp-ice);
+  color: var(--tp-navy);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--tp-mist);
+  white-space: nowrap;
 }
 
-/* Improved module styling */
-.module {
-    border-radius: 6px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(13, 27, 62, 0.12);
+#result_list tbody td, table.results tbody td, .tp-table tbody td {
+  padding: 10px 12px;
+  color: var(--tp-slate);
+  border-bottom: 0.5px solid var(--tp-ice);
+  vertical-align: middle;
 }
 
-.module h2 {
-    border-radius: 6px 6px 0 0;
+#result_list tbody tr:last-child td,
+table.results tbody tr:last-child td,
+.tp-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
-/* Table row hover with accent */
-tbody tr:hover {
-    background: #DBEAFE;
-    border-left: 3px solid var(--tp-primary);
+tbody tr:hover td {
+  background: #f0f8ff !important;
+  border-left: none !important;
 }
 
-/* Site name styling */
-#site-name {
-    font-weight: 600;
+/* ── STAT CARDS ── */
+.tp-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
-#site-name a {
-    color: white;
+.tp-stat-card {
+  background: #fff;
+  border: 0.5px solid var(--tp-mist);
+  border-radius: 8px;
+  padding: 14px 16px 12px;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Logout button in header */
-#logout-form button {
-    color: #fff !important;
-    text-decoration: underline;
+.tp-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--tp-royal);
+  border-radius: 8px 8px 0 0;
 }
 
-#logout-form button:hover {
-    color: #90BEF7 !important;
+.tp-stat-number {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--tp-navy);
+  line-height: 1;
+  margin-bottom: 4px;
 }
 
-/* User tools styling */
-#user-tools {
-    color: #fff;
+.tp-stat-label {
+  font-size: 11px;
+  color: var(--tp-sky);
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 
-.advisory-name {
-    color: #fff;
+/* ── ACTION BUTTONS ROW ── */
+.tp-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
 }
 
-/* Input focus styling */
-input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
-input[type="number"]:focus, input[type="search"]:focus, select:focus, textarea:focus {
-    border-color: var(--tp-primary);
-    box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.2);
+/* ── SEARCH TOOLBAR ── */
+.tp-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
 }
+
+.tp-search-wrap {
+  flex: 1 1 200px;
+  min-width: 180px;
+  max-width: 300px;
+  position: relative;
+}
+
+.tp-search-wrap input[type='text'],
+.tp-search-wrap input[type='search'] {
+  width: 100%;
+  padding-left: 30px;
+  box-sizing: border-box;
+}
+
+.tp-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tp-sky);
+  font-size: 14px;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.tp-toolbar select {
+  min-width: 100px;
+}
+
+/* ── ACTIVE / STATUS PILL ── */
+.tp-pill-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--tp-azure);
+  color: var(--tp-royal);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tp-pill-active::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--tp-royal);
+  flex-shrink: 0;
+}
+
+.tp-pill-inactive {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tp-pill-inactive::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* ── IRREGULAR BADGE ── */
+.tp-badge-irr {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  border: 0.5px solid #fcd34d;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+/* ── TABLE FOOTER / ROW COUNT ── */
+.tp-table-footer {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--tp-sky);
+  background: #f8faff;
+  border-top: 0.5px solid var(--tp-ice);
+  border-radius: 0 0 8px 8px;
+}
+
+/* ── CONTEXT BANNER (advisory info box on import pages) ── */
+.tp-context-banner {
+  background: var(--tp-ice);
+  border: 0.5px solid var(--tp-mist);
+  border-left: 3px solid var(--tp-royal);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--tp-slate);
+  margin-bottom: 16px;
+}
+
+.tp-context-banner strong { color: var(--tp-navy); }
+
+/* ── SUBMIT ROW ── */
+.submit-row {
+  background: var(--tp-ghost);
+  border-top: 1px solid var(--tp-mist);
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-radius: 0 0 8px 8px;
+}
+
+/* ── MESSAGES ── */
+ul.messagelist li {
+  border-radius: 6px;
+  margin-bottom: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+ul.messagelist li.success { background: #e8f5e9; color: #1b5e20; border-left: 3px solid #388e3c; }
+ul.messagelist li.warning { background: #fff8e1; color: #e65100; border-left: 3px solid #f59e0b; }
+ul.messagelist li.error   { background: #ffebee; color: #b71c1c; border-left: 3px solid #e53935; }
+
+/* ── PAGINATOR ── */
+.paginator {
+  background: var(--tp-ghost);
+  border-top: 1px solid var(--tp-mist);
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--tp-sky);
+}
+
+.paginator a { color: var(--tp-royal); }
+.paginator .this-page {
+  background: var(--tp-royal);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* ── VALIDATION TABLE ROWS (keep semantic) ── */
+tr.tp-row-error td  { background: #ffebee !important; }
+tr.tp-row-valid td  { background: #e8f5e9 !important; }
+tr.tp-row-warn  td  { background: #fff8e1 !important; }
 </style>
 {% endblock %}
 
@@ -128,10 +473,12 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus, textarea:f
 
 {% block userlinks %}
 {% if user.is_authenticated %}
-<span class="advisory-name">Welcome, {{ user.get_full_name }}</span> |
-<form id="logout-form" method="post" action="{% url 'teacher_portal:logout' %}" style="display: inline;">
-    {% csrf_token %}
-    <button type="submit">{% trans 'Log out' %}</button>
+<div class="tp-avatar" aria-hidden="true">{{ user.first_name|slice:':1'|upper }}{{ user.last_name|slice:':1'|upper }}</div>
+<span class="tp-username">{{ user.get_full_name }}</span>
+<span style="color:var(--tp-sky)">|</span>
+<form id="logout-form" method="post" action="{% url 'teacher_portal:logout' %}" style="display:inline">
+  {% csrf_token %}
+  <button type="submit">{% trans 'Log out' %}</button>
 </form>
 {% endif %}
 {% endblock %}
@@ -139,7 +486,13 @@ input[type="number"]:focus, input[type="search"]:focus, select:focus, textarea:f
 {% block breadcrumbs %}
 {% if teacher_advisory %}
 <div class="advisory-banner">
-    <strong>Advisory:</strong> {{ teacher_advisory.section.name }} | {{ teacher_advisory.school_year }}
+  <a href="{% url 'teacher_portal:index' %}" class="tp-nav-link {% block nav_dashboard_active %}{% endblock %}">Dashboard</a>
+  <a href="{% url 'teacher_portal:core_user_changelist' %}" class="tp-nav-link {% block nav_students_active %}{% endblock %}">My Students</a>
+  <a href="{% url 'teacher_portal:core_course_changelist' %}" class="tp-nav-link {% block nav_courses_active %}{% endblock %}">My Curriculum</a>
+  <a href="{% url 'teacher_portal:tp_sis_import_index' %}" class="tp-nav-link {% block nav_sis_active %}{% endblock %}">SIS Import</a>
+  <div class="tp-section-info">
+    <strong>{{ teacher_advisory.section.name }}</strong> &nbsp;·&nbsp; {{ teacher_advisory.school_year }}
+  </div>
 </div>
 {% endif %}
 {{ block.super }}

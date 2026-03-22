@@ -1,139 +1,116 @@
 {% extends "teacher_portal/base_site.html" %}
 {% load i18n %}
 
-{% block breadcrumbs %}
-<div class="breadcrumbs">
-<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
-&rsaquo; <a href="{% url 'teacher_portal:tp_sis_import_index' %}">{% trans 'SIS Import' %}</a>
-&rsaquo; Import Courses
-</div>
-{% endblock %}
+{% block nav_sis_active %}active{% endblock %}
 
 {% block content %}
 <h1>{{ title }}</h1>
 
 {% if teacher_advisory %}
-<div class="module" style="margin-bottom: 20px;">
-    <h2>Advisory Context</h2>
-    <div class="form-row" style="padding: 15px; background: #E8F0FE; border-radius: 4px; border-left: 3px solid #1565C0;">
-        <p style="margin: 0;">
-            <strong>Importing courses for advisory:</strong>
-            {{ teacher_advisory.section.name }} ({{ teacher_advisory.school_year }})
-        </p>
-        <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">
-            Note: Courses are school-wide resources. Import creates courses for the entire school's curriculum.
-        </p>
-    </div>
+<div class="tp-context-banner">
+  <strong>Importing courses for advisory:</strong> {{ teacher_advisory.section.name }} ({{ teacher_advisory.school_year }})
+  <br><span style="font-size:12px;color:var(--tp-sky)">Note: Courses are school-wide resources. Import creates courses for the entire school's curriculum.</span>
 </div>
 
 {% if step == 'upload' %}
 <div class="module">
-    <h2>Upload Course CSV</h2>
-    <div style="padding: 15px;">
-        <p><strong>Required columns:</strong> {{ required_headers|join:", " }}</p>
-        <p><strong>Optional columns:</strong> {{ optional_headers|join:", " }}</p>
-
-        <p style="margin-top: 20px;">
-            <a href="{% url 'teacher_portal:tp_sis_template_courses' %}" class="button">
-                Download Template CSV
-            </a>
-        </p>
-    </div>
+  <h2>Upload Course CSV</h2>
+  <div style="padding:15px">
+    <p><strong>Required columns:</strong> {{ required_headers|join:", " }}</p>
+    <p><strong>Optional columns:</strong> {{ optional_headers|join:", " }}</p>
+    <p style="margin-top:20px">
+      <a href="{% url 'teacher_portal:tp_sis_template_courses' %}" class="button">Download Template CSV</a>
+    </p>
+  </div>
 </div>
 
-<form method="post" enctype="multipart/form-data" style="margin-top: 20px;">
-    {% csrf_token %}
-    <div class="module">
-        <h2>Select File</h2>
-        <div style="padding: 15px;">
-            {{ form.as_p }}
-        </div>
-    </div>
-    <div class="submit-row" style="padding: 15px;">
-        <input type="hidden" name="action" value="validate">
-        <input type="submit" value="Validate CSV" class="default">
-    </div>
+<form method="post" enctype="multipart/form-data" style="margin-top:20px">
+  {% csrf_token %}
+  <div class="module">
+    <h2>Select File</h2>
+    <div style="padding:15px">{{ form.as_p }}</div>
+  </div>
+  <div class="submit-row" style="padding:15px">
+    <input type="hidden" name="action" value="validate">
+    <input type="submit" value="Validate CSV" class="default">
+  </div>
 </form>
 
 {% elif step == 'preview' %}
 <div class="module">
-    <h2>Validation Results</h2>
-    <div style="padding: 15px;">
-        {% if validation_result.is_valid %}
-        <p style="color: #388E3C;"><strong>All rows valid!</strong> Ready to import.</p>
-        {% else %}
-        <p style="color: red;"><strong>{{ validation_result.error_count }} error(s) found.</strong></p>
-        {% endif %}
+  <h2>Validation Results</h2>
+  <div style="padding:15px">
+    {% if validation_result.is_valid %}
+    <p style="color:var(--tp-success);font-weight:600"><strong>All rows valid!</strong> Ready to import.</p>
+    {% else %}
+    <p style="color:red"><strong>{{ validation_result.error_count }} error(s) found.</strong></p>
+    {% endif %}
 
-        {% if validation_result.warning_count > 0 %}
-        <p style="color: orange;"><strong>{{ validation_result.warning_count }} warning(s).</strong></p>
-        {% endif %}
+    {% if validation_result.warning_count > 0 %}
+    <p style="color:orange"><strong>{{ validation_result.warning_count }} warning(s).</strong></p>
+    {% endif %}
 
-        <h3 style="margin-top: 20px;">Row Details</h3>
-        <table style="width: 100%;">
-            <thead>
-                <tr>
-                    <th>Row</th>
-                    <th>Status</th>
-                    <th>Message</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for row in validation_result.rows %}
-                <tr{% if row.action == 'error' %} style="background: #ffebee;"{% elif row.action == 'valid' %} style="background: #e8f5e9;"{% endif %}>
-                    <td>{{ row.row_number }}</td>
-                    <td>{{ row.action|upper }}</td>
-                    <td>{{ row.message }}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    <h3 style="margin-top:20px">Row Details</h3>
+    <table class="tp-table">
+      <thead>
+        <tr><th>Row</th><th>Status</th><th>Message</th></tr>
+      </thead>
+      <tbody>
+      {% for row in validation_result.rows %}
+        <tr{% if row.action == 'error' %} style="background:#ffebee"{% elif row.action == 'valid' %} style="background:#e8f5e9"{% endif %}>
+          <td>{{ row.row_number }}</td>
+          <td>{{ row.action|upper }}</td>
+          <td>{{ row.message }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 {% if validation_result.is_valid %}
 <form method="post">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="import">
-    <div class="submit-row" style="padding: 15px;">
-        <input type="submit" value="Confirm Import" class="default">
-        <a href="{% url 'teacher_portal:tp_sis_import_courses' %}" class="button">Cancel</a>
-    </div>
+  {% csrf_token %}
+  <input type="hidden" name="action" value="import">
+  <div class="submit-row" style="padding:15px">
+    <input type="submit" value="Confirm Import" class="default">
+    <a href="{% url 'teacher_portal:tp_sis_import_courses' %}" class="button">Cancel</a>
+  </div>
 </form>
 {% else %}
-<p style="margin-top: 20px;">
-    <a href="{% url 'teacher_portal:tp_sis_import_courses' %}" class="button">Upload New File</a>
+<p style="margin-top:20px">
+  <a href="{% url 'teacher_portal:tp_sis_import_courses' %}" class="button">Upload New File</a>
 </p>
 {% endif %}
 
 {% elif step == 'result' %}
 <div class="module">
-    <h2>Import Results</h2>
-    <div style="padding: 15px;">
-        <p>{{ result.message }}</p>
+  <h2>Import Results</h2>
+  <div style="padding:15px">
+    <p>{{ result.message }}</p>
 
-        {% if result.created_count > 0 %}
-        <h3 style="color: #388E3C; margin-top: 15px;">Created ({{ result.created_count }})</h3>
-        <ul>
-        {% for row in result.created %}
-            <li>{{ row.message }}</li>
-        {% endfor %}
-        </ul>
-        {% endif %}
+    {% if result.created_count > 0 %}
+    <h3 style="color:var(--tp-success);font-weight:600;margin-top:15px">Created ({{ result.created_count }})</h3>
+    <ul>
+    {% for row in result.created %}
+      <li>{{ row.message }}</li>
+    {% endfor %}
+    </ul>
+    {% endif %}
 
-        {% if result.failed_count > 0 %}
-        <h3 style="color: red; margin-top: 15px;">Failed ({{ result.failed_count }})</h3>
-        <ul>
-        {% for row in result.failed %}
-            <li>{{ row.message }}</li>
-        {% endfor %}
-        </ul>
-        {% endif %}
-    </div>
+    {% if result.failed_count > 0 %}
+    <h3 style="color:red;margin-top:15px">Failed ({{ result.failed_count }})</h3>
+    <ul>
+    {% for row in result.failed %}
+      <li>{{ row.message }}</li>
+    {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
 </div>
 
-<p style="margin-top: 20px;">
-    <a href="{% url 'teacher_portal:tp_sis_import_index' %}" class="button">Back to SIS Import</a>
+<p style="margin-top:20px">
+  <a href="{% url 'teacher_portal:tp_sis_import_index' %}" class="button">Back to SIS Import</a>
 </p>
 {% endif %}
 

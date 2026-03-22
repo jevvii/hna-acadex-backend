@@ -1,49 +1,33 @@
 {% extends "teacher_portal/base_site.html" %}
 {% load i18n %}
 
-{% block breadcrumbs %}
-<div class="breadcrumbs">
-<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
-&rsaquo; <a href="{% url 'teacher_portal:tp_sis_import_index' %}">{% trans 'SIS Import' %}</a>
-</div>
-{% endblock %}
+{% block nav_sis_active %}active{% endblock %}
 
 {% block content %}
 <h1>{{ title }}</h1>
 
 {% if teacher_advisory %}
-<div class="module" style="margin-bottom: 20px;">
-    <h2>Advisory Context</h2>
-    <div class="form-row" style="padding: 15px; background: #E8F0FE; border-radius: 4px; border-left: 3px solid #1565C0;">
-        <p style="margin: 0;">
-            <strong>Importing for advisory:</strong>
-            {{ teacher_advisory.section.name }} ({{ teacher_advisory.school_year }})
-        </p>
+<div class="tp-context-banner">
+  <strong>Importing for advisory:</strong> {{ teacher_advisory.section.name }} &nbsp;·&nbsp; {{ teacher_advisory.school_year }}
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:20px">
+  {% for import_type in import_types %}
+  <a href="{% url import_type.url_name %}" style="text-decoration:none">
+    <div class="module" style="cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(21,101,192,.18)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(13,27,62,.06)'">
+      <div style="padding:20px">
+        <div style="font-size:15px;font-weight:600;color:var(--tp-navy);margin-bottom:6px">{{ import_type.name }}</div>
+        <div style="font-size:12px;color:var(--tp-sky);line-height:1.5">{{ import_type.description }}</div>
+        <div style="margin-top:14px">
+          <span class="button" style="font-size:11px!important;padding:5px 12px!important">Import {{ import_type.name }}</span>
+        </div>
+      </div>
     </div>
+  </a>
+  {% endfor %}
 </div>
 
-<div class="module">
-    <h2>Available Import Types</h2>
-    <table style="width: 100%;">
-        <tbody>
-        {% for import_type in import_types %}
-        <tr>
-            <td style="padding: 15px; width: 50%;">
-                <h3 style="margin: 0;">{{ import_type.name }}</h3>
-                <p style="margin: 5px 0; color: #666;">{{ import_type.description }}</p>
-            </td>
-            <td style="padding: 15px; text-align: right;">
-                <a href="{% url import_type.url_name %}" class="button">Import {{ import_type.name }}</a>
-            </td>
-        </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<p style="margin-top: 20px;">
-    <a href="{% url 'teacher_portal:index' %}" class="button">Back to Dashboard</a>
-</p>
+<a href="{% url 'teacher_portal:index' %}" class="button" style="background:var(--tp-ghost)!important;color:var(--tp-royal)!important;border-color:var(--tp-mist)!important">← Back to Dashboard</a>
 {% else %}
 {% include "teacher_portal/assign_advisory_error.html" %}
 {% endif %}

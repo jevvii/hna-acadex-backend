@@ -5,42 +5,86 @@
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'admin/css/login.css' %}">
 <style>
-/* Teacher Portal Login - Dark Blue Theme */
 :root {
-    --tp-primary:      #1565C0;
-    --tp-primary-light:#7CA4D4;
-    --tp-primary-dark: #0D2A6E;
+  --tp-midnight: #0D1B3E;
+  --tp-royal:    #1565C0;
+  --tp-cobalt:   #0D47A1;
+  --tp-sky:      #7CA4D4;
+  --tp-frost:    #90BEF7;
+  --tp-mist:     #C8D8F0;
+  --tp-ice:      #E8F0FE;
+  --tp-ghost:    #F0F4FF;
+  --tp-slate:    #1A2F5A;
+}
+
+body.login {
+  background: var(--tp-ghost);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
 }
 
 #header {
-    background: #0D1B3E;
+  background: var(--tp-midnight);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
 }
 
-.module h2 {
-    background: var(--tp-primary);
+#site-name a { color: #fff; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+
+#content-main { max-width: 400px; margin: 0 auto; padding: 32px 0; }
+
+.module { background: #fff; border: 0.5px solid var(--tp-mist); border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(13,27,62,.1); }
+
+.module h2 { background: var(--tp-royal); color: #fff; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 12px 20px; }
+
+.form-row { padding: 16px 20px 0; }
+
+label { font-size: 13px; color: var(--tp-slate); font-weight: 500; display: block; margin-bottom: 4px; }
+
+input[type='text'], input[type='email'], input[type='password'] {
+  width: 100%;
+  border: 1px solid var(--tp-mist);
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: var(--tp-slate);
+  background: #fff;
 }
 
-a:link, a:visited {
-    color: var(--tp-primary);
+input[type='text']:focus, input[type='email']:focus, input[type='password']:focus {
+  border-color: var(--tp-royal);
+  box-shadow: 0 0 0 3px rgba(21,101,192,.15);
+  outline: none;
 }
 
-a:hover {
-    color: var(--tp-primary-dark);
+.submit-row { padding: 16px 20px; }
+
+input[type='submit'] {
+  width: 100%;
+  background: var(--tp-royal);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 11px;
+  cursor: pointer;
+  letter-spacing: .01em;
 }
 
-.button, input[type="submit"], input[type="button"], .submit-row input {
-    background: var(--tp-primary);
-    border-color: var(--tp-primary-dark);
-}
+input[type='submit']:hover { background: var(--tp-cobalt); }
 
-.button:hover, input[type="submit"]:hover, input[type="button"]:hover {
-    background: var(--tp-primary-dark);
-}
+a:link, a:visited { color: var(--tp-royal); }
+a:hover { color: var(--tp-cobalt); }
 
-input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
-    border-color: var(--tp-primary);
-    box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.2);
-}
+.errornote { background: #ffebee; color: #b71c1c; border-left: 3px solid #e53935; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+
+.tp-login-footer { text-align: center; margin-top: 16px; font-size: 12px; color: var(--tp-sky); }
+.tp-login-footer a { color: var(--tp-royal); }
 </style>
 {{ form.media }}
 {% endblock %}
@@ -63,44 +107,37 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
 
 {% block content %}
 {% if form.errors and not form.non_field_errors %}
-<p class="errornote">
-{% if form.errors.items|length == 1 %}{% translate "Please correct the error below." %}{% else %}{% translate "Please correct the errors below." %}{% endif %}
-</p>
+<p class="errornote">{% if form.errors.items|length == 1 %}{% translate "Please correct the error below." %}{% else %}{% translate "Please correct the errors below." %}{% endif %}</p>
 {% endif %}
-
-{% if form.non_field_errors %}
 {% for error in form.non_field_errors %}
 <p class="errornote">{{ error }}</p>
 {% endfor %}
-{% endif %}
 
 <div id="content-main">
 {% if user.is_authenticated %}
-<p class="errornote">
-{% blocktranslate trimmed %}
-    You are authenticated as {{ username }}, but are not authorized to
-    access this page. Would you like to login to a different account?
-{% endblocktranslate %}
-</p>
+<p class="errornote">{% blocktranslate trimmed %}You are authenticated as {{ username }}, but are not authorized to access this page. Would you like to login to a different account?{% endblocktranslate %}</p>
 {% endif %}
 
-<form action="{{ app_path }}" method="post" id="login-form">{% csrf_token %}
-  <div class="form-row">
-    {{ form.username.errors }}
-    {{ form.username.label_tag }} {{ form.username }}
-  </div>
-  <div class="form-row">
-    {{ form.password.errors }}
-    {{ form.password.label_tag }} {{ form.password }}
-    <input type="hidden" name="next" value="{{ next }}">
-  </div>
-  <div class="submit-row">
-    <input type="submit" value="{% translate 'Log in' %}">
-  </div>
-</form>
+<div class="module">
+  <h2>Teacher Portal Login</h2>
+  <form action="{{ app_path }}" method="post" id="login-form">{% csrf_token %}
+    <div class="form-row">
+      {{ form.username.errors }}
+      {{ form.username.label_tag }} {{ form.username }}
+    </div>
+    <div class="form-row" style="padding-bottom:4px">
+      {{ form.password.errors }}
+      {{ form.password.label_tag }} {{ form.password }}
+      <input type="hidden" name="next" value="{{ next }}">
+    </div>
+    <div class="submit-row">
+      <input type="submit" value="{% translate 'Log in' %}">
+    </div>
+  </form>
 </div>
 
-<div style="text-align: center; margin-top: 1rem;">
-    <a href="/" style="color: #1565C0;">← Back to Home</a>
+<div class="tp-login-footer">
+  <a href="/">← Back to Portal Home</a>
+</div>
 </div>
 {% endblock %}

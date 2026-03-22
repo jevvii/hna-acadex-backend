@@ -10,20 +10,12 @@
 
 {% block content %}
 <h1>Advisory Setup Required</h1>
-
 <div class="module">
-    <div style="padding: 20px;">
-        <p style="font-size: 16px; color: #666; margin-bottom: 12px;">
-            You need to have an active advisory section assigned to access the Teacher Portal.
-        </p>
-        <p style="font-size: 14px; color: #888;">
-            Please contact your school administrator to have an advisory section assigned to you.
-        </p>
-    </div>
-</div>
-
-<div style="margin-top: 20px;">
-    <a href="{% url 'teacher_portal:index' %}" class="button" style="color: #fff;">Return to Dashboard</a>
-    <a href="/" style="margin-left: 10px; color: #1565C0;">← Back to Home</a>
+  <div style="padding:32px;text-align:center">
+    <div style="font-size:40px;margin-bottom:16px;opacity:.3">&#128274;</div>
+    <p style="font-size:15px;color:var(--tp-slate);font-weight:500;margin-bottom:8px">No advisory section assigned</p>
+    <p style="font-size:13px;color:var(--tp-sky);margin-bottom:24px">Please contact your school administrator to have an advisory section assigned to your account.</p>
+    <a href="/" class="button" style="background:var(--tp-ghost)!important;color:var(--tp-royal)!important;border-color:var(--tp-mist)!important">← Back to Portal Home</a>
+  </div>
 </div>
 {% endblock %}

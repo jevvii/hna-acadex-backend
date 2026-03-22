@@ -1,132 +1,118 @@
 {% extends "teacher_portal/base_site.html" %}
 {% load i18n admin_urls %}
 
-{% block breadcrumbs %}
-<div class="breadcrumbs">
-<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
-</div>
-{% endblock %}
+{% block nav_dashboard_active %}active{% endblock %}
 
 {% block content %}
-<h1>{{ title }}</h1>
-
 {% if teacher_advisory %}
-{# Stats Cards Row #}
-<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
-    <div class="module" style="padding: 15px; text-align: center;">
-        <div style="font-size: 24px; font-weight: bold; color: var(--tp-primary, #1565C0);">{{ total_enrollments }}</div>
-        <div style="color: #666;">Total Enrollments</div>
-    </div>
-    <div class="module" style="padding: 15px; text-align: center;">
-        <div style="font-size: 24px; font-weight: bold; color: var(--tp-primary, #1565C0);">{{ total_students }}</div>
-        <div style="color: #666;">Total Students</div>
-    </div>
-    <div class="module" style="padding: 15px; text-align: center;">
-        <div style="font-size: 24px; font-weight: bold; color: var(--tp-primary, #1565C0);">{{ irregular_students }}</div>
-        <div style="color: #666;">Irregular Students</div>
-    </div>
-    <div class="module" style="padding: 15px; text-align: center;">
-        <div style="font-size: 24px; font-weight: bold; color: var(--tp-primary, #1565C0);">{{ active_enrollments }}</div>
-        <div style="color: #666;">Active Enrollments</div>
-    </div>
+
+<div class="tp-stat-grid">
+  <div class="tp-stat-card">
+    <div class="tp-stat-number">{{ total_enrollments }}</div>
+    <div class="tp-stat-label">Total Enrollments</div>
+  </div>
+  <div class="tp-stat-card">
+    <div class="tp-stat-number">{{ total_students }}</div>
+    <div class="tp-stat-label">Total Students</div>
+  </div>
+  <div class="tp-stat-card">
+    <div class="tp-stat-number">{{ irregular_students }}</div>
+    <div class="tp-stat-label">Irregular Students</div>
+  </div>
+  <div class="tp-stat-card">
+    <div class="tp-stat-number">{{ active_enrollments }}</div>
+    <div class="tp-stat-label">Active Enrollments</div>
+  </div>
 </div>
 
-{# Quick Action Buttons #}
-<div style="margin-bottom: 20px;">
-    <a href="{% url 'teacher_portal:core_user_add' %}" class="button">+ Add Student</a>
-    <a href="{% url 'teacher_portal:core_course_add' %}" class="button" style="margin-left: 10px;">+ Add Course</a>
-    <a href="{% url 'teacher_portal:core_enrollment_add' %}" class="button" style="margin-left: 10px;">+ Enroll Student</a>
+<div class="tp-actions">
+  <a href="{% url 'teacher_portal:core_user_add' %}" class="button">+ Add Student</a>
+  <a href="{% url 'teacher_portal:core_course_add' %}" class="button">+ Add Course</a>
+  <a href="{% url 'teacher_portal:core_enrollment_add' %}" class="button" style="background:var(--tp-ghost)!important;color:var(--tp-royal)!important;border-color:var(--tp-mist)!important">+ Enroll Student</a>
 </div>
 
-{# Search and Filter Bar #}
-<form method="get" style="margin-bottom: 20px;">
-    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-        <input type="text" name="q" value="{{ search_query }}" placeholder="Search by name, email, or ID" style="flex: 1; min-width: 200px; padding: 8px;">
-        <select name="course" style="padding: 8px;">
-            <option value="">All Courses</option>
-            {% for code in available_courses %}
-            <option value="{{ code }}" {% if current_filters.course == code %}selected{% endif %}>{{ code }}</option>
-            {% endfor %}
-        </select>
-        <select name="active" style="padding: 8px;">
-            <option value="">All Status</option>
-            <option value="true" {% if current_filters.active == 'true' %}selected{% endif %}>Active</option>
-            <option value="false" {% if current_filters.active == 'false' %}selected{% endif %}>Inactive</option>
-        </select>
-        <select name="irregular" style="padding: 8px;">
-            <option value="">All Students</option>
-            <option value="true" {% if current_filters.irregular == 'true' %}selected{% endif %}>Irregular</option>
-            <option value="false" {% if current_filters.irregular == 'false' %}selected{% endif %}>Regular</option>
-        </select>
-        <input type="submit" value="Search" class="button">
-    </div>
+<form method="get" class="tp-toolbar">
+  <div class="tp-search-wrap">
+    <span class="tp-search-icon">&#9906;</span>
+    <input type="text" name="q" value="{{ search_query|default:'' }}" placeholder="Search by name, email, or ID">
+  </div>
+  <select name="course">
+    <option value="">All Courses</option>
+    {% for code in available_courses %}
+    <option value="{{ code }}" {% if current_filters.course == code %}selected{% endif %}>{{ code }}</option>
+    {% endfor %}
+  </select>
+  <select name="active">
+    <option value="">All Status</option>
+    <option value="true" {% if current_filters.active == 'true' %}selected{% endif %}>Active</option>
+    <option value="false" {% if current_filters.active == 'false' %}selected{% endif %}>Inactive</option>
+  </select>
+  <select name="irregular">
+    <option value="">All Students</option>
+    <option value="false" {% if current_filters.irregular == 'false' %}selected{% endif %}>Regular</option>
+    <option value="true" {% if current_filters.irregular == 'true' %}selected{% endif %}>Irregular</option>
+  </select>
+  <input type="submit" value="Search" class="button">
 </form>
 
-{# Enrollment Table #}
-{% if enrollments %}
 <div class="module">
-    <table class="results">
-        <thead>
-            <tr>
-                <th>STUDENT</th>
-                <th>CLASS OFFERING</th>
-                <th>FINAL GRADE</th>
-                <th>IS ACTIVE</th>
-                <th>ENROLLED AT</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for enrollment in enrollments %}
-            <tr>
-                <td>
-                    <a href="{% url 'teacher_portal:core_enrollment_change' enrollment.id %}">
-                        {{ enrollment.student.last_name }}, {{ enrollment.student.first_name }}
-                    </a>
-                </td>
-                <td>{{ enrollment.course_section }}</td>
-                <td>
-                    {% if enrollment.manual_final_grade %}
-                        {{ enrollment.manual_final_grade|floatformat:2 }}% (Manual)
-                    {% elif enrollment.final_grade %}
-                        {{ enrollment.final_grade|floatformat:2 }}%
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td>
-                    {% if enrollment.is_active %}
-                        <span style="color: green;">✓</span>
-                    {% else %}
-                        <span style="color: #999;">✗</span>
-                    {% endif %}
-                </td>
-                <td>{{ enrollment.enrolled_at|date:"N j, Y, g:i a" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+  <table class="tp-table">
+    <thead>
+      <tr>
+        <th>Student</th>
+        <th>Class Offering</th>
+        <th>Final Grade</th>
+        <th>Status</th>
+        <th>Enrolled At</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for enrollment in enrollments %}
+      <tr>
+        <td>
+          <a href="{% url 'teacher_portal:core_enrollment_change' enrollment.pk %}">
+            {{ enrollment.student.last_name }}, {{ enrollment.student.first_name }}
+          </a>
+          {% if enrollment.student.is_irregular %}
+          <span class="tp-badge-irr">IRR</span>
+          {% endif %}
+        </td>
+        <td style="color:var(--tp-sky)">{{ enrollment.course_section }}</td>
+        <td style="font-weight:600;color:var(--tp-navy)">
+          {% if enrollment.manual_final_grade %}{{ enrollment.manual_final_grade|floatformat:2 }}% <small style='color:var(--tp-sky);font-weight:400'>(Manual)</small>
+          {% elif enrollment.final_grade %}{{ enrollment.final_grade|floatformat:2 }}%
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if enrollment.is_active %}
+          <span class="tp-pill-active">Active</span>
+          {% else %}
+          <span class="tp-pill-inactive">Inactive</span>
+          {% endif %}
+        </td>
+        <td style="color:var(--tp-sky);font-size:12px">{{ enrollment.enrolled_at|date:'N j, Y, g:i a' }}</td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td colspan="5" style="text-align:center;padding:32px;color:var(--tp-sky)">
+          No enrollments found.
+          {% if search_query or current_filters.course or current_filters.active or current_filters.irregular %}
+          <a href="{% url 'teacher_portal:index' %}" style="margin-left:8px">Clear filters</a>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="tp-table-footer">{{ total_enrollments }} Student Enrollment{{ total_enrollments|pluralize }}</div>
 </div>
-
-<p style="color: #666; margin-top: 10px;">
-    {{ total_enrollments }} Student Enrollment{{ total_enrollments|pluralize }}
-</p>
 
 {% else %}
 <div class="module">
-    <p style="padding: 20px; color: #666;">
-        No enrollments found for your advisory section.
-        Use the Quick Actions above to get started.
-    </p>
-</div>
-{% endif %}
-
-{% else %}
-<div class="module">
-    <h2>No Advisory Assigned</h2>
-    <div class="form-row" style="padding: 15px;">
-        <p>You do not have an active advisory section assigned.</p>
-        <p>Please contact your school administrator to have an advisory section assigned to you.</p>
-    </div>
+  <div style="padding:32px;text-align:center">
+    <p style="font-size:15px;color:var(--tp-sky);margin-bottom:10px">No advisory section assigned.</p>
+    <p style="font-size:13px;color:var(--tp-sky)">Contact your administrator to be assigned an advisory section.</p>
+  </div>
 </div>
 {% endif %}
 {% endblock %}
