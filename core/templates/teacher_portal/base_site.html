@@ -27,17 +27,20 @@ a:hover {
     color: var(--teacher-primary-dark);
 }
 
+/* Buttons with visible white text */
 .button, input[type="submit"], input[type="button"], .submit-row input, a.button {
-    background: var(--teacher-primary);
-    border-color: var(--teacher-primary-dark);
+    background: var(--teacher-primary) !important;
+    border-color: var(--teacher-primary-dark) !important;
+    color: #fff !important;
 }
 
-.button:hover, input[type="submit"]:hover, input[type="button"]:hover {
-    background: var(--teacher-primary-dark);
+.button:hover, input[type="submit"]:hover, input[type="button"]:hover, a.button:hover {
+    background: var(--teacher-primary-dark) !important;
+    color: #fff !important;
 }
 
 .button.default, input[type="submit"].default {
-    background: var(--teacher-primary);
+    background: var(--teacher-primary) !important;
 }
 
 /* Advisory context banner */
@@ -78,6 +81,25 @@ tbody tr:hover {
 #site-name a {
     color: white;
 }
+
+/* Logout button in header */
+#logout-form button {
+    color: #fff !important;
+    text-decoration: underline;
+}
+
+#logout-form button:hover {
+    color: #c8e6c9 !important;
+}
+
+/* User tools styling */
+#user-tools {
+    color: #fff;
+}
+
+.advisory-name {
+    color: #fff;
+}
 </style>
 {% endblock %}
 
@@ -88,7 +110,10 @@ tbody tr:hover {
 {% block userlinks %}
 {% if user.is_authenticated %}
 <span class="advisory-name">Welcome, {{ user.get_full_name }}</span> |
-<a href="{% url 'admin:logout' %}">{% trans 'Log out' %}</a>
+<form id="logout-form" method="post" action="{% url 'teacher_portal:logout' %}" style="display: inline;">
+    {% csrf_token %}
+    <button type="submit">{% trans 'Log out' %}</button>
+</form>
 {% endif %}
 {% endblock %}
 

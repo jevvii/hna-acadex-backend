@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.db.models import Q
 
 from core.models import TeacherAdvisory, User, Section, CourseSection, Enrollment, CourseSectionGroup
+from .site import teacher_portal_site
 
 
 def get_teacher_advisory(user):
@@ -35,20 +36,42 @@ def get_teacher_advisory(user):
     ).select_related('section').first()
 
 
+def get_context(request, **kwargs):
+    """
+    Get base context for teacher portal templates.
+
+    Includes admin site context (has_permission, site_header, etc.)
+    and any additional kwargs.
+
+    Args:
+        request: HttpRequest
+        **kwargs: Additional context variables
+
+    Returns:
+        dict: Context dictionary
+    """
+    context = teacher_portal_site.each_context(request)
+    context.update(kwargs)
+    return context
+
+
+def render_no_advisory(request):
+    """Render the 'no advisory assigned' error page."""
+    context = get_context(request, title='No Advisory Assigned')
+    return render(request, 'teacher_portal/assign_advisory_error.html', context)
+
+
 def dashboard(request):
     """Teacher portal dashboard view."""
     advisory = get_teacher_advisory(request.user)
 
     if not advisory:
-        # Redirect to 'no advisory' page
-        return render(request, 'teacher_portal/assign_advisory_error.html', {
-            'title': 'No Advisory Assigned',
-        })
+        return render_no_advisory(request)
 
-    context = {
-        'title': 'Advisory Dashboard',
-        'teacher_advisory': advisory,
-    }
+    context = get_context(request,
+        title='Advisory Dashboard',
+        teacher_advisory=advisory,
+    )
     return render(request, 'teacher_portal/index.html', context)
 
 
@@ -57,14 +80,12 @@ def sis_import_index(request):
     advisory = get_teacher_advisory(request.user)
 
     if not advisory:
-        return render(request, 'teacher_portal/assign_advisory_error.html', {
-            'title': 'No Advisory Assigned',
-        })
+        return render_no_advisory(request)
 
-    context = {
-        'title': 'SIS Import',
-        'teacher_advisory': advisory,
-        'import_types': [
+    context = get_context(request,
+        title='SIS Import',
+        teacher_advisory=advisory,
+        import_types=[
             {
                 'name': 'Students',
                 'description': 'Import students into your advisory section',
@@ -84,7 +105,7 @@ def sis_import_index(request):
                 'icon': 'book',
             },
         ],
-    }
+    )
     return render(request, 'teacher_portal/sis_import/index.html', context)
 
 
@@ -95,9 +116,7 @@ def sis_import_users(request):
     advisory = get_teacher_advisory(request.user)
 
     if not advisory:
-        return render(request, 'teacher_portal/assign_advisory_error.html', {
-            'title': 'No Advisory Assigned',
-        })
+        return render_no_advisory(request)
 
     processor = TeacherScopedUserCSVProcessor(
         advisory_section_name=advisory.section.name,
@@ -130,12 +149,12 @@ def sis_import_users(request):
             else:
                 messages.error(request, result.message)
 
-            context = {
-                'title': 'Import Students - Result',
-                'result': result,
-                'teacher_advisory': advisory,
-                'step': 'result',
-            }
+            context = get_context(request,
+                title='Import Students - Result',
+                result=result,
+                teacher_advisory=advisory,
+                step='result',
+            )
             return render(request, 'teacher_portal/sis_import/import_users.html', context)
 
         else:  # action == 'validate'
@@ -158,26 +177,26 @@ def sis_import_users(request):
                 csv_file.seek(0)
                 validation_result = processor.validate_all(csv_file)
 
-                context = {
-                    'title': 'Import Students - Preview',
-                    'form': form,
-                    'validation_result': validation_result,
-                    'teacher_advisory': advisory,
-                    'step': 'preview',
-                }
+                context = get_context(request,
+                    title='Import Students - Preview',
+                    form=form,
+                    validation_result=validation_result,
+                    teacher_advisory=advisory,
+                    step='preview',
+                )
                 return render(request, 'teacher_portal/sis_import/import_users.html', context)
     else:
         from .sis_import.forms import SISImportForm
         form = SISImportForm()
 
-    context = {
-        'title': 'Import Students',
-        'form': form,
-        'teacher_advisory': advisory,
-        'required_headers': processor.required_headers,
-        'optional_headers': processor.optional_headers,
-        'step': 'upload',
-    }
+    context = get_context(request,
+        title='Import Students',
+        form=form,
+        teacher_advisory=advisory,
+        required_headers=processor.required_headers,
+        optional_headers=processor.optional_headers,
+        step='upload',
+    )
     return render(request, 'teacher_portal/sis_import/import_users.html', context)
 
 
@@ -188,9 +207,7 @@ def sis_import_enrollments(request):
     advisory = get_teacher_advisory(request.user)
 
     if not advisory:
-        return render(request, 'teacher_portal/assign_advisory_error.html', {
-            'title': 'No Advisory Assigned',
-        })
+        return render_no_advisory(request)
 
     processor = TeacherScopedEnrollmentCSVProcessor(
         advisory_section=advisory.section,
@@ -219,12 +236,12 @@ def sis_import_enrollments(request):
             else:
                 messages.error(request, result.message)
 
-            context = {
-                'title': 'Import Enrollments - Result',
-                'result': result,
-                'teacher_advisory': advisory,
-                'step': 'result',
-            }
+            context = get_context(request,
+                title='Import Enrollments - Result',
+                result=result,
+                teacher_advisory=advisory,
+                step='result',
+            )
             return render(request, 'teacher_portal/sis_import/import_enrollments.html', context)
 
         else:  # action == 'validate'
@@ -244,26 +261,26 @@ def sis_import_enrollments(request):
                 csv_file.seek(0)
                 validation_result = processor.validate_all(csv_file)
 
-                context = {
-                    'title': 'Import Enrollments - Preview',
-                    'form': form,
-                    'validation_result': validation_result,
-                    'teacher_advisory': advisory,
-                    'step': 'preview',
-                }
+                context = get_context(request,
+                    title='Import Enrollments - Preview',
+                    form=form,
+                    validation_result=validation_result,
+                    teacher_advisory=advisory,
+                    step='preview',
+                )
                 return render(request, 'teacher_portal/sis_import/import_enrollments.html', context)
     else:
         from .sis_import.forms import SISImportForm
         form = SISImportForm()
 
-    context = {
-        'title': 'Import Enrollments',
-        'form': form,
-        'teacher_advisory': advisory,
-        'required_headers': processor.required_headers,
-        'optional_headers': processor.optional_headers,
-        'step': 'upload',
-    }
+    context = get_context(request,
+        title='Import Enrollments',
+        form=form,
+        teacher_advisory=advisory,
+        required_headers=processor.required_headers,
+        optional_headers=processor.optional_headers,
+        step='upload',
+    )
     return render(request, 'teacher_portal/sis_import/import_enrollments.html', context)
 
 
@@ -274,9 +291,7 @@ def sis_import_courses(request):
     advisory = get_teacher_advisory(request.user)
 
     if not advisory:
-        return render(request, 'teacher_portal/assign_advisory_error.html', {
-            'title': 'No Advisory Assigned',
-        })
+        return render_no_advisory(request)
 
     processor = TeacherScopedCourseCSVProcessor(
         advisory_section=advisory.section,
@@ -304,12 +319,12 @@ def sis_import_courses(request):
             else:
                 messages.error(request, result.message)
 
-            context = {
-                'title': 'Import Courses - Result',
-                'result': result,
-                'teacher_advisory': advisory,
-                'step': 'result',
-            }
+            context = get_context(request,
+                title='Import Courses - Result',
+                result=result,
+                teacher_advisory=advisory,
+                step='result',
+            )
             return render(request, 'teacher_portal/sis_import/import_courses.html', context)
 
         else:  # action == 'validate'
@@ -329,26 +344,26 @@ def sis_import_courses(request):
                 csv_file.seek(0)
                 validation_result = processor.validate_all(csv_file)
 
-                context = {
-                    'title': 'Import Courses - Preview',
-                    'form': form,
-                    'validation_result': validation_result,
-                    'teacher_advisory': advisory,
-                    'step': 'preview',
-                }
+                context = get_context(request,
+                    title='Import Courses - Preview',
+                    form=form,
+                    validation_result=validation_result,
+                    teacher_advisory=advisory,
+                    step='preview',
+                )
                 return render(request, 'teacher_portal/sis_import/import_courses.html', context)
     else:
         from .sis_import.forms import SISImportForm
         form = SISImportForm()
 
-    context = {
-        'title': 'Import Courses',
-        'form': form,
-        'teacher_advisory': advisory,
-        'required_headers': processor.required_headers,
-        'optional_headers': processor.optional_headers,
-        'step': 'upload',
-    }
+    context = get_context(request,
+        title='Import Courses',
+        form=form,
+        teacher_advisory=advisory,
+        required_headers=processor.required_headers,
+        optional_headers=processor.optional_headers,
+        step='upload',
+    )
     return render(request, 'teacher_portal/sis_import/import_courses.html', context)
 
 

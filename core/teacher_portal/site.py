@@ -11,6 +11,8 @@ from django.contrib.admin import AdminSite
 from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 
+from .forms import TeacherAuthenticationForm
+
 
 class TeacherPortalAdminSite(AdminSite):
     """
@@ -24,6 +26,8 @@ class TeacherPortalAdminSite(AdminSite):
     site_title = "Teacher Portal"
     index_title = "Advisory Dashboard"
     login_url = "/teacher-portal/login/"
+    login_template = "teacher_portal/login.html"
+    login_form = TeacherAuthenticationForm
 
     def has_permission(self, request):
         """
@@ -49,6 +53,10 @@ class TeacherPortalAdminSite(AdminSite):
         Returns empty list with redirect hint if teacher has no active TeacherAdvisory.
         """
         from core.models import TeacherAdvisory
+
+        # Return empty list for unauthenticated users
+        if not request.user.is_authenticated:
+            return []
 
         # Check if teacher has an active advisory assignment
         advisory = TeacherAdvisory.objects.filter(
@@ -107,17 +115,17 @@ class TeacherPortalAdminSite(AdminSite):
 
         urls = super().get_urls()
 
-        # Teacher portal specific URLs
+        # Teacher portal specific URLs (wrapped with admin_view for authentication)
         custom_urls = [
-            path('', teacher_portal_views.dashboard, name='index'),
-            path('sis-import/', teacher_portal_views.sis_import_index, name='tp_sis_import_index'),
-            path('sis-import/users/', teacher_portal_views.sis_import_users, name='tp_sis_import_users'),
-            path('sis-import/enrollments/', teacher_portal_views.sis_import_enrollments, name='tp_sis_import_enrollments'),
-            path('sis-import/courses/', teacher_portal_views.sis_import_courses, name='tp_sis_import_courses'),
+            path('', self.admin_view(teacher_portal_views.dashboard), name='index'),
+            path('sis-import/', self.admin_view(teacher_portal_views.sis_import_index), name='tp_sis_import_index'),
+            path('sis-import/users/', self.admin_view(teacher_portal_views.sis_import_users), name='tp_sis_import_users'),
+            path('sis-import/enrollments/', self.admin_view(teacher_portal_views.sis_import_enrollments), name='tp_sis_import_enrollments'),
+            path('sis-import/courses/', self.admin_view(teacher_portal_views.sis_import_courses), name='tp_sis_import_courses'),
             # Template download URLs
-            path('sis-import/template/users/', teacher_portal_views.download_users_template, name='tp_sis_template_users'),
-            path('sis-import/template/enrollments/', teacher_portal_views.download_enrollments_template, name='tp_sis_template_enrollments'),
-            path('sis-import/template/courses/', teacher_portal_views.download_courses_template, name='tp_sis_template_courses'),
+            path('sis-import/template/users/', self.admin_view(teacher_portal_views.download_users_template), name='tp_sis_template_users'),
+            path('sis-import/template/enrollments/', self.admin_view(teacher_portal_views.download_enrollments_template), name='tp_sis_template_enrollments'),
+            path('sis-import/template/courses/', self.admin_view(teacher_portal_views.download_courses_template), name='tp_sis_template_courses'),
         ]
 
         return custom_urls + urls

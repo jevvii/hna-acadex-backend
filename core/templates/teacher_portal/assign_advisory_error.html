@@ -4,18 +4,17 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
 <a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
-&rsaquo; {{ title }}
+&rsaquo; {% trans 'Advisory Setup' %}
 </div>
 {% endblock %}
 
 {% block content %}
-<h1>{{ title }}</h1>
+<h1>Advisory Setup Required</h1>
 
 <div class="module">
-    <h2>Advisory Required</h2>
-    <div class="form-row" style="padding: 20px;">
-        <p style="font-size: 16px; color: #666;">
-            You need to have an active advisory section assigned to access this feature.
+    <div style="padding: 20px;">
+        <p style="font-size: 16px; color: #666; margin-bottom: 12px;">
+            You need to have an active advisory section assigned to access the Teacher Portal.
         </p>
         <p style="font-size: 14px; color: #888;">
             Please contact your school administrator to have an advisory section assigned to you.
@@ -23,7 +22,8 @@
     </div>
 </div>
 
-<p style="margin-top: 20px;">
-    <a href="{% url 'teacher_portal:index' %}" class="button">Return to Dashboard</a>
-</p>
+<div style="margin-top: 20px;">
+    <a href="{% url 'teacher_portal:index' %}" class="button" style="color: #fff;">Return to Dashboard</a>
+    <a href="/" style="margin-left: 10px; color: #2e7d32;">← Back to Home</a>
+</div>
 {% endblock %}

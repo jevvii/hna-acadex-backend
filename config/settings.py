@@ -18,6 +18,18 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
+# CSRF trusted origins for local development and production
+CSRF_TRUSTED_ORIGINS = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8081",
+    "http://localhost:8081",
+]
+# Add production origins from environment if provided
+_prod_origins = os.getenv("CSRF_TRUSTED_ORIGINS", "")
+if _prod_origins:
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in _prod_origins.split(",") if origin.strip()])
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
