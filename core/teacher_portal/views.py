@@ -157,16 +157,22 @@ def sis_import_index(request):
                 'icon': 'person',
             },
             {
-                'name': 'Enrollments',
-                'description': 'Import student enrollments for your advisory courses',
-                'url_name': 'teacher_portal:tp_sis_import_enrollments',
-                'icon': 'school',
-            },
-            {
                 'name': 'Courses',
                 'description': 'Import courses for your advisory curriculum',
                 'url_name': 'teacher_portal:tp_sis_import_courses',
                 'icon': 'book',
+            },
+            {
+                'name': 'Course Sections',
+                'description': 'Create class offerings for your advisory courses',
+                'url_name': 'teacher_portal:tp_sis_import_course_sections',
+                'icon': 'school',
+            },
+            {
+                'name': 'Enrollments',
+                'description': 'Import student enrollments for your advisory courses',
+                'url_name': 'teacher_portal:tp_sis_import_enrollments',
+                'icon': 'group',
             },
         ],
     )
@@ -478,4 +484,106 @@ def download_courses_template(request):
 
     response = HttpResponse(csv_content, content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="courses_import_template.csv"'
+    return response
+
+
+def sis_import_course_sections(request):
+    """Handle CourseSection CSV import for teacher's advisory."""
+    from .sis_import.processors.course_sections import TeacherScopedCourseSectionCSVProcessor
+
+    advisory = get_teacher_advisory(request.user)
+
+    if not advisory:
+        return render_no_advisory(request)
+
+    processor = TeacherScopedCourseSectionCSVProcessor(
+        advisory_section=advisory.section,
+        advisory_school_year=advisory.school_year,
+        teacher_user=request.user,
+    )
+
+    if request.method == 'POST':
+        action = request.POST.get('action', 'validate')
+
+        if action == 'import':
+            csv_content_b64 = request.session.get('tp_sis_import_course_sections_csv')
+            if not csv_content_b64:
+                messages.error(request, "Session expired. Please re-upload the CSV file.")
+                return redirect('teacher_portal:tp_sis_import_course_sections')
+
+            csv_content = base64.b64decode(csv_content_b64).decode('utf-8')
+            csv_file = io.StringIO(csv_content)
+
+            result = processor.execute_import(csv_file)
+
+            request.session.pop('tp_sis_import_course_sections_csv', None)
+            request.session.pop('tp_sis_import_course_sections_result', None)
+
+            if result.success:
+                messages.success(request, result.message)
+            else:
+                messages.error(request, result.message)
+
+            context = get_context(request,
+                title='Import Course Sections - Result',
+                result=result,
+                teacher_advisory=advisory,
+                step='result',
+            )
+            return render(request, 'teacher_portal/sis_import/import_course_sections.html', context)
+
+        else:  # action == 'validate'
+            from .sis_import.forms import SISImportForm
+
+            form = SISImportForm(request.POST, request.FILES)
+            if form.is_valid():
+                csv_file = request.FILES['csv_file']
+
+                csv_file.seek(0)
+                csv_content = csv_file.read()
+                if isinstance(csv_content, bytes):
+                    csv_content = csv_content.decode('utf-8')
+
+                request.session['tp_sis_import_course_sections_csv'] = base64.b64encode(csv_content.encode('utf-8')).decode('utf-8')
+
+                csv_file.seek(0)
+                validation_result = processor.validate_all(csv_file)
+
+                context = get_context(request,
+                    title='Import Course Sections - Preview',
+                    form=form,
+                    validation_result=validation_result,
+                    teacher_advisory=advisory,
+                    step='preview',
+                )
+                return render(request, 'teacher_portal/sis_import/import_course_sections.html', context)
+    else:
+        from .sis_import.forms import SISImportForm
+        form = SISImportForm()
+
+    context = get_context(request,
+        title='Import Course Sections',
+        form=form,
+        teacher_advisory=advisory,
+        required_headers=processor.required_headers,
+        optional_headers=processor.optional_headers,
+        step='upload',
+    )
+    return render(request, 'teacher_portal/sis_import/import_course_sections.html', context)
+
+
+def download_course_sections_template(request):
+    """Download CSV template for CourseSection import."""
+    from .sis_import.processors.course_sections import TeacherScopedCourseSectionCSVProcessor
+
+    advisory = get_teacher_advisory(request.user)
+    processor = TeacherScopedCourseSectionCSVProcessor(
+        advisory_section=advisory.section if advisory else None,
+        advisory_school_year=advisory.school_year if advisory else '',
+        teacher_user=request.user if request.user.is_authenticated else None,
+    )
+    csv_content = processor.get_template_csv()
+
+    response = HttpResponse(csv_content, content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="course_sections_import_template.csv"'
     return response

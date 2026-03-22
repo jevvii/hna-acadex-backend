@@ -13,6 +13,7 @@ from .courses import CourseCSVProcessor
 from .users import UserCSVProcessor
 from .sections import SectionCSVProcessor
 from .enrollments import EnrollmentCSVProcessor
+from .course_sections import CourseSectionCSVProcessor
 
 __all__ = [
     'BaseCSVProcessor',
@@ -23,4 +24,5 @@ __all__ = [
     'UserCSVProcessor',
     'SectionCSVProcessor',
     'EnrollmentCSVProcessor',
+    'CourseSectionCSVProcessor',
 ]

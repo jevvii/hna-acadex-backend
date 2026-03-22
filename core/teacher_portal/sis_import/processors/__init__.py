@@ -8,9 +8,11 @@ Each processor enforces advisory-level constraints.
 from .users import TeacherScopedUserCSVProcessor
 from .enrollments import TeacherScopedEnrollmentCSVProcessor
 from .courses import TeacherScopedCourseCSVProcessor
+from .course_sections import TeacherScopedCourseSectionCSVProcessor
 
 __all__ = [
     'TeacherScopedUserCSVProcessor',
     'TeacherScopedEnrollmentCSVProcessor',
     'TeacherScopedCourseCSVProcessor',
+    'TeacherScopedCourseSectionCSVProcessor',
 ]

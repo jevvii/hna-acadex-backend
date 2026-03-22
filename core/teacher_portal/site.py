@@ -159,10 +159,12 @@ class TeacherPortalAdminSite(AdminSite):
             path('sis-import/users/', self.admin_view(teacher_portal_views.sis_import_users), name='tp_sis_import_users'),
             path('sis-import/enrollments/', self.admin_view(teacher_portal_views.sis_import_enrollments), name='tp_sis_import_enrollments'),
             path('sis-import/courses/', self.admin_view(teacher_portal_views.sis_import_courses), name='tp_sis_import_courses'),
+            path('sis-import/course-sections/', self.admin_view(teacher_portal_views.sis_import_course_sections), name='tp_sis_import_course_sections'),
             # Template download URLs
             path('sis-import/template/users/', self.admin_view(teacher_portal_views.download_users_template), name='tp_sis_template_users'),
             path('sis-import/template/enrollments/', self.admin_view(teacher_portal_views.download_enrollments_template), name='tp_sis_template_enrollments'),
             path('sis-import/template/courses/', self.admin_view(teacher_portal_views.download_courses_template), name='tp_sis_template_courses'),
+            path('sis-import/template/course-sections/', self.admin_view(teacher_portal_views.download_course_sections_template), name='tp_sis_template_course_sections'),
         ]
 
         return custom_urls + urls
