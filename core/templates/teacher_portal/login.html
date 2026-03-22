@@ -1,143 +1,180 @@
-{% extends "admin/base_site.html" %}
 {% load i18n static %}
-
-{% block extrastyle %}
-{{ block.super }}
-<link rel="stylesheet" href="{% static 'admin/css/login.css' %}">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% trans 'Sign In' %} — HNA Acadex Teacher Portal</title>
 <style>
-:root {
-  --tp-midnight: #0D1B3E;
-  --tp-royal:    #1565C0;
-  --tp-cobalt:   #0D47A1;
-  --tp-sky:      #7CA4D4;
-  --tp-frost:    #90BEF7;
-  --tp-mist:     #C8D8F0;
-  --tp-ice:      #E8F0FE;
-  --tp-ghost:    #F0F4FF;
-  --tp-slate:    #1A2F5A;
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --midnight:#0D1B3E;
+  --deep:#112559;
+  --navy:#0D2A6E;
+  --cobalt:#0D47A1;
+  --royal:#1565C0;
+  --sky:#7CA4D4;
+  --frost:#90BEF7;
+  --azure:#DBEAFE;
+  --mist:#C8D8F0;
+  --ice:#E8F0FE;
+  --ghost:#F0F4FF;
+  --slate:#1A2F5A;
+  --surface:#F8FAFF;
 }
-
-body.login {
-  background: var(--tp-ghost);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  background:var(--ghost);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:100vh;
+  padding:24px 16px;
+  -webkit-font-smoothing:antialiased;
 }
-
-#header {
-  background: var(--tp-midnight);
-  padding: 0 24px;
-  height: 52px;
-  display: flex;
-  align-items: center;
+.tp-wrap{width:100%;max-width:400px;display:flex;flex-direction:column;align-items:center;gap:20px}
+.tp-logo{text-align:center}
+.tp-logo-mark{
+  width:48px;height:48px;background:var(--midnight);border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 10px;font-size:18px;font-weight:800;
+  color:var(--frost);letter-spacing:-.02em;
 }
-
-#site-name a { color: #fff; text-decoration: none; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
-
-#content-main { max-width: 400px; margin: 0 auto; padding: 32px 0; }
-
-.module { background: #fff; border: 0.5px solid var(--tp-mist); border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(13,27,62,.1); }
-
-.module h2 { background: var(--tp-royal); color: #fff; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 12px 20px; }
-
-.form-row { padding: 16px 20px 0; }
-
-label { font-size: 13px; color: var(--tp-slate); font-weight: 500; display: block; margin-bottom: 4px; }
-
-input[type='text'], input[type='email'], input[type='password'] {
-  width: 100%;
-  border: 1px solid var(--tp-mist);
-  border-radius: 6px;
-  padding: 9px 12px;
-  font-size: 14px;
-  color: var(--tp-slate);
-  background: #fff;
+.tp-logo-name{font-size:20px;font-weight:700;color:var(--midnight);letter-spacing:-.02em;line-height:1;margin-bottom:3px}
+.tp-logo-sub{font-size:13px;color:var(--sky)}
+.tp-card{
+  width:100%;background:#fff;border:0.5px solid var(--mist);border-radius:14px;
+  overflow:hidden;box-shadow:0 4px 24px rgba(13,27,62,.1),0 1px 4px rgba(13,27,62,.06);
 }
-
-input[type='text']:focus, input[type='email']:focus, input[type='password']:focus {
-  border-color: var(--tp-royal);
-  box-shadow: 0 0 0 3px rgba(21,101,192,.15);
-  outline: none;
+.tp-card-head{background:var(--midnight);padding:18px 24px;display:flex;align-items:center;gap:12px}
+.tp-card-head-icon{
+  width:36px;height:36px;border-radius:8px;
+  background:rgba(144,190,247,.14);border:1px solid rgba(144,190,247,.22);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
-
-.submit-row { padding: 16px 20px; }
-
-input[type='submit'] {
-  width: 100%;
-  background: var(--tp-royal);
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 11px;
-  cursor: pointer;
-  letter-spacing: .01em;
+.tp-card-head-icon svg{width:17px;height:17px;stroke:var(--frost);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.tp-card-head-title{font-size:14px;font-weight:600;color:#fff;letter-spacing:-.01em;line-height:1.2}
+.tp-card-head-sub{font-size:11px;color:var(--sky);margin-top:2px}
+.tp-card-body{padding:24px}
+.tp-errornote{
+  background:#FFEBEE;color:#C62828;
+  border:0.5px solid #EF9A9A;border-left:3px solid #E53935;
+  border-radius:8px;padding:11px 14px;font-size:13px;
+  margin-bottom:16px;line-height:1.5;
 }
-
-input[type='submit']:hover { background: var(--tp-cobalt); }
-
-a:link, a:visited { color: var(--tp-royal); }
-a:hover { color: var(--tp-cobalt); }
-
-.errornote { background: #ffebee; color: #b71c1c; border-left: 3px solid #e53935; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
-
-.tp-login-footer { text-align: center; margin-top: 16px; font-size: 12px; color: var(--tp-sky); }
-.tp-login-footer a { color: var(--tp-royal); }
+.tp-field{margin-bottom:18px}
+.tp-field:last-of-type{margin-bottom:0}
+.tp-label{display:block;font-size:13px;font-weight:500;color:var(--slate);margin-bottom:3px}
+.tp-hint{display:block;font-size:11px;color:var(--sky);margin-bottom:6px}
+.tp-form-input{
+  display:block;width:100%;padding:10px 13px;font-size:14px;
+  color:var(--slate);background:var(--surface);
+  border:1px solid var(--mist);border-radius:8px;
+  transition:border-color .15s,box-shadow .15s;
+  font-family:inherit;-webkit-appearance:none;
+}
+.tp-form-input:focus{outline:none;border-color:var(--royal);box-shadow:0 0 0 3px rgba(21,101,192,.14);background:#fff}
+.tp-form-input::placeholder{color:var(--mist)}
+.tp-field-error{font-size:12px;color:#C62828;margin-top:5px}
+.tp-divider{height:0.5px;background:var(--ice);margin:18px 0 16px}
+.tp-btn{
+  display:block;width:100%;padding:12px;
+  font-size:15px;font-weight:600;color:#fff;
+  background:var(--royal);border:none;border-radius:8px;
+  cursor:pointer;font-family:inherit;letter-spacing:.01em;
+  transition:background .15s,transform .1s;
+}
+.tp-btn:hover{background:var(--cobalt)}
+.tp-btn:active{transform:scale(.99)}
+.tp-card-foot{
+  padding:14px 24px;background:var(--surface);
+  border-top:0.5px solid var(--ice);
+  display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.tp-card-foot a{font-size:12px;color:var(--sky);text-decoration:none;transition:color .15s}
+.tp-card-foot a:hover{color:var(--royal)}
+.tp-foot-sep{color:var(--mist);font-size:12px}
 </style>
-{{ form.media }}
-{% endblock %}
+</head>
+<body>
+<div class="tp-wrap">
 
-{% block bodyclass %}{{ block.super }} login{% endblock %}
+  <div class="tp-logo">
+    <div class="tp-logo-mark">HA</div>
+    <div class="tp-logo-name">HNA Acadex</div>
+    <div class="tp-logo-sub">Teacher Portal</div>
+  </div>
 
-{% block usertools %}{% endblock %}
+  <div class="tp-card">
 
-{% block nav-global %}{% endblock %}
-
-{% block nav-sidebar %}{% endblock %}
-
-{% block content_title %}{% endblock %}
-
-{% block nav-breadcrumbs %}{% endblock %}
-
-{% block branding %}
-<h1 id="site-name">HNA Acadex Teacher Portal</h1>
-{% endblock %}
-
-{% block content %}
-{% if form.errors and not form.non_field_errors %}
-<p class="errornote">{% if form.errors.items|length == 1 %}{% translate "Please correct the error below." %}{% else %}{% translate "Please correct the errors below." %}{% endif %}</p>
-{% endif %}
-{% for error in form.non_field_errors %}
-<p class="errornote">{{ error }}</p>
-{% endfor %}
-
-<div id="content-main">
-{% if user.is_authenticated %}
-<p class="errornote">{% blocktranslate trimmed %}You are authenticated as {{ username }}, but are not authorized to access this page. Would you like to login to a different account?{% endblocktranslate %}</p>
-{% endif %}
-
-<div class="module">
-  <h2>Teacher Portal Login</h2>
-  <form action="{{ app_path }}" method="post" id="login-form">{% csrf_token %}
-    <div class="form-row">
-      {{ form.username.errors }}
-      {{ form.username.label_tag }} {{ form.username }}
+    <div class="tp-card-head">
+      <div class="tp-card-head-icon">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="7" width="12" height="8" rx="2"/><path d="M5 7V5a3 3 0 016 0v2"/></svg>
+      </div>
+      <div>
+        <div class="tp-card-head-title">{% trans 'Sign in to your account' %}</div>
+        <div class="tp-card-head-sub">{% trans 'Teacher Portal access only' %}</div>
+      </div>
     </div>
-    <div class="form-row" style="padding-bottom:4px">
-      {{ form.password.errors }}
-      {{ form.password.label_tag }} {{ form.password }}
-      <input type="hidden" name="next" value="{{ next }}">
-    </div>
-    <div class="submit-row">
-      <input type="submit" value="{% translate 'Log in' %}">
-    </div>
-  </form>
-</div>
 
-<div class="tp-login-footer">
-  <a href="/">← Back to Portal Home</a>
+    <div class="tp-card-body">
+
+      {% if form.errors and not form.non_field_errors %}
+      <div class="tp-errornote">
+        {% if form.errors.items|length == 1 %}{% translate "Please correct the error below." %}{% else %}{% translate "Please correct the errors below." %}{% endif %}
+      </div>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+        <div class="tp-errornote">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+
+      {% if user.is_authenticated %}
+      <div class="tp-errornote">
+        {% blocktranslate trimmed %}You are authenticated as {{ username }}, but are not authorized to access this page. Would you like to login to a different account?{% endblocktranslate %}
+      </div>
+      {% endif %}
+
+      <form action="{{ app_path }}" method="post" id="login-form">
+        {% csrf_token %}
+
+        <div class="tp-field">
+          <label class="tp-label" for="{{ form.username.id_for_label }}">{% trans 'Email address' %}</label>
+          <span class="tp-hint">{% trans 'Your school-assigned email' %}</span>
+          {{ form.username }}
+          {% if form.username.errors %}
+          <div class="tp-field-error">{{ form.username.errors|join:', ' }}</div>
+          {% endif %}
+        </div>
+
+        <div class="tp-field">
+          <label class="tp-label" for="{{ form.password.id_for_label }}">{% trans 'Password' %}</label>
+          {{ form.password }}
+          {% if form.password.errors %}
+          <div class="tp-field-error">{{ form.password.errors|join:', ' }}</div>
+          {% endif %}
+          <input type="hidden" name="next" value="{{ next }}">
+        </div>
+
+        <div class="tp-divider"></div>
+        <button type="submit" class="tp-btn">{% trans 'Sign in' %}</button>
+
+      </form>
+
+    </div>
+
+    <div class="tp-card-foot">
+      <a href="/">← {% trans 'Back to Portal Home' %}</a>
+      <span class="tp-foot-sep">·</span>
+      <a href="{% url 'hna_acadex_admin:index' %}">{% trans 'Admin Portal' %}</a>
+    </div>
+
+  </div>
+
 </div>
-</div>
-{% endblock %}
+</body>
+</html>

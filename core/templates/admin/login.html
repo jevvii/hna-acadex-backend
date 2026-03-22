@@ -1,9 +1,215 @@
-{% extends "admin/login.html" %}
-{% load i18n %}
+{% load i18n static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% trans 'Sign In' %} — HNA Acadex Administration</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:      #417690;
+  --primary-hov:  #2D6180;
+  --primary-dark: #1E3A52;
+  --primary-text: #2B4D60;
+  --sky:          #638FA6;
+  --frost:        #A8D0E0;
+  --mist:         #C0D4DE;
+  --ice:          #E8F0F5;
+  --ghost:        #EEF2F7;
+  --surface:      #F5F9FB;
+}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  background:var(--ghost);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-height:100vh;
+  padding:24px 16px;
+  -webkit-font-smoothing:antialiased;
+  color:var(--primary-text);
+}
+.adm-wrap{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:20px}
 
-{% block content %}
-{{ block.super }}
-<div style="text-align: center; margin-top: 1rem;">
-    <a href="/" style="color: #417690;">{% translate '← Back to Home' %}</a>
+/* LOGO */
+.adm-logo{text-align:center}
+.adm-logo-mark{
+  width:48px;height:48px;background:var(--primary-dark);border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 10px;font-size:18px;font-weight:800;
+  color:var(--frost);letter-spacing:-.02em;
+}
+.adm-logo-name{font-size:20px;font-weight:700;color:var(--primary-dark);letter-spacing:-.02em;line-height:1;margin-bottom:3px}
+.adm-logo-sub{font-size:13px;color:var(--sky)}
+
+/* CARD */
+.adm-card{
+  width:100%;background:#fff;
+  border:0.5px solid var(--mist);border-radius:14px;overflow:hidden;
+  box-shadow:0 4px 24px rgba(30,58,82,.10),0 1px 4px rgba(30,58,82,.06);
+}
+
+/* CARD HEADER */
+.adm-card-head{background:var(--primary-dark);padding:18px 24px;display:flex;align-items:center;gap:12px}
+.adm-head-icon{
+  width:36px;height:36px;border-radius:8px;
+  background:rgba(168,208,224,.14);border:1px solid rgba(168,208,224,.22);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.adm-head-icon svg{width:17px;height:17px;stroke:var(--frost);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.adm-head-title{font-size:14px;font-weight:600;color:#fff;letter-spacing:-.01em;line-height:1.2}
+.adm-head-sub{font-size:11px;color:var(--sky);margin-top:2px}
+
+/* CARD BODY */
+.adm-card-body{padding:24px}
+
+/* ERROR */
+.adm-errornote{
+  background:#FFEBEE;color:#C62828;
+  border:0.5px solid #EF9A9A;border-left:3px solid #E53935;
+  border-radius:8px;padding:11px 14px;font-size:13px;
+  margin-bottom:16px;line-height:1.5;
+}
+
+/* FIELDS */
+.adm-field{margin-bottom:18px}
+.adm-label{display:block;font-size:13px;font-weight:500;color:var(--primary-text);margin-bottom:3px}
+.adm-hint{display:block;font-size:11px;color:var(--sky);margin-bottom:6px}
+
+.adm-input{
+  display:block;width:100%;
+  padding:10px 13px;font-size:14px;
+  color:var(--primary-dark);background:var(--surface);
+  border:1px solid var(--mist);border-radius:8px;
+  transition:border-color .15s,box-shadow .15s;
+  font-family:inherit;-webkit-appearance:none;
+}
+.adm-input:focus{
+  outline:none;border-color:var(--primary);
+  box-shadow:0 0 0 3px rgba(65,118,144,.18);
+  background:#fff;
+}
+.adm-input::placeholder{color:var(--mist)}
+
+.adm-field-error{font-size:12px;color:#C62828;margin-top:5px}
+
+.adm-divider{height:0.5px;background:var(--ice);margin:18px 0 16px}
+
+/* SUBMIT */
+.adm-btn{
+  display:block;width:100%;padding:12px;
+  font-size:15px;font-weight:600;color:#fff;
+  background:var(--primary);border:none;border-radius:8px;
+  cursor:pointer;font-family:inherit;letter-spacing:.01em;
+  transition:background .15s,transform .1s;
+}
+.adm-btn:hover{background:var(--primary-hov)}
+.adm-btn:active{transform:scale(.99)}
+
+/* CARD FOOTER */
+.adm-card-foot{
+  padding:14px 24px;background:var(--surface);
+  border-top:0.5px solid var(--ice);
+  display:flex;justify-content:center;align-items:center;
+  gap:12px;flex-wrap:wrap;
+}
+.adm-card-foot a{font-size:12px;color:var(--sky);text-decoration:none;transition:color .15s}
+.adm-card-foot a:hover{color:var(--primary)}
+.adm-foot-sep{color:var(--mist);font-size:12px}
+</style>
+</head>
+<body>
+<div class="adm-wrap">
+
+  <div class="adm-logo">
+    <div class="adm-logo-mark">HA</div>
+    <div class="adm-logo-name">HNA Acadex</div>
+    <div class="adm-logo-sub">Administration Portal</div>
+  </div>
+
+  <div class="adm-card">
+
+    <div class="adm-card-head">
+      <div class="adm-head-icon">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="7" width="12" height="8" rx="2"/>
+          <path d="M5 7V5a3 3 0 016 0v2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="adm-head-title">{% trans 'Sign in to your account' %}</div>
+        <div class="adm-head-sub">{% trans 'Administrator access only' %}</div>
+      </div>
+    </div>
+
+    <div class="adm-card-body">
+
+      {% if form.errors and not form.non_field_errors %}
+      <div class="adm-errornote">
+        {% if form.errors.items|length == 1 %}{% translate 'Please correct the error below.' %}{% else %}{% translate 'Please correct the errors below.' %}{% endif %}
+      </div>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+        <div class="adm-errornote">{{ error }}</div>
+        {% endfor %}
+      {% endif %}
+
+      {% if user.is_authenticated %}
+      <div class="adm-errornote">
+        {% blocktranslate trimmed %}You are authenticated as {{ username }}, but are not authorized to access this page. Would you like to login to a different account?{% endblocktranslate %}
+      </div>
+      {% endif %}
+
+      <form action="{{ app_path }}" method="post" id="login-form">
+        {% csrf_token %}
+
+        <div class="adm-field">
+          <label class="adm-label" for="id_username">{% trans 'Email address' %}</label>
+          <span class="adm-hint">{% trans 'Your administrator email address' %}</span>
+          <input type="text" name="username" id="id_username"
+                 class="adm-input"
+                 placeholder="admin@hna.edu.ph"
+                 autocomplete="email"
+                 autofocus
+                 required>
+          {% if form.username.errors %}
+          <div class="adm-field-error">{{ form.username.errors|join:', ' }}</div>
+          {% endif %}
+        </div>
+
+        <div class="adm-field">
+          <label class="adm-label" for="id_password">{% trans 'Password' %}</label>
+          <input type="password" name="password" id="id_password"
+                 class="adm-input"
+                 placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"
+                 autocomplete="current-password"
+                 required>
+          {% if form.password.errors %}
+          <div class="adm-field-error">{{ form.password.errors|join:', ' }}</div>
+          {% endif %}
+          <input type="hidden" name="next" value="{{ next }}">
+        </div>
+
+        <div class="adm-divider"></div>
+        <button type="submit" class="adm-btn">{% trans 'Sign in' %}</button>
+
+      </form>
+
+    </div>
+
+    <div class="adm-card-foot">
+      <a href="/">← {% trans 'Back to Portal Home' %}</a>
+      <span class="adm-foot-sep">·</span>
+      <a href="{% url 'teacher_portal:index' %}">{% trans 'Teacher Portal' %}</a>
+    </div>
+
+  </div>
+
 </div>
-{% endblock %}
+</body>
+</html>

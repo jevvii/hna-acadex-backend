@@ -495,5 +495,5 @@ tr.tp-row-warn  td  { background: #fff8e1 !important; }
   </div>
 </div>
 {% endif %}
-{{ block.super }}
+{% block breadcrumb_trail %}{{ block.super }}{% endblock %}
 {% endblock %}

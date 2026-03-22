@@ -24,6 +24,20 @@ class TeacherAuthenticationForm(AuthenticationForm):
         "inactive": _("This account is inactive."),
     }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].widget.attrs.update({
+            'class': 'tp-form-input',
+            'placeholder': 'teacher@hna.edu.ph',
+            'autocomplete': 'email',
+            'autofocus': True,
+        })
+        self.fields['password'].widget.attrs.update({
+            'class': 'tp-form-input',
+            'placeholder': '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022',
+            'autocomplete': 'current-password',
+        })
+
     def confirm_login_allowed(self, user):
         """
         Controls whether the given User may log in.

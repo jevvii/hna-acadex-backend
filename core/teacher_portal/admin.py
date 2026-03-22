@@ -90,6 +90,10 @@ class TeacherUserAdmin(admin.ModelAdmin):
         """Teachers cannot delete students."""
         return False
 
+    def has_view_permission(self, request, obj=None):
+        """Teachers with active advisory can view students."""
+        return get_teacher_advisory(request.user) is not None
+
     def has_change_permission(self, request, obj=None):
         """Teachers cannot edit students (read-only list)."""
         return False
