@@ -1,0 +1,81 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+.module {
+    margin-bottom: 20px;
+}
+.form-row {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+.form-row label {
+    font-weight: bold;
+    width: 150px;
+    display: inline-block;
+}
+.current-advisory-info {
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+.current-advisory-info h3 {
+    margin-top: 0;
+    color: #417690;
+}
+.submit-row {
+    margin-top: 20px;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' 'core' %}">Core</a>
+&rsaquo; <a href="{% url 'admin:core_user_changelist' %}">Accounts</a>
+&rsaquo; <a href="{% url 'admin:core_user_change' user.pk %}">{{ user.get_full_name }}</a>
+&rsaquo; Assign Advisory
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="current-advisory-info">
+    <h3>Teacher Information</h3>
+    <p><strong>Name:</strong> {{ user.get_full_name }}</p>
+    <p><strong>Email:</strong> {{ user.email }}</p>
+    {% if current_advisory %}
+    <p><strong>Current Advisory:</strong> {{ current_advisory.section.name }} ({{ current_advisory.school_year }})</p>
+    <p><em>Assigning a new advisory will deactivate the current one.</em></p>
+    {% else %}
+    <p><strong>Current Advisory:</strong> <em>No advisory assigned</em></p>
+    {% endif %}
+</div>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    <fieldset class="module aligned">
+        <h2>Advisory Assignment</h2>
+        {% for field in form %}
+        <div class="form-row{% if field.errors %} errors{% endif %}">
+            {{ field.errors }}
+            <label for="{{ field.id_for_label }}"{% if field.field.required %} class="required"{% endif %}>{{ field.label }}:</label>
+            {{ field }}
+            {% if field.help_text %}
+            <p class="help">{{ field.help_text }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </fieldset>
+
+    <div class="submit-row">
+        <input type="submit" value="Assign Advisory" class="default">
+        <a href="{% url 'admin:core_user_change' user.pk %}" class="closelink">Cancel</a>
+    </div>
+</form>
+{% endblock %}

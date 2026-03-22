@@ -41,7 +41,7 @@ class UserCSVProcessor(BaseCSVProcessor):
 
     @property
     def optional_headers(self) -> list[str]:
-        return ['middle_name', 'grade_level', 'strand', 'section', 'status']
+        return ['middle_name', 'grade_level', 'strand', 'section', 'status', 'is_irregular']
 
     def validate_row(self, row_number: int, row_data: dict[str, str]) -> RowResult:
         """Validate a single user row."""
@@ -128,6 +128,7 @@ class UserCSVProcessor(BaseCSVProcessor):
         strand = row_data.get('strand', '').strip() or None
         section = row_data.get('section', '').strip() or None
         status = row_data.get('status', '').strip() or User.Status.ACTIVE
+        is_irregular = row_data.get('is_irregular', '').strip().lower() in ('true', '1', 'yes')
 
         # Generate password
         plain_password = generate_random_password()
@@ -163,6 +164,7 @@ class UserCSVProcessor(BaseCSVProcessor):
             grade_level=grade_level,
             strand=strand,
             section=section,
+            is_irregular=is_irregular,
             requires_setup=True,
         )
         user.set_password(plain_password)
@@ -278,4 +280,5 @@ class UserCSVProcessor(BaseCSVProcessor):
             'STEM',              # strand
             'ICT-A',             # section
             'active',            # status
+            'false',             # is_irregular
         ]

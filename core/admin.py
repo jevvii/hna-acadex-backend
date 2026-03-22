@@ -32,6 +32,7 @@ from .models import (
     QuizQuestion,
     Section,
     Submission,
+    TeacherAdvisory,
     TodoItem,
     User,
     WeeklyModule,
@@ -100,7 +101,7 @@ class CustomUserCreationForm(UserCreationForm):
 
     class Meta:
         model = User
-        fields = ('personal_email', 'first_name', 'last_name', 'middle_name', 'role', 'status', 'is_active', 'is_staff')
+        fields = ('personal_email', 'first_name', 'last_name', 'middle_name', 'role', 'status', 'is_irregular', 'is_active', 'is_staff')
         # Note: email, student_id, employee_id are auto-generated for students/teachers
 
     def clean_personal_email(self):
@@ -201,6 +202,7 @@ class UserAdmin(DjangoUserAdmin):
                     "grade_level",
                     "strand",
                     "section",
+                    "is_irregular",
                     "employee_id",
                     "student_id",
                     "theme",
@@ -226,6 +228,7 @@ class UserAdmin(DjangoUserAdmin):
                     "middle_name",
                     "role",
                     "status",
+                    "is_irregular",
                     "auto_generate_password",
                     "password1",
                     "password2",
@@ -237,9 +240,9 @@ class UserAdmin(DjangoUserAdmin):
         ),
     )
 
-    readonly_fields = ("created_at", "updated_at", "date_joined", "last_login")
+    readonly_fields = ("created_at", "updated_at", "date_joined", "last_login", "current_advisory_display")
 
-    actions = ["send_credentials_action"]
+    actions = ["send_credentials_action", "assign_advisory_action"]
 
     def send_credentials_action(self, request, queryset):
         """Admin action to send login credentials to selected users."""
@@ -290,6 +293,152 @@ class UserAdmin(DjangoUserAdmin):
             )
 
     send_credentials_action.short_description = "Send login credentials via email"
+
+    def current_advisory_display(self, obj):
+        """Display the current advisory assignment for teachers."""
+        if obj.role != User.Role.TEACHER:
+            return "—"
+        advisory = TeacherAdvisory.objects.filter(
+            teacher=obj, is_active=True
+        ).select_related('section').first()
+        if advisory:
+            return f"{advisory.section.name} ({advisory.school_year})"
+        return "—"
+    current_advisory_display.short_description = "Current Advisory"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<path:object_id>/assign-advisory/',
+                self.admin_site.admin_view(self.assign_advisory_view),
+                name='core_user_assign_advisory'
+            ),
+        ]
+        return custom_urls + urls
+
+    def assign_advisory_action(self, request, queryset):
+        """Admin action to assign advisory section to selected teacher."""
+        from django.shortcuts import redirect
+        from django.urls import reverse
+        from django.contrib import messages as admin_messages
+
+        # Check that only one teacher is selected
+        if queryset.count() != 1:
+            admin_messages.error(request, "Please select exactly one teacher to assign advisory.")
+            return
+
+        user = queryset.first()
+
+        # Check that the selected user is a teacher
+        if user.role != User.Role.TEACHER:
+            admin_messages.error(request, "Only teachers can be assigned advisory sections.")
+            return
+
+        # Redirect to the intermediate view
+        return redirect(reverse('hna_acadex_admin:core_user_assign_advisory', args=[user.pk]))
+
+    assign_advisory_action.short_description = "Assign advisory section"
+
+    def assign_advisory_view(self, request, object_id):
+        """Intermediate view for assigning advisory section to a teacher."""
+        from django.shortcuts import get_object_or_404, render
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        from django import forms
+        from django.db import IntegrityError
+
+        user = get_object_or_404(User, pk=object_id)
+
+        # Only teachers can have advisory assignments
+        if user.role != User.Role.TEACHER:
+            self.message_user(request, "Only teachers can be assigned advisory sections.", level=messages.ERROR)
+            return HttpResponseRedirect(reverse('hna_acadex_admin:core_user_changelist'))
+
+        class AssignAdvisoryForm(forms.Form):
+            section = forms.ModelChoiceField(
+                queryset=Section.objects.filter(is_active=True).order_by('name'),
+                label="Advisory Section",
+                help_text="Select the section this teacher will advise."
+            )
+            school_year = forms.CharField(
+                max_length=20,
+                label="School Year",
+                help_text="Academic year (e.g., 2024-2025)"
+            )
+
+        # Get current advisory if exists
+        current_advisory = TeacherAdvisory.objects.filter(
+            teacher=user, is_active=True
+        ).select_related('section').first()
+
+        if request.method == 'POST':
+            form = AssignAdvisoryForm(request.POST)
+            if form.is_valid():
+                section = form.cleaned_data['section']
+                school_year = form.cleaned_data['school_year']
+
+                # Check for existing advisory for this section/year
+                existing = TeacherAdvisory.objects.filter(
+                    section=section,
+                    school_year=school_year,
+                    is_active=True
+                ).exclude(teacher=user).first()
+
+                if existing:
+                    self.message_user(
+                        request,
+                        f"Section '{section.name}' already has an adviser ({existing.teacher.get_full_name()}) for {school_year}.",
+                        level=messages.ERROR
+                    )
+                else:
+                    try:
+                        # Deactivate existing advisory if any
+                        TeacherAdvisory.objects.filter(
+                            teacher=user, school_year=school_year, is_active=True
+                        ).update(is_active=False)
+
+                        # Create new advisory
+                        TeacherAdvisory.objects.create(
+                            teacher=user,
+                            section=section,
+                            school_year=school_year,
+                            assigned_by=request.user
+                        )
+
+                        self.message_user(
+                            request,
+                            f"Successfully assigned {user.get_full_name()} as adviser for {section.name} ({school_year}).",
+                            level=messages.SUCCESS
+                        )
+                        return HttpResponseRedirect(reverse('hna_acadex_admin:core_user_changelist'))
+
+                    except IntegrityError:
+                        self.message_user(
+                            request,
+                            f"Teacher {user.get_full_name()} already has an advisory assignment for {school_year}.",
+                            level=messages.ERROR
+                        )
+        else:
+            # Pre-fill form with current advisory if exists
+            initial = {}
+            if current_advisory:
+                initial['section'] = current_advisory.section
+                initial['school_year'] = current_advisory.school_year
+            form = AssignAdvisoryForm(initial=initial)
+
+        context = {
+            'user_obj': user,
+            'form': form,
+            'current_advisory': current_advisory,
+            'opts': self.model._meta,
+            'has_view_permission': True,
+            'title': f'Assign Advisory Section for {user.get_full_name()}',
+        }
+        return render(request, 'admin/assign_advisory.html', context)
+
+    actions = ["send_credentials_action", "assign_advisory_action"]
 
     def save_model(self, request, obj, form, change):
         """Override save_model to handle auto-generated passwords, IDs, and emails."""
@@ -372,6 +521,142 @@ class UserAdmin(DjangoUserAdmin):
         else:
             # Updating existing user
             super().save_model(request, obj, form, change)
+
+    def current_advisory_display(self, obj):
+        """Display the current advisory assignment for teachers."""
+        if obj.role != User.Role.TEACHER:
+            return "-"
+        advisory = TeacherAdvisory.objects.filter(
+            teacher=obj, is_active=True
+        ).select_related('section').first()
+        if advisory:
+            return f"{advisory.section.name} ({advisory.school_year})"
+        return "No advisory assigned"
+    current_advisory_display.short_description = "Current Advisory"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<path:object_id>/assign-advisory/',
+                self.admin_site.admin_view(self.assign_advisory_view),
+                name='core_user_assign_advisory',
+            ),
+        ]
+        return custom_urls + urls
+
+    def assign_advisory_view(self, request, object_id):
+        """Intermediate view for assigning advisory section to a teacher."""
+        from django.shortcuts import get_object_or_404, render, redirect
+        from django.urls import reverse
+        from django.db import IntegrityError
+        from django import forms
+
+        user = get_object_or_404(User, pk=object_id)
+
+        # Only teachers can have advisory assignments
+        if user.role != User.Role.TEACHER:
+            self.message_user(request, "Only teachers can be assigned advisory sections.", level=messages.ERROR)
+            return redirect('hna_acadex_admin:core_user_change', object_id)
+
+        class AssignAdvisoryForm(forms.Form):
+            section = forms.ModelChoiceField(
+                queryset=Section.objects.filter(is_active=True).order_by('name'),
+                required=True,
+                label='Advisory Section',
+                help_text='Select the section this teacher will advise.'
+            )
+            school_year = forms.CharField(
+                max_length=20,
+                required=True,
+                label='School Year',
+                help_text='Academic year (e.g., 2024-2025)'
+            )
+            is_active = forms.BooleanField(
+                required=False,
+                initial=True,
+                label='Active',
+                help_text='Mark this advisory assignment as active.'
+            )
+
+        # Get current advisory if any
+        current_advisory = TeacherAdvisory.objects.filter(
+            teacher=user, is_active=True
+        ).select_related('section').first()
+
+        if request.method == 'POST':
+            form = AssignAdvisoryForm(request.POST)
+            if form.is_valid():
+                section = form.cleaned_data['section']
+                school_year = form.cleaned_data['school_year']
+                is_active = form.cleaned_data['is_active']
+
+                try:
+                    # Deactivate any existing active advisory for this teacher
+                    TeacherAdvisory.objects.filter(teacher=user, is_active=True).update(is_active=False)
+
+                    # Create new advisory
+                    TeacherAdvisory.objects.create(
+                        teacher=user,
+                        section=section,
+                        school_year=school_year,
+                        is_active=is_active,
+                        assigned_by=request.user
+                    )
+                    self.message_user(
+                        request,
+                        f"Successfully assigned {user.get_full_name()} as adviser for {section.name} ({school_year}).",
+                        level=messages.SUCCESS
+                    )
+                    return redirect('hna_acadex_admin:core_user_change', object_id)
+                except IntegrityError as e:
+                    if 'unique constraint' in str(e).lower() or 'duplicate' in str(e).lower():
+                        self.message_user(
+                            request,
+                            f"Section {section.name} already has an adviser for {school_year}, or {user.get_full_name()} already has an advisory for {school_year}.",
+                            level=messages.ERROR
+                        )
+                    else:
+                        raise
+        else:
+            # Pre-populate form with current advisory if exists
+            initial = {}
+            if current_advisory:
+                initial = {
+                    'section': current_advisory.section,
+                    'school_year': current_advisory.school_year,
+                    'is_active': current_advisory.is_active,
+                }
+            form = AssignAdvisoryForm(initial=initial)
+
+        context = {
+            'user': user,
+            'form': form,
+            'current_advisory': current_advisory,
+            'opts': self.model._meta,
+            'title': f'Assign Advisory for {user.get_full_name()}',
+            'has_view_permission': True,
+        }
+        return render(request, 'admin/assign_advisory.html', context)
+
+    def assign_advisory_action(self, request, queryset):
+        """Admin action to assign advisory section to selected teacher."""
+        teachers = queryset.filter(role=User.Role.TEACHER)
+
+        if teachers.count() != 1:
+            self.message_user(
+                request,
+                "Please select exactly one teacher to assign an advisory section.",
+                level=messages.WARNING
+            )
+            return
+
+        teacher = teachers.first()
+        from django.urls import reverse
+        return redirect(reverse('hna_acadex_admin:core_user_assign_advisory', args=[teacher.pk]))
+
+    assign_advisory_action.short_description = "Assign advisory section to selected teacher"
 
 
 class SectionAdmin(admin.ModelAdmin):
@@ -964,6 +1249,41 @@ class IDCounterAdmin(admin.ModelAdmin):
         return False
 
 
+class TeacherAdvisoryAdmin(admin.ModelAdmin):
+    """Admin for TeacherAdvisory model - managing section adviser assignments."""
+
+    list_display = ("teacher_full_name", "section_name", "school_year", "is_active", "assigned_at", "assigned_by")
+    list_filter = ("school_year", "is_active", "section__grade_level", "section__strand")
+    search_fields = ("teacher__first_name", "teacher__last_name", "teacher__email", "section__name")
+    readonly_fields = ("assigned_at",)
+    autocomplete_fields = ("teacher", "section")
+
+    fieldsets = (
+        ("Advisory Assignment", {
+            "fields": ("teacher", "section", "school_year", "is_active"),
+        }),
+        ("Metadata", {
+            "fields": ("assigned_at", "assigned_by"),
+            "classes": ("collapse",),
+        }),
+    )
+
+    def teacher_full_name(self, obj):
+        return obj.teacher.get_full_name()
+    teacher_full_name.short_description = "Teacher"
+    teacher_full_name.admin_order_field = "teacher__first_name"
+
+    def section_name(self, obj):
+        return obj.section.name
+    section_name.short_description = "Section"
+    section_name.admin_order_field = "section__name"
+
+    def save_model(self, request, obj, form, change):
+        if not change:  # Only on creation
+            obj.assigned_by = request.user
+        super().save_model(request, obj, form, change)
+
+
 # Register all models to the custom admin site
 # Enrollment category models
 admin_site.register(User, UserAdmin)
@@ -972,6 +1292,7 @@ admin_site.register(Course, CourseAdmin)
 admin_site.register(CourseSection, CourseSectionAdmin)
 admin_site.register(CourseSectionGroup, CourseSectionGroupAdmin)
 admin_site.register(Enrollment, EnrollmentAdmin)
+admin_site.register(TeacherAdvisory, TeacherAdvisoryAdmin)
 
 # Core category models
 admin_site.register(WeeklyModule, WeeklyModuleAdmin)

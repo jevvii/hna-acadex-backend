@@ -75,6 +75,10 @@ class User(AbstractUser):
     grade_level = models.CharField(max_length=20, choices=GradeLevel.choices, blank=True, null=True)
     strand = models.CharField(max_length=10, choices=Strand.choices, default=Strand.NONE)
     section = models.CharField(max_length=100, blank=True, null=True)
+    is_irregular = models.BooleanField(
+        default=False,
+        help_text="Mark this student as irregular — can be enrolled across sections by their advisory teacher"
+    )
     employee_id = models.CharField(max_length=50, blank=True, null=True)
     student_id = models.CharField(max_length=50, blank=True, null=True)
     theme = models.CharField(max_length=20, default="system")
@@ -751,37 +755,6 @@ class ActivityComment(models.Model):
         return f"Comment by {self.author.full_name} on {self.activity.title}"
 
 
-class IDCounter(models.Model):
-    """Track sequential IDs per year and type (student/teacher)."""
-
-    class Type(models.TextChoices):
-        STUDENT = "student", "Student"
-        TEACHER = "teacher", "Teacher"
-
-    year = models.IntegerField(help_text="Year for this counter (e.g., 2024)")
-    id_type = models.CharField(
-        max_length=10,
-        choices=Type.choices,
-        help_text="Type of ID: student or teacher"
-    )
-    prefix = models.IntegerField(
-        default=1,
-        help_text="Prefix for ID (starts at 1, increments when sequential overflows 9999)"
-    )
-    sequential = models.IntegerField(
-        default=0,
-        help_text="Sequential number (1-9999)"
-    )
-
-    class Meta:
-        unique_together = ('year', 'id_type')
-        verbose_name = "ID Counter"
-        verbose_name_plural = "ID Counters"
-
-    def __str__(self):
-        return f"{self.id_type} IDs for {self.year}: prefix={self.prefix}, seq={self.sequential}"
-
-
 class CourseSectionGroup(models.Model):
     """Group multiple CourseSections together for batch enrollment.
 
@@ -815,3 +788,59 @@ class CourseSectionGroup(models.Model):
     def clean(self):
         from django.core.exceptions import ValidationError
         # Course count validation is handled in admin form
+
+
+class TeacherAdvisory(models.Model):
+    """Records which Section a teacher is currently advising, scoped per school year.
+
+    One teacher can advise at most one section per school year.
+    One section can have at most one adviser per school year.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    teacher = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='advisory_assignments',
+        limit_choices_to={'role': User.Role.TEACHER},
+        verbose_name='Teacher'
+    )
+    section = models.ForeignKey(
+        Section,
+        on_delete=models.CASCADE,
+        related_name='advisory_assignments',
+        verbose_name='Section'
+    )
+    school_year = models.CharField(
+        max_length=20,
+        help_text='Academic year e.g. 2024-2025',
+        verbose_name='School Year'
+    )
+    is_active = models.BooleanField(default=True, verbose_name='Active')
+    assigned_at = models.DateTimeField(auto_now_add=True, verbose_name='Assigned At')
+    assigned_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='advisory_assignments_made',
+        limit_choices_to={'role': User.Role.ADMIN},
+        verbose_name='Assigned By'
+    )
+
+    class Meta:
+        unique_together = [
+            ['teacher', 'school_year'],
+            ['section', 'school_year'],
+        ]
+        verbose_name = 'Teacher Advisory'
+        verbose_name_plural = 'Teacher Advisories'
+        ordering = ['-school_year', 'section__name']
+
+    def __str__(self):
+        return f'{self.teacher.get_full_name()} → {self.section.name} ({self.school_year})'
+
+    @property
+    def advisory_section(self):
+        """Convenience accessor for the advised section."""
+        return self.section

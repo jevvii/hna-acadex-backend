@@ -33,6 +33,7 @@ class HnaAcadexAdminSite(AdminSite):
         'coursesection',
         'coursesectiongroup',
         'enrollment',
+        'teacheradvisory',
     }
 
     def get_urls(self):
@@ -107,7 +108,7 @@ class HnaAcadexAdminSite(AdminSite):
         sis_import_app = {
             'name': 'SIS Import',
             'app_label': 'sis_import',
-            'app_url': reverse('admin:sis_import_index'),
+            'app_url': reverse('hna_acadex_admin:sis_import_index'),
             'has_module_perms': True,
             'models': [],  # No models, just a link to the import page
         }

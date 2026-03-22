@@ -1,0 +1,47 @@
+{% extends "teacher_portal/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if teacher_advisory %}
+<div class="module">
+    <h2>My Advisory Section</h2>
+    <div class="form-row" style="padding: 15px;">
+        <p><strong>Section:</strong> {{ teacher_advisory.section.name }}</p>
+        <p><strong>School Year:</strong> {{ teacher_advisory.school_year }}</p>
+        <p><strong>Grade Level:</strong> {{ teacher_advisory.section.get_grade_level_display }}</p>
+        {% if teacher_advisory.section.strand and teacher_advisory.section.strand != 'NONE' %}
+        <p><strong>Strand:</strong> {{ teacher_advisory.section.get_strand_display }}</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="module" style="margin-top: 20px;">
+    <h2>Quick Actions</h2>
+    <div style="padding: 15px;">
+        <ul style="list-style: none; padding: 0;">
+            <li style="margin-bottom: 10px;">
+                <a href="{% url 'teacher_portal:tp_sis_import_index' %}" class="button">
+                    Import Students / Enrollments
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+{% else %}
+<div class="module">
+    <h2>No Advisory Assigned</h2>
+    <div class="form-row" style="padding: 15px;">
+        <p>You do not have an active advisory section assigned.</p>
+        <p>Please contact your school administrator to have an advisory section assigned to you.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "teacher_portal/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'teacher_portal:tp_sis_import_index' %}">{% trans 'SIS Import' %}</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+{% if teacher_advisory %}
+<div class="module" style="margin-bottom: 20px;">
+    <h2>Advisory Context</h2>
+    <div class="form-row" style="padding: 15px; background: #e8f5e9; border-radius: 4px;">
+        <p style="margin: 0;">
+            <strong>Importing for advisory:</strong>
+            {{ teacher_advisory.section.name }} ({{ teacher_advisory.school_year }})
+        </p>
+    </div>
+</div>
+
+<div class="module">
+    <h2>Available Import Types</h2>
+    <table style="width: 100%;">
+        <tbody>
+        {% for import_type in import_types %}
+        <tr>
+            <td style="padding: 15px; width: 50%;">
+                <h3 style="margin: 0;">{{ import_type.name }}</h3>
+                <p style="margin: 5px 0; color: #666;">{{ import_type.description }}</p>
+            </td>
+            <td style="padding: 15px; text-align: right;">
+                <a href="{% url import_type.url_name %}" class="button">Import {{ import_type.name }}</a>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p style="margin-top: 20px;">
+    <a href="{% url 'teacher_portal:index' %}" class="button">Back to Dashboard</a>
+</p>
+{% else %}
+{% include "teacher_portal/assign_advisory_error.html" %}
+{% endif %}
+{% endblock %}

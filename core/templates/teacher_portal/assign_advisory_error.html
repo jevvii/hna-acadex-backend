@@ -1,0 +1,29 @@
+{% extends "teacher_portal/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="module">
+    <h2>Advisory Required</h2>
+    <div class="form-row" style="padding: 20px;">
+        <p style="font-size: 16px; color: #666;">
+            You need to have an active advisory section assigned to access this feature.
+        </p>
+        <p style="font-size: 14px; color: #888;">
+            Please contact your school administrator to have an advisory section assigned to you.
+        </p>
+    </div>
+</div>
+
+<p style="margin-top: 20px;">
+    <a href="{% url 'teacher_portal:index' %}" class="button">Return to Dashboard</a>
+</p>
+{% endblock %}

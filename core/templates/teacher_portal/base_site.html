@@ -1,0 +1,102 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+/* Teacher Portal - Advisory Green Theme */
+:root {
+    --teacher-primary: #2e7d32;
+    --teacher-primary-light: #4caf50;
+    --teacher-primary-dark: #1b5e20;
+}
+
+/* Override admin colors with teacher portal theme */
+#header {
+    background: linear-gradient(135deg, var(--teacher-primary-dark) 0%, var(--teacher-primary) 100%);
+}
+
+.module h2, .module caption, .inline-group h2 {
+    background: var(--teacher-primary);
+}
+
+a:link, a:visited {
+    color: var(--teacher-primary);
+}
+
+a:hover {
+    color: var(--teacher-primary-dark);
+}
+
+.button, input[type="submit"], input[type="button"], .submit-row input, a.button {
+    background: var(--teacher-primary);
+    border-color: var(--teacher-primary-dark);
+}
+
+.button:hover, input[type="submit"]:hover, input[type="button"]:hover {
+    background: var(--teacher-primary-dark);
+}
+
+.button.default, input[type="submit"].default {
+    background: var(--teacher-primary);
+}
+
+/* Advisory context banner */
+.advisory-banner {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border-bottom: 1px solid #a5d6a7;
+    padding: 10px 20px;
+    font-size: 14px;
+    color: #1b5e20;
+}
+
+.advisory-banner strong {
+    color: var(--teacher-primary-dark);
+}
+
+/* Improved module styling */
+.module {
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.module h2 {
+    border-radius: 6px 6px 0 0;
+}
+
+/* Table row hover with accent */
+tbody tr:hover {
+    background: #f1f8f2;
+    border-left: 3px solid var(--teacher-primary);
+}
+
+/* Site name styling */
+#site-name {
+    font-weight: 600;
+}
+
+#site-name a {
+    color: white;
+}
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'teacher_portal:index' %}">{{ site_header|default:"HNA Acadex Teacher Portal" }}</a></h1>
+{% endblock %}
+
+{% block userlinks %}
+{% if user.is_authenticated %}
+<span class="advisory-name">Welcome, {{ user.get_full_name }}</span> |
+<a href="{% url 'admin:logout' %}">{% trans 'Log out' %}</a>
+{% endif %}
+{% endblock %}
+
+{% block breadcrumbs %}
+{% if teacher_advisory %}
+<div class="advisory-banner">
+    <strong>Advisory:</strong> {{ teacher_advisory.section.name }} | {{ teacher_advisory.school_year }}
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

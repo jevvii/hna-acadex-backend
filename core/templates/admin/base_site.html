@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+/* HNA Acadex Admin Beautification */
+#header {
+    background: #417690;
+}
+
+.module h2, .module caption, .inline-group h2 {
+    background: #417690;
+}
+
+a:link, a:visited {
+    color: #417690;
+}
+
+a:hover {
+    color: #205067;
+}
+
+/* Rounded corners on module boxes */
+.module {
+    border-radius: 6px;
+}
+
+.module h2 {
+    border-radius: 6px 6px 0 0;
+}
+
+/* Subtle left-border accent on list rows on hover */
+tbody tr:hover {
+    background: #f8f8f8;
+    border-left: 3px solid #417690;
+}
+
+/* Improve header font-weight */
+#site-name {
+    font-weight: 600;
+}
+
+#user-tools a {
+    font-weight: 500;
+}
+
+/* Better action buttons */
+.button, input[type="submit"], input[type="button"], .submit-row input {
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+/* Better field styling for text inputs */
+input[type="text"], input[type="email"], input[type="password"],
+input[type="number"], input[type="url"], input[type="search"],
+textarea, .vTextField {
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    padding: 8px 10px;
+}
+
+/* Select dropdown styling - use native appearance for proper text display */
+select {
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    padding: 6px 28px 6px 10px;
+    height: auto;
+    line-height: 1.5;
+    background-position: right 8px center;
+}
+
+/* Fix for select2 and admin select widgets */
+.select2-container .select2-selection--single,
+.select2-container .select2-selection--multiple {
+    border-radius: 4px !important;
+}
+
+input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
+input[type="number"]:focus, input[type="url"]:focus, input[type="search"]:focus,
+textarea:focus, select:focus, .vTextField:focus {
+    border-color: #417690;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(65, 118, 144, 0.2);
+}
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('HNA Acadex Administration') }}</a></h1>
+{% endblock %}
+
+{% block userlinks %}
+{% if site_url %}
+<a href="{{ site_url }}">{{ _('View site') }}</a> /
+{% endif %}
+{% if user.is_active %}
+<a href="{% url 'admin:password_change' %}">{{ _('Change password') }}</a> /
+{% endif %}
+<form id="logout-form" method="post" action="{% url 'admin:logout' %}" style="display: inline;">
+    {% csrf_token %}
+    <button type="submit" style="background: none; border: none; color: #c4d9df; cursor: pointer; padding: 0; font: inherit;">{{ _('Log out') }}</button>
+</form>
+{% endblock %}
