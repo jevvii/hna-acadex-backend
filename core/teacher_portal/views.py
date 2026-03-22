@@ -62,15 +62,79 @@ def render_no_advisory(request):
 
 
 def dashboard(request):
-    """Teacher portal dashboard view."""
+    """Teacher portal dashboard view with live enrollment data."""
+    from core.models import Course
+
     advisory = get_teacher_advisory(request.user)
 
     if not advisory:
         return render_no_advisory(request)
 
+    # Build enrollment queryset (same as EnrollmentAdminTeacher.get_queryset)
+    enrollments = Enrollment.objects.filter(
+        Q(course_section__section=advisory.section) |
+        Q(student__is_irregular=True, student__section=advisory.section.name)
+    ).select_related('student', 'course_section__course', 'course_section__section', 'course_section__teacher')
+
+    # Search filter
+    q = request.GET.get('q', '').strip()
+    if q:
+        enrollments = enrollments.filter(
+            Q(student__first_name__icontains=q) |
+            Q(student__last_name__icontains=q) |
+            Q(student__email__icontains=q) |
+            Q(student__student_id__icontains=q)
+        )
+
+    # Course filter
+    course_code = request.GET.get('course', '')
+    if course_code:
+        enrollments = enrollments.filter(course_section__course__code=course_code)
+
+    # Active filter
+    active = request.GET.get('active', '')
+    if active == 'true':
+        enrollments = enrollments.filter(is_active=True)
+    elif active == 'false':
+        enrollments = enrollments.filter(is_active=False)
+
+    # Irregular filter
+    irregular = request.GET.get('irregular', '')
+    if irregular == 'true':
+        enrollments = enrollments.filter(student__is_irregular=True)
+    elif irregular == 'false':
+        enrollments = enrollments.filter(student__is_irregular=False)
+
+    # Order by enrolled_at descending
+    enrollments = enrollments.order_by('-enrolled_at')
+
+    # Calculate stats
+    total_enrollments = enrollments.count()
+    total_students = enrollments.values('student').distinct().count()
+    irregular_students = enrollments.filter(student__is_irregular=True).values('student').distinct().count()
+    active_enrollments = enrollments.filter(is_active=True).count()
+
+    # Available courses for filter dropdown
+    available_courses = CourseSection.objects.filter(
+        section=advisory.section,
+        is_active=True
+    ).values_list('course__code', flat=True).distinct()
+
     context = get_context(request,
         title='Advisory Dashboard',
         teacher_advisory=advisory,
+        enrollments=enrollments,
+        search_query=q,
+        total_enrollments=total_enrollments,
+        total_students=total_students,
+        irregular_students=irregular_students,
+        active_enrollments=active_enrollments,
+        available_courses=available_courses,
+        current_filters={
+            'course': course_code,
+            'active': active,
+            'irregular': irregular,
+        },
     )
     return render(request, 'teacher_portal/index.html', context)
 

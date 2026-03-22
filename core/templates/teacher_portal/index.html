@@ -1,5 +1,5 @@
 {% extends "teacher_portal/base_site.html" %}
-{% load i18n admin_urls static %}
+{% load i18n admin_urls %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
@@ -11,30 +11,115 @@
 <h1>{{ title }}</h1>
 
 {% if teacher_advisory %}
-<div class="module">
-    <h2>My Advisory Section</h2>
-    <div class="form-row" style="padding: 15px;">
-        <p><strong>Section:</strong> {{ teacher_advisory.section.name }}</p>
-        <p><strong>School Year:</strong> {{ teacher_advisory.school_year }}</p>
-        <p><strong>Grade Level:</strong> {{ teacher_advisory.section.get_grade_level_display }}</p>
-        {% if teacher_advisory.section.strand and teacher_advisory.section.strand != 'NONE' %}
-        <p><strong>Strand:</strong> {{ teacher_advisory.section.get_strand_display }}</p>
-        {% endif %}
+{# Stats Cards Row #}
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
+    <div class="module" style="padding: 15px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: var(--teacher-primary, #4F46E5);">{{ total_enrollments }}</div>
+        <div style="color: #666;">Total Enrollments</div>
+    </div>
+    <div class="module" style="padding: 15px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: var(--teacher-primary, #4F46E5);">{{ total_students }}</div>
+        <div style="color: #666;">Total Students</div>
+    </div>
+    <div class="module" style="padding: 15px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: var(--teacher-primary, #4F46E5);">{{ irregular_students }}</div>
+        <div style="color: #666;">Irregular Students</div>
+    </div>
+    <div class="module" style="padding: 15px; text-align: center;">
+        <div style="font-size: 24px; font-weight: bold; color: var(--teacher-primary, #4F46E5);">{{ active_enrollments }}</div>
+        <div style="color: #666;">Active Enrollments</div>
     </div>
 </div>
 
-<div class="module" style="margin-top: 20px;">
-    <h2>Quick Actions</h2>
-    <div style="padding: 15px;">
-        <ul style="list-style: none; padding: 0;">
-            <li style="margin-bottom: 10px;">
-                <a href="{% url 'teacher_portal:tp_sis_import_index' %}" class="button">
-                    Import Students / Enrollments
-                </a>
-            </li>
-        </ul>
-    </div>
+{# Quick Action Buttons #}
+<div style="margin-bottom: 20px;">
+    <a href="{% url 'teacher_portal:core_user_add' %}" class="button">+ Add Student</a>
+    <a href="{% url 'teacher_portal:core_course_add' %}" class="button" style="margin-left: 10px;">+ Add Course</a>
+    <a href="{% url 'teacher_portal:core_enrollment_add' %}" class="button" style="margin-left: 10px;">+ Enroll Student</a>
 </div>
+
+{# Search and Filter Bar #}
+<form method="get" style="margin-bottom: 20px;">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <input type="text" name="q" value="{{ search_query }}" placeholder="Search by name, email, or ID" style="flex: 1; min-width: 200px; padding: 8px;">
+        <select name="course" style="padding: 8px;">
+            <option value="">All Courses</option>
+            {% for code in available_courses %}
+            <option value="{{ code }}" {% if current_filters.course == code %}selected{% endif %}>{{ code }}</option>
+            {% endfor %}
+        </select>
+        <select name="active" style="padding: 8px;">
+            <option value="">All Status</option>
+            <option value="true" {% if current_filters.active == 'true' %}selected{% endif %}>Active</option>
+            <option value="false" {% if current_filters.active == 'false' %}selected{% endif %}>Inactive</option>
+        </select>
+        <select name="irregular" style="padding: 8px;">
+            <option value="">All Students</option>
+            <option value="true" {% if current_filters.irregular == 'true' %}selected{% endif %}>Irregular</option>
+            <option value="false" {% if current_filters.irregular == 'false' %}selected{% endif %}>Regular</option>
+        </select>
+        <input type="submit" value="Search" class="button">
+    </div>
+</form>
+
+{# Enrollment Table #}
+{% if enrollments %}
+<div class="module">
+    <table class="results">
+        <thead>
+            <tr>
+                <th>STUDENT</th>
+                <th>CLASS OFFERING</th>
+                <th>FINAL GRADE</th>
+                <th>IS ACTIVE</th>
+                <th>ENROLLED AT</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for enrollment in enrollments %}
+            <tr>
+                <td>
+                    <a href="{% url 'teacher_portal:core_enrollment_change' enrollment.id %}">
+                        {{ enrollment.student.last_name }}, {{ enrollment.student.first_name }}
+                    </a>
+                </td>
+                <td>{{ enrollment.course_section }}</td>
+                <td>
+                    {% if enrollment.manual_final_grade %}
+                        {{ enrollment.manual_final_grade|floatformat:2 }}% (Manual)
+                    {% elif enrollment.final_grade %}
+                        {{ enrollment.final_grade|floatformat:2 }}%
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>
+                    {% if enrollment.is_active %}
+                        <span style="color: green;">✓</span>
+                    {% else %}
+                        <span style="color: #999;">✗</span>
+                    {% endif %}
+                </td>
+                <td>{{ enrollment.enrolled_at|date:"N j, Y, g:i a" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<p style="color: #666; margin-top: 10px;">
+    {{ total_enrollments }} Student Enrollment{{ total_enrollments|pluralize }}
+</p>
+
+{% else %}
+<div class="module">
+    <p style="padding: 20px; color: #666;">
+        No enrollments found for your advisory section.
+        Use the Quick Actions above to get started.
+    </p>
+</div>
+{% endif %}
+
 {% else %}
 <div class="module">
     <h2>No Advisory Assigned</h2>

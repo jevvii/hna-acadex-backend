@@ -4,6 +4,10 @@ from django.urls import include, path
 from django.shortcuts import render
 from core.admin_site import admin_site
 from core.teacher_portal.site import teacher_portal_site
+from core.teacher_portal import admin  # Register teacher portal admin models
+
+# Import teacher portal admin to register models
+import core.teacher_portal.admin  # noqa: F401
 
 
 def portal_landing(request):
