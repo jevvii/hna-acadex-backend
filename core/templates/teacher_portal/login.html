@@ -5,41 +5,41 @@
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'admin/css/login.css' %}">
 <style>
-/* Teacher Portal Login - Green Theme */
+/* Teacher Portal Login - Dark Blue Theme */
 :root {
-    --teacher-primary: #2e7d32;
-    --teacher-primary-light: #4caf50;
-    --teacher-primary-dark: #1b5e20;
+    --tp-primary:      #1565C0;
+    --tp-primary-light:#7CA4D4;
+    --tp-primary-dark: #0D2A6E;
 }
 
 #header {
-    background: linear-gradient(135deg, var(--teacher-primary-dark) 0%, var(--teacher-primary) 100%);
+    background: #0D1B3E;
 }
 
 .module h2 {
-    background: var(--teacher-primary);
+    background: var(--tp-primary);
 }
 
 a:link, a:visited {
-    color: var(--teacher-primary);
+    color: var(--tp-primary);
 }
 
 a:hover {
-    color: var(--teacher-primary-dark);
+    color: var(--tp-primary-dark);
 }
 
 .button, input[type="submit"], input[type="button"], .submit-row input {
-    background: var(--teacher-primary);
-    border-color: var(--teacher-primary-dark);
+    background: var(--tp-primary);
+    border-color: var(--tp-primary-dark);
 }
 
 .button:hover, input[type="submit"]:hover, input[type="button"]:hover {
-    background: var(--teacher-primary-dark);
+    background: var(--tp-primary-dark);
 }
 
 input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
-    border-color: var(--teacher-primary);
-    box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.2);
+    border-color: var(--tp-primary);
+    box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.2);
 }
 </style>
 {{ form.media }}
@@ -101,6 +101,6 @@ input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focu
 </div>
 
 <div style="text-align: center; margin-top: 1rem;">
-    <a href="/" style="color: #2e7d32;">← Back to Home</a>
+    <a href="/" style="color: #1565C0;">← Back to Home</a>
 </div>
 {% endblock %}

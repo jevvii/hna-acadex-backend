@@ -3,64 +3,76 @@
 
 {% block extrastyle %}{{ block.super }}
 <style>
-/* Teacher Portal - Advisory Green Theme */
+/* Teacher Portal - Dark Blue Theme */
 :root {
-    --teacher-primary: #2e7d32;
-    --teacher-primary-light: #4caf50;
-    --teacher-primary-dark: #1b5e20;
+    --tp-primary:       #1565C0;
+    --tp-primary-light: #7CA4D4;
+    --tp-primary-dark:  #0D2A6E;
+    --tp-midnight:      #0D1B3E;
+    --tp-deep:          #112559;
+    --tp-frost:         #90BEF7;
+    --tp-azure:         #DBEAFE;
+    --tp-ghost:         #F0F4FF;
+    --tp-mist:          #C8D8F0;
+    --tp-slate:         #1A2F5A;
+}
+
+/* Page background */
+body.change-list, body.change-form, body {
+    background-color: #F0F4FF;
 }
 
 /* Override admin colors with teacher portal theme */
 #header {
-    background: linear-gradient(135deg, var(--teacher-primary-dark) 0%, var(--teacher-primary) 100%);
+    background: #0D1B3E;
 }
 
 .module h2, .module caption, .inline-group h2 {
-    background: var(--teacher-primary);
+    background: var(--tp-primary);
 }
 
 a:link, a:visited {
-    color: var(--teacher-primary);
+    color: var(--tp-primary);
 }
 
 a:hover {
-    color: var(--teacher-primary-dark);
+    color: var(--tp-primary-dark);
 }
 
 /* Buttons with visible white text */
 .button, input[type="submit"], input[type="button"], .submit-row input, a.button {
-    background: var(--teacher-primary) !important;
-    border-color: var(--teacher-primary-dark) !important;
+    background: var(--tp-primary) !important;
+    border-color: var(--tp-primary-dark) !important;
     color: #fff !important;
 }
 
 .button:hover, input[type="submit"]:hover, input[type="button"]:hover, a.button:hover {
-    background: var(--teacher-primary-dark) !important;
+    background: var(--tp-primary-dark) !important;
     color: #fff !important;
 }
 
 .button.default, input[type="submit"].default {
-    background: var(--teacher-primary) !important;
+    background: var(--tp-primary) !important;
 }
 
 /* Advisory context banner */
 .advisory-banner {
-    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-    border-bottom: 1px solid #a5d6a7;
+    background: #112559;
+    border-bottom: 1px solid #1E3A6E;
     padding: 10px 20px;
     font-size: 14px;
-    color: #1b5e20;
+    color: #7CA4D4;
 }
 
 .advisory-banner strong {
-    color: var(--teacher-primary-dark);
+    color: #90BEF7;
 }
 
 /* Improved module styling */
 .module {
     border-radius: 6px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 3px rgba(13, 27, 62, 0.12);
 }
 
 .module h2 {
@@ -69,8 +81,8 @@ a:hover {
 
 /* Table row hover with accent */
 tbody tr:hover {
-    background: #f1f8f2;
-    border-left: 3px solid var(--teacher-primary);
+    background: #DBEAFE;
+    border-left: 3px solid var(--tp-primary);
 }
 
 /* Site name styling */
@@ -89,7 +101,7 @@ tbody tr:hover {
 }
 
 #logout-form button:hover {
-    color: #c8e6c9 !important;
+    color: #90BEF7 !important;
 }
 
 /* User tools styling */
@@ -99,6 +111,13 @@ tbody tr:hover {
 
 .advisory-name {
     color: #fff;
+}
+
+/* Input focus styling */
+input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
+input[type="number"]:focus, input[type="search"]:focus, select:focus, textarea:focus {
+    border-color: var(--tp-primary);
+    box-shadow: 0 0 0 2px rgba(21, 101, 192, 0.2);
 }
 </style>
 {% endblock %}

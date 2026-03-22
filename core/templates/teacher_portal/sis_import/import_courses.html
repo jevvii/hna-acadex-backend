@@ -15,7 +15,7 @@
 {% if teacher_advisory %}
 <div class="module" style="margin-bottom: 20px;">
     <h2>Advisory Context</h2>
-    <div class="form-row" style="padding: 15px; background: #e8f5e9; border-radius: 4px;">
+    <div class="form-row" style="padding: 15px; background: #E8F0FE; border-radius: 4px; border-left: 3px solid #1565C0;">
         <p style="margin: 0;">
             <strong>Importing courses for advisory:</strong>
             {{ teacher_advisory.section.name }} ({{ teacher_advisory.school_year }})
@@ -60,7 +60,7 @@
     <h2>Validation Results</h2>
     <div style="padding: 15px;">
         {% if validation_result.is_valid %}
-        <p style="color: green;"><strong>All rows valid!</strong> Ready to import.</p>
+        <p style="color: #388E3C;"><strong>All rows valid!</strong> Ready to import.</p>
         {% else %}
         <p style="color: red;"><strong>{{ validation_result.error_count }} error(s) found.</strong></p>
         {% endif %}
@@ -113,7 +113,7 @@
         <p>{{ result.message }}</p>
 
         {% if result.created_count > 0 %}
-        <h3 style="color: green; margin-top: 15px;">Created ({{ result.created_count }})</h3>
+        <h3 style="color: #388E3C; margin-top: 15px;">Created ({{ result.created_count }})</h3>
         <ul>
         {% for row in result.created %}
             <li>{{ row.message }}</li>
