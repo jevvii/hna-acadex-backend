@@ -70,11 +70,11 @@ class TeacherScopedCourseCSVProcessor(CourseCSVProcessor):
         return [
             'MATH101',           # code
             'Algebra I',         # title
-            'Introduction to algebraic concepts',  # description
             '2024-2025',         # school_year
-            '1st Semester',       # semester
-            'Grade 11',          # grade_level (optional)
-            'STEM',              # strand (optional)
-            '18',                # num_weeks (optional)
-            'true',              # is_active (optional)
+            'Introduction to Algebra',  # description
+            'Grade 11',          # grade_level
+            'STEM',              # strand
+            '1st Semester',      # semester
+            '18',                # num_weeks
+            'true',              # is_active
         ]

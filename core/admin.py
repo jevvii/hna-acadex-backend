@@ -458,6 +458,10 @@ class UserAdmin(DjangoUserAdmin):
                 # Use the manually entered password
                 plain_password = form.cleaned_data.get('password1')
 
+            # Set the password on the user object BEFORE saving
+            # This is critical - without this, the user is created with no usable password
+            obj.set_password(plain_password)
+
             # Auto-generate ID and email for students and teachers
             if role == User.Role.STUDENT:
                 student_id = generate_student_id()

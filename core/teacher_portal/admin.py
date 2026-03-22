@@ -100,6 +100,7 @@ class TeacherUserAdmin(admin.ModelAdmin):
     list_filter = ['status', 'is_irregular']
     search_fields = ['first_name', 'last_name', 'email', 'student_id', 'personal_email']
     ordering = ['-created_at']
+    actions = ['transfer_section']
 
     # Fields shown when viewing/editing existing student (derived from advisory section)
     readonly_fields = ['student_id', 'email', 'username', 'role', 'section', 'grade_level', 'strand', 'status', 'created_at']
@@ -157,6 +158,106 @@ class TeacherUserAdmin(admin.ModelAdmin):
         if obj is None:
             return TeacherStudentCreationForm
         return TeacherStudentChangeForm
+
+    def get_urls(self):
+        """Add custom URL for transfer section confirmation."""
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                'transfer-section/',
+                self.admin_site.admin_view(self.transfer_section_view),
+                name='teacher_portal_core_user_transfer_section'
+            ),
+        ]
+        return custom_urls + urls
+
+    def transfer_section(self, request, queryset):
+        """
+        Admin action to transfer selected students to another section.
+        Shows an intermediate page for section selection.
+        """
+        from core.models import Section
+
+        # Only allow action if teacher has advisory
+        advisory = get_teacher_advisory(request.user)
+        if not advisory:
+            self.message_user(request, "You must have an advisory section to transfer students.", level=messages.ERROR)
+            return
+
+        # Verify all selected students belong to teacher's advisory
+        for student in queryset:
+            if student.section != advisory.section.name:
+                self.message_user(
+                    request,
+                    f"Student {student.get_full_name()} is not in your advisory section.",
+                    level=messages.ERROR
+                )
+                return
+
+        # Filter sections: same school_year, same grade_level, not current section
+        sections = Section.objects.filter(
+            is_active=True,
+            school_year=advisory.school_year,
+            grade_level=advisory.section.grade_level
+        ).exclude(id=advisory.section.id).order_by('name')
+
+        if not sections.exists():
+            self.message_user(request, "No eligible sections available for transfer.", level=messages.WARNING)
+            return
+
+        context = {
+            'students': queryset,
+            'sections': sections,
+            'advisory': advisory,
+            'opts': self.model._meta,
+            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME,
+            'title': 'Transfer Students to Another Section',
+        }
+        return render(request, 'teacher_portal/transfer_section.html', context)
+
+    transfer_section.short_description = "Transfer selected students to another section"
+
+    def transfer_section_view(self, request):
+        """Handle the POST request to complete the transfer."""
+        from django.http import HttpResponseRedirect
+        from core.models import Section
+
+        if request.method != 'POST':
+            return HttpResponseRedirect(reverse('teacher_portal:teacher_portal_core_user_changelist'))
+
+        advisory = get_teacher_advisory(request.user)
+        if not advisory:
+            self.message_user(request, "No active advisory assignment.", level=messages.ERROR)
+            return HttpResponseRedirect(reverse('teacher_portal:teacher_portal_core_user_changelist'))
+
+        student_ids = request.POST.getlist('student_ids')
+        new_section_id = request.POST.get('new_section_id')
+
+        if not student_ids:
+            self.message_user(request, "No students selected.", level=messages.ERROR)
+            return HttpResponseRedirect(reverse('teacher_portal:teacher_portal_core_user_changelist'))
+
+        try:
+            new_section = Section.objects.get(id=new_section_id, is_active=True)
+        except (Section.DoesNotExist, ValueError):
+            self.message_user(request, "Invalid section selected.", level=messages.ERROR)
+            return HttpResponseRedirect(reverse('teacher_portal:teacher_portal_core_user_changelist'))
+
+        # Update students
+        students = User.objects.filter(id__in=student_ids, role=User.Role.STUDENT)
+        updated_count = students.update(
+            section=new_section.name,
+            grade_level=new_section.grade_level,
+            strand=new_section.strand
+        )
+
+        self.message_user(
+            request,
+            f"Successfully transferred {updated_count} student(s) to {new_section.name}.",
+            level=messages.SUCCESS
+        )
+        return HttpResponseRedirect(reverse('teacher_portal:teacher_portal_core_user_changelist'))
 
     def student_id_display(self, obj):
         return obj.student_id or '—'

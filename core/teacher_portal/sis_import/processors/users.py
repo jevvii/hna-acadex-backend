@@ -186,9 +186,9 @@ class TeacherScopedUserCSVProcessor(BaseCSVProcessor):
     def _get_example_row(self) -> list[str]:
         """Get an example row for the template CSV."""
         return [
-            'student',           # role
-            'Juan',              # first_name
             'Dela Cruz',         # last_name
+            'Juan',              # first_name
+            'student',           # role
             'juan.delacruz@example.com',  # personal_email
             'B.',                # middle_name
             '',                  # grade_level (will default to advisory section)
