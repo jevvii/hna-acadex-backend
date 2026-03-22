@@ -1,0 +1,9 @@
+{% extends "admin/login.html" %}
+{% load i18n %}
+
+{% block content %}
+{{ block.super }}
+<div style="text-align: center; margin-top: 1rem;">
+    <a href="/" style="color: #417690;">{% translate '← Back to Home' %}</a>
+</div>
+{% endblock %}
