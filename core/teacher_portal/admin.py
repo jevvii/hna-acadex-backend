@@ -169,8 +169,8 @@ class TeacherUserAdmin(admin.ModelAdmin):
     full_name_display.admin_order_field = 'last_name'
 
     def has_delete_permission(self, request, obj=None):
-        """Teachers cannot delete students."""
-        return False
+        """Teachers with active advisory can delete students from their section."""
+        return get_teacher_advisory(request.user) is not None
 
     def has_view_permission(self, request, obj=None):
         """Teachers with active advisory can view students."""
@@ -373,8 +373,8 @@ class EnrollmentAdminTeacher(admin.ModelAdmin):
         return get_teacher_advisory(request.user) is not None
 
     def has_delete_permission(self, request, obj=None):
-        """Teachers cannot delete enrollments."""
-        return False
+        """Teachers with active advisory can delete enrollments."""
+        return get_teacher_advisory(request.user) is not None
 
     def student_name(self, obj):
         return obj.student.get_full_name()
