@@ -3296,6 +3296,47 @@ class ActivityViewSet(TeacherCourseSectionScopedModelViewSet):
     queryset = Activity.objects.all().order_by("deadline")
     serializer_class = ActivitySerializer
 
+    def get_object(self):
+        """Allow students to retrieve activities in their enrolled courses."""
+        from django.shortcuts import get_object_or_404
+        from rest_framework.exceptions import NotFound
+
+        pk = self.kwargs.get('pk')
+        user = self.request.user
+
+        # Get the activity
+        activity = Activity.objects.filter(id=pk).first()
+        if not activity:
+            raise NotFound("Activity not found.")
+
+        # Check permissions based on role
+        if user.role == User.Role.ADMIN:
+            return activity
+
+        if user.role == User.Role.TEACHER:
+            if activity.course_section.teacher_id == user.id:
+                return activity
+            raise NotFound("Activity not found.")
+
+        if user.role == User.Role.STUDENT:
+            # Students can access if enrolled in the course section
+            is_enrolled = Enrollment.objects.filter(
+                student=user,
+                course_section=activity.course_section,
+                is_active=True
+            ).exists()
+            if is_enrolled and activity.is_published:
+                return activity
+            raise NotFound("Activity not found.")
+
+        raise NotFound("Activity not found.")
+
+    def retrieve(self, request, *args, **kwargs):
+        """Allow students to view activities in their enrolled courses."""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def _validate_weekly_module(self, serializer):
         weekly_module = serializer.validated_data.get("weekly_module")
         course_section = serializer.validated_data.get("course_section") or getattr(serializer.instance, "course_section", None)
@@ -3539,6 +3580,47 @@ class AnnouncementViewSet(TeacherCourseSectionScopedModelViewSet):
 class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
     queryset = Quiz.objects.all().order_by("-created_at")
     serializer_class = QuizSerializer
+
+    def get_object(self):
+        """Allow students to retrieve quizzes in their enrolled courses."""
+        from django.shortcuts import get_object_or_404
+        from rest_framework.exceptions import NotFound
+
+        pk = self.kwargs.get('pk')
+        user = self.request.user
+
+        # Get the quiz
+        quiz = Quiz.objects.filter(id=pk).first()
+        if not quiz:
+            raise NotFound("Quiz not found.")
+
+        # Check permissions based on role
+        if user.role == User.Role.ADMIN:
+            return quiz
+
+        if user.role == User.Role.TEACHER:
+            if quiz.course_section.teacher_id == user.id:
+                return quiz
+            raise NotFound("Quiz not found.")
+
+        if user.role == User.Role.STUDENT:
+            # Students can access if enrolled in the course section
+            is_enrolled = Enrollment.objects.filter(
+                student=user,
+                course_section=quiz.course_section,
+                is_active=True
+            ).exists()
+            if is_enrolled and quiz.is_published:
+                return quiz
+            raise NotFound("Quiz not found.")
+
+        raise NotFound("Quiz not found.")
+
+    def retrieve(self, request, *args, **kwargs):
+        """Allow students to view quizzes in their enrolled courses."""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     def _validate_weekly_module(self, serializer):
         weekly_module = serializer.validated_data.get("weekly_module")
