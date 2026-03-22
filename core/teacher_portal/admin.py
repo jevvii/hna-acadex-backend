@@ -56,6 +56,53 @@ class TeacherStudentCreationForm(forms.ModelForm):
         return personal_email
 
 
+class TeacherStudentChangeForm(forms.ModelForm):
+    """Form for teachers to edit existing student accounts."""
+
+    middle_name = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Middle Name"
+    )
+    personal_email = forms.EmailField(
+        required=False,
+        label="Personal Email",
+        help_text="Student's personal email for contact"
+    )
+    grade_level = forms.ChoiceField(
+        required=False,
+        label="Grade Level",
+        choices=[('', '---------')] + list(User.GradeLevel.choices)
+    )
+    strand = forms.ChoiceField(
+        required=False,
+        label="Strand",
+        choices=[('', '---------')] + list(User.Strand.choices),
+        help_text="Academic strand for senior high school"
+    )
+    is_irregular = forms.BooleanField(
+        required=False,
+        label="Is Irregular",
+        help_text="Mark as irregular student (can enroll in courses outside advisory section)"
+    )
+
+    class Meta:
+        model = User
+        fields = ['middle_name', 'personal_email', 'grade_level', 'strand', 'is_irregular']
+
+    def clean_personal_email(self):
+        """Check uniqueness of personal email, excluding current instance."""
+        personal_email = self.cleaned_data.get('personal_email', '')
+        if personal_email:
+            # Exclude current instance when checking uniqueness
+            qs = User.objects.filter(personal_email=personal_email)
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError("This personal email is already in use.")
+        return personal_email
+
+
 class TeacherUserAdmin(admin.ModelAdmin):
     """Admin for teachers to view and create students in their advisory."""
 
@@ -65,7 +112,11 @@ class TeacherUserAdmin(admin.ModelAdmin):
     search_fields = ['first_name', 'last_name', 'email', 'student_id', 'personal_email']
     ordering = ['-created_at']
 
-    fieldsets = (
+    # Fields shown when viewing/editing existing student
+    readonly_fields = ['student_id', 'email', 'username', 'role', 'section', 'status', 'created_at']
+
+    # Fieldsets for creating new student
+    add_fieldsets = (
         ('Student Information', {
             'fields': ('first_name', 'last_name', 'middle_name'),
             'description': 'Enter the student\'s name. Student ID and school email will be auto-generated.'
@@ -75,6 +126,48 @@ class TeacherUserAdmin(admin.ModelAdmin):
             'description': 'Optional: Personal email for sending login credentials.'
         }),
     )
+
+    # Fieldsets for editing existing student
+    change_fieldsets = (
+        ('Student Identity', {
+            'fields': ('student_id', 'email'),
+            'description': 'Auto-generated fields (read-only).'
+        }),
+        ('Personal Information', {
+            'fields': ('first_name', 'last_name', 'middle_name'),
+        }),
+        ('Contact', {
+            'fields': ('personal_email',),
+        }),
+        ('Academic Details', {
+            'fields': ('grade_level', 'strand'),
+            'description': 'Grade level and academic strand.'
+        }),
+        ('Account Status', {
+            'fields': ('status', 'is_irregular', 'section'),
+            'description': 'Account status and section assignment (read-only).'
+        }),
+    )
+
+    def get_fieldsets(self, request, obj=None):
+        """Use different fieldsets for add vs change."""
+        if obj is None:
+            return self.add_fieldsets
+        return self.change_fieldsets
+
+    def get_readonly_fields(self, request, obj=None):
+        """Show readonly fields only when editing existing student."""
+        if obj is None:
+            # Creating new - first_name and last_name are editable
+            return []
+        # Editing existing - show readonly fields plus first_name and last_name
+        return self.readonly_fields + ['first_name', 'last_name']
+
+    def get_form(self, request, obj=None, **kwargs):
+        """Use different form for add vs change."""
+        if obj is None:
+            return TeacherStudentCreationForm
+        return TeacherStudentChangeForm
 
     def student_id_display(self, obj):
         return obj.student_id or '—'
@@ -95,8 +188,8 @@ class TeacherUserAdmin(admin.ModelAdmin):
         return get_teacher_advisory(request.user) is not None
 
     def has_change_permission(self, request, obj=None):
-        """Teachers cannot edit students (read-only list)."""
-        return False
+        """Teachers with active advisory can edit students."""
+        return get_teacher_advisory(request.user) is not None
 
     def has_add_permission(self, request):
         """Teachers can add students."""
@@ -115,62 +208,68 @@ class TeacherUserAdmin(admin.ModelAdmin):
         ).order_by('-created_at')
 
     def save_model(self, request, obj, form, change):
-        """Create student with auto-generated credentials."""
+        """Handle both student creation and editing."""
         advisory = get_teacher_advisory(request.user)
         if not advisory:
             raise ValueError("No active advisory assignment.")
 
-        # Get form data
-        first_name = form.cleaned_data['first_name']
-        last_name = form.cleaned_data['last_name']
-        middle_name = form.cleaned_data.get('middle_name', '') or ''
-        personal_email = form.cleaned_data.get('personal_email', '')
-        send_credentials = form.cleaned_data.get('send_credentials', False)
-
-        # Generate student ID and email
-        student_id = generate_student_id()
-        email = generate_school_email_from_parts(
-            first_name=first_name,
-            last_name=last_name,
-            middle_name=middle_name if middle_name else None,
-            role='student',
-            id_number=student_id
-        )
-
-        # Generate random password
-        plain_password = generate_random_password()
-
-        # Set user attributes
-        obj.student_id = student_id
-        obj.email = email
-        obj.username = email  # Use email as username
-        obj.role = User.Role.STUDENT
-        obj.section = advisory.section.name
-        obj.status = User.Status.ACTIVE
-        obj.is_active = True
-        obj.requires_setup = True
-        obj.first_name = first_name
-        obj.last_name = last_name
-        obj.middle_name = middle_name if middle_name else None
-        obj.personal_email = personal_email if personal_email else None
-
-        # Set password
-        obj.set_password(plain_password)
-
-        # Save the user
-        super().save_model(request, obj, form, change)
-
-        # Send credentials email if requested and personal email provided
-        if send_credentials and personal_email:
-            success, message = send_credentials_email(obj, plain_password)
-            if success:
-                messages.success(request, f"Student created successfully. Credentials sent to {personal_email}")
-            else:
-                messages.warning(request, f"Student created but email failed: {message}")
-                messages.info(request, f"Student ID: {student_id}, Email: {email}, Password: {plain_password}")
+        if change:
+            # Editing existing student - just save changes
+            # Only personal_email and is_irregular can be changed
+            super().save_model(request, obj, form, change)
+            messages.success(request, f"Student {obj.get_full_name()} updated successfully.")
         else:
-            messages.success(request, f"Student created successfully.")
-            messages.info(request, f"Student ID: {student_id}, Email: {email}, Password: {plain_password}")
+            # Creating new student - generate credentials
+            first_name = form.cleaned_data['first_name']
+            last_name = form.cleaned_data['last_name']
+            middle_name = form.cleaned_data.get('middle_name', '') or ''
+            personal_email = form.cleaned_data.get('personal_email', '')
+            send_credentials = form.cleaned_data.get('send_credentials', False)
+
+            # Generate student ID and email
+            student_id = generate_student_id()
+            email = generate_school_email_from_parts(
+                first_name=first_name,
+                last_name=last_name,
+                middle_name=middle_name if middle_name else None,
+                role='student',
+                id_number=student_id
+            )
+
+            # Generate random password
+            plain_password = generate_random_password()
+
+            # Set user attributes
+            obj.student_id = student_id
+            obj.email = email
+            obj.username = email  # Use email as username
+            obj.role = User.Role.STUDENT
+            obj.section = advisory.section.name
+            obj.status = User.Status.ACTIVE
+            obj.is_active = True
+            obj.requires_setup = True
+            obj.first_name = first_name
+            obj.last_name = last_name
+            obj.middle_name = middle_name if middle_name else None
+            obj.personal_email = personal_email if personal_email else None
+
+            # Set password
+            obj.set_password(plain_password)
+
+            # Save the user
+            super().save_model(request, obj, form, change)
+
+            # Send credentials email if requested and personal email provided
+            if send_credentials and personal_email:
+                success, message = send_credentials_email(obj, plain_password)
+                if success:
+                    messages.success(request, f"Student created successfully. Credentials sent to {personal_email}")
+                else:
+                    messages.warning(request, f"Student created but email failed: {message}")
+                    messages.info(request, f"Student ID: {student_id}, Email: {email}, Password: {plain_password}")
+            else:
+                messages.success(request, f"Student created successfully.")
+                messages.info(request, f"Student ID: {student_id}, Email: {email}, Password: {plain_password}")
 
 
 # =============================================================================
