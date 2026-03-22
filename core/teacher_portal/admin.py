@@ -69,17 +69,6 @@ class TeacherStudentChangeForm(forms.ModelForm):
         label="Personal Email",
         help_text="Student's personal email for contact"
     )
-    grade_level = forms.ChoiceField(
-        required=False,
-        label="Grade Level",
-        choices=[('', '---------')] + list(User.GradeLevel.choices)
-    )
-    strand = forms.ChoiceField(
-        required=False,
-        label="Strand",
-        choices=[('', '---------')] + list(User.Strand.choices),
-        help_text="Academic strand for senior high school"
-    )
     is_irregular = forms.BooleanField(
         required=False,
         label="Is Irregular",
@@ -88,7 +77,7 @@ class TeacherStudentChangeForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ['middle_name', 'personal_email', 'grade_level', 'strand', 'is_irregular']
+        fields = ['middle_name', 'personal_email', 'is_irregular']
 
     def clean_personal_email(self):
         """Check uniqueness of personal email, excluding current instance."""
@@ -112,8 +101,8 @@ class TeacherUserAdmin(admin.ModelAdmin):
     search_fields = ['first_name', 'last_name', 'email', 'student_id', 'personal_email']
     ordering = ['-created_at']
 
-    # Fields shown when viewing/editing existing student
-    readonly_fields = ['student_id', 'email', 'username', 'role', 'section', 'status', 'created_at']
+    # Fields shown when viewing/editing existing student (derived from advisory section)
+    readonly_fields = ['student_id', 'email', 'username', 'role', 'section', 'grade_level', 'strand', 'status', 'created_at']
 
     # Fieldsets for creating new student
     add_fieldsets = (
@@ -141,7 +130,7 @@ class TeacherUserAdmin(admin.ModelAdmin):
         }),
         ('Academic Details', {
             'fields': ('grade_level', 'strand'),
-            'description': 'Grade level and academic strand.'
+            'description': 'Grade level and strand from advisory section (read-only).'
         }),
         ('Account Status', {
             'fields': ('status', 'is_irregular', 'section'),
@@ -245,6 +234,8 @@ class TeacherUserAdmin(admin.ModelAdmin):
             obj.username = email  # Use email as username
             obj.role = User.Role.STUDENT
             obj.section = advisory.section.name
+            obj.grade_level = advisory.section.grade_level  # From advisory section
+            obj.strand = advisory.section.strand  # From advisory section
             obj.status = User.Status.ACTIVE
             obj.is_active = True
             obj.requires_setup = True
