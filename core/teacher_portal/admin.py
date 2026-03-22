@@ -201,6 +201,18 @@ class TeacherCourseAdmin(admin.ModelAdmin):
         """Teachers cannot delete courses."""
         return False
 
+    def has_add_permission(self, request):
+        """Teachers with active advisory can add courses."""
+        return get_teacher_advisory(request.user) is not None
+
+    def has_view_permission(self, request, obj=None):
+        """Teachers with active advisory can view courses."""
+        return get_teacher_advisory(request.user) is not None
+
+    def has_change_permission(self, request, obj=None):
+        """Teachers with active advisory can change courses."""
+        return get_teacher_advisory(request.user) is not None
+
     def get_queryset(self, request):
         """Filter courses by advisory's grade level and strand."""
         advisory = get_teacher_advisory(request.user)
@@ -253,6 +265,22 @@ class EnrollmentAdminTeacher(admin.ModelAdmin):
     )
 
     actions = ['activate_enrollments', 'deactivate_enrollments']
+
+    def has_add_permission(self, request):
+        """Teachers with active advisory can add enrollments."""
+        return get_teacher_advisory(request.user) is not None
+
+    def has_view_permission(self, request, obj=None):
+        """Teachers with active advisory can view enrollments."""
+        return get_teacher_advisory(request.user) is not None
+
+    def has_change_permission(self, request, obj=None):
+        """Teachers with active advisory can change enrollments."""
+        return get_teacher_advisory(request.user) is not None
+
+    def has_delete_permission(self, request, obj=None):
+        """Teachers cannot delete enrollments."""
+        return False
 
     def student_name(self, obj):
         return obj.student.get_full_name()
