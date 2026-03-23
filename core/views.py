@@ -1247,6 +1247,69 @@ class TeacherCoursesView(APIView):
         return Response(data)
 
 
+class CourseSectionDetailView(APIView):
+    """Get a single course section by ID."""
+    def get(self, request, pk):
+        course_section = CourseSection.objects.filter(id=pk).select_related("course", "section", "teacher").first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions
+        if request.user.role == User.Role.STUDENT:
+            allowed = Enrollment.objects.filter(course_section=course_section, student=request.user, is_active=True).exists()
+            if not allowed:
+                return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        elif request.user.role == User.Role.TEACHER:
+            if course_section.teacher_id != request.user.id:
+                return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        # Admins can access any course section
+
+        course = course_section.course
+        section = course_section.section
+        teacher = course_section.teacher
+
+        data = {
+            "id": str(course_section.id),
+            "course_id": str(course.id),
+            "section_id": str(section.id),
+            "teacher_id": str(teacher.id) if teacher else None,
+            "school_year": course_section.school_year,
+            "semester": course_section.semester,
+            "is_active": course_section.is_active,
+            "course": {
+                "id": str(course.id),
+                "code": course.code,
+                "title": course.title,
+                "description": course.description,
+                "cover_image_url": course.cover_image_url,
+                "color_overlay": course.color_overlay,
+                "grade_level": course.grade_level,
+                "strand": course.strand,
+                "school_year": course.school_year,
+                "semester": course.semester,
+                "num_weeks": course.num_weeks,
+                "is_active": course.is_active,
+                "created_at": course.created_at,
+                "updated_at": course.updated_at,
+            },
+            "section": {
+                "id": str(section.id),
+                "name": section.name,
+                "strand": section.strand,
+                "grade_level": section.grade_level,
+            },
+            "teacher": {
+                "id": str(teacher.id),
+                "first_name": teacher.first_name,
+                "last_name": teacher.last_name,
+                "full_name": teacher.full_name,
+                "email": teacher.email,
+                "avatar_url": teacher.avatar_url,
+            } if teacher else None,
+        }
+        return Response(data)
+
+
 class CourseSectionContentView(APIView):
     def get(self, request, pk):
         course_section = CourseSection.objects.filter(id=pk).first()
