@@ -22,6 +22,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from core.pagination import NotificationPagination
 from rest_framework_simplejwt.tokens import RefreshToken
 
 # File upload validation constants
@@ -1096,9 +1097,10 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
 class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = NotificationPagination
 
     def get_queryset(self):
-        return Notification.objects.filter(recipient=self.request.user).order_by("-created_at")[:50]
+        return Notification.objects.filter(recipient=self.request.user).order_by("-created_at")
 
     @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):
