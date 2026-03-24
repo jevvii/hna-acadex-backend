@@ -3398,7 +3398,27 @@ class ActivityViewSet(TeacherCourseSectionScopedModelViewSet):
         """Allow students to view activities in their enrolled courses."""
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        data = serializer.data
+
+        # Add my_submission for students to enable dynamic UI updates after submission
+        if request.user.role == User.Role.STUDENT:
+            all_submissions = Submission.objects.filter(
+                activity=instance,
+                student=request.user
+            ).order_by('-attempt_number')
+            # Latest submission (first in the ordered list)
+            latest_submission = all_submissions.first()
+            data['my_submission'] = SubmissionSerializer(latest_submission).data if latest_submission else None
+            # Include all submissions for attempt history dropdown
+            data['my_submissions'] = SubmissionSerializer(all_submissions, many=True).data
+            # Include attempt limits
+            attempt_limit = instance.attempt_limit or 1
+            attempts_used = all_submissions.count()
+            data['attempt_limit'] = attempt_limit
+            data['attempts_used'] = attempts_used
+            data['attempts_remaining'] = max(attempt_limit - attempts_used, 0)
+
+        return Response(data)
 
     def _validate_weekly_module(self, serializer):
         weekly_module = serializer.validated_data.get("weekly_module")
