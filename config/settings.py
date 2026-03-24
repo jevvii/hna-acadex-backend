@@ -134,7 +134,6 @@ AUTH_USER_MODEL = "core.User"
 # Rate limiting
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
-RATELIMIT_VIEW = "core.views.rate_limited"
 
 # Email Configuration
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
