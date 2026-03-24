@@ -15,19 +15,40 @@ env/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+*.sqlite3
 
 # Media files (user uploads)
 media/
 
-# Environment variables
+# Static files (collected by collectstatic)
+staticfiles/
+
+# ============================================
+# SECURITY - Never commit these files
+# ============================================
+# Environment and secrets
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
 
 # Firebase credentials (NEVER commit these)
 *firebase*.json
+*-firebase-adminsdk*.json
+firebase-credentials*.json
 
-# Celery beat schedule files
-celerybeat-schedule*
+# Credentials directories
+credentials/
+secrets/
+private/
 
+# Sensitive configuration
+secrets.json
+
+# ============================================
+# Development tools
+# ============================================
 # IDE
 .idea/
 .vscode/
@@ -38,6 +59,9 @@ celerybeat-schedule*
 .DS_Store
 Thumbs.db
 
+# ============================================
+# Testing and coverage
+# ============================================
 # Coverage reports
 htmlcov/
 .coverage
@@ -45,50 +69,21 @@ htmlcov/
 coverage.xml
 *.cover
 
-# Static files (collected by collectstatic)
-staticfiles/
-
 # pytest
 .pytest_cache/
 
 # mypy
 .mypy_cache/
 
-# Celery
+# ============================================
+# Celery (background tasks)
+# ============================================
 celerybeat-schedule
 celerybeat-schedule-shm
 celerybeat-schedule-wal
+celerybeat-schedule*
 
-# Firebase credentials (NEVER commit these)
-*-firebase-adminsdk*.json
-firebase-credentials*.json
-
+# ============================================
 # Logs
+# ============================================
 logs/
-
-# Celery beat schedule files (runtime generated)
-celerybeat-schedule
-celerybeat-schedule-shm
-celerybeat-schedule-wal
-
-# Firebase credentials (NEVER commit these)
-*-firebase-adminsdk*.json
-firebase-credentials*.json
-firebase-credentials.json
-
-# Logs
-logs/
-*.log
-
-# Environment and secrets
-.env.local
-.env.*.local
-*.pem
-*.key
-
-# Database (never commit)
-*.sqlite3
-
-# Credentials
-credentials/
-secrets/
