@@ -94,6 +94,14 @@ class User(AbstractUser):
     class Meta:
         verbose_name = "Account"
         verbose_name_plural = "Accounts"
+        indexes = [
+            models.Index(fields=["email"]),
+            models.Index(fields=["role"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["student_id"]),
+            models.Index(fields=["employee_id"]),
+            models.Index(fields=["role", "status"]),  # Compound index for role-based filtering
+        ]
 
     @property
     def full_name(self):
@@ -250,6 +258,11 @@ class CourseSection(models.Model):
         unique_together = ("course", "section", "school_year", "semester")
         verbose_name = "Class Offering"
         verbose_name_plural = "Class Offerings"
+        indexes = [
+            models.Index(fields=["course"]),
+            models.Index(fields=["teacher"]),
+            models.Index(fields=["course", "teacher"]),  # Compound index for teacher course listings
+        ]
 
     def __str__(self):
         return f"{self.course.code}@{self.section.name}"
@@ -347,6 +360,12 @@ class Activity(models.Model):
     is_published = models.BooleanField(default=True)
     created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["course_section"]),
+            models.Index(fields=["deadline"]),
+        ]
 
 
 class CourseFile(models.Model):
@@ -558,6 +577,11 @@ class Submission(models.Model):
     class Meta:
         unique_together = ("activity", "student", "attempt_number")
         ordering = ["-attempt_number"]
+        indexes = [
+            models.Index(fields=["activity"]),
+            models.Index(fields=["student"]),
+            models.Index(fields=["activity", "student"]),  # Compound index for grade queries
+        ]
 
 
 class QuizQuestion(models.Model):
