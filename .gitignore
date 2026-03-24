@@ -79,3 +79,16 @@ firebase-credentials.json
 # Logs
 logs/
 *.log
+
+# Environment and secrets
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Database (never commit)
+*.sqlite3
+
+# Credentials
+credentials/
+secrets/
