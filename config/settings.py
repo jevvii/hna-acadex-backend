@@ -7,7 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-this")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 
 # Security settings for production
 if not DEBUG:
@@ -131,6 +131,11 @@ if CLOUDINARY_URL:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
 
+# Rate limiting
+RATELIMIT_ENABLE = True
+RATELIMIT_USE_CACHE = "default"
+RATELIMIT_VIEW = "core.views.rate_limited"
+
 # Email Configuration
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
@@ -159,8 +164,8 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # Production override: require explicit CORS configuration
-if not DEBUG and not CORS_ALLOWED_ORIGINS:
-    raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS must be set in production")
+if not DEBUG and 'CORS_ALLOWED_ORIGINS' not in os.environ:
+    raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS environment variable must be set in production")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

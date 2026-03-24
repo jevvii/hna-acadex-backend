@@ -11,6 +11,7 @@ from django.db.utils import OperationalError
 from django.core.files.storage import default_storage
 from django.http import StreamingHttpResponse, HttpResponse
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from datetime import timedelta
 from io import StringIO, BytesIO
 from decimal import Decimal, ROUND_HALF_UP
@@ -100,6 +101,7 @@ from .serializers import (
     WeeklyModuleSerializer,
 )
 from .push_notifications import send_push_notification_to_users
+from .decorators import rate_limit_login, rate_limit_password_reset, rate_limit_file_upload
 
 
 def _notify_students_for_course_section(
@@ -827,6 +829,7 @@ def _convert_office_upload_to_pdf_preview(*, request, source_storage_path: str, 
 class AuthLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @method_decorator(rate_limit_login)
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
@@ -896,6 +899,7 @@ class ForgotPasswordRequestView(APIView):
     """Request a password reset. Creates a pending request for admin approval."""
     permission_classes = [permissions.AllowAny]
 
+    @method_decorator(rate_limit_password_reset)
     def post(self, request):
         from django.utils import timezone as tz
         from .email_utils import generate_random_password, send_password_reset_email
@@ -1095,7 +1099,9 @@ class ProfileViewSet(viewsets.ModelViewSet):
 
 class AvatarUploadView(APIView):
     parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
 
+    @method_decorator(rate_limit_file_upload)
     def post(self, request):
         file_obj = request.FILES.get("file")
         if not file_obj:
