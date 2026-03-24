@@ -5,8 +5,17 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key-change-this")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
+
+# Security key - must be set via environment variable
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+
+if not SECRET_KEY:
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable is required")
+
+if SECRET_KEY in ["dev-secret-key-change-this", "secret", "test"]:
+    if not DEBUG:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be changed from default in production")
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 
 # Security settings for production
