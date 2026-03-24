@@ -1,10 +1,12 @@
 import csv
 import logging
+import magic
 import os
 import shutil
 import subprocess
 from django.contrib.auth import authenticate
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.files.base import File
 from django.db.models import Avg, Count, Q, Sum
 from django.db.utils import OperationalError
@@ -21,6 +23,41 @@ from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+
+# File upload validation constants
+ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'application/msword',
+                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def validate_file_upload(file, allowed_types=None):
+    """
+    Validate uploaded file for type and size.
+
+    Args:
+        file: Uploaded file object
+        allowed_types: List of allowed MIME types (defaults to images + documents)
+
+    Raises:
+        ValidationError: If validation fails
+    """
+    if allowed_types is None:
+        allowed_types = ALLOWED_IMAGE_TYPES + ALLOWED_DOCUMENT_TYPES
+
+    # Check file size
+    if file.size > MAX_FILE_SIZE:
+        raise ValidationError(f"File size exceeds maximum of {MAX_FILE_SIZE // (1024*1024)}MB")
+
+    # Check file type using magic (reads actual content, not just extension)
+    file.seek(0)
+    mime_type = magic.from_buffer(file.read(2048), mime=True)
+    file.seek(0)
+
+    if mime_type not in allowed_types:
+        raise ValidationError(f"File type '{mime_type}' is not allowed. Allowed types: {', '.join(allowed_types)}")
+
+    return True
 
 from .models import (
     Activity,
@@ -854,6 +891,8 @@ class AuthLoginView(APIView):
 
 
 class MeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request):
         return Response(UserSerializer(request.user, context={"request": request}).data)
 
@@ -1107,6 +1146,11 @@ class AvatarUploadView(APIView):
         if not file_obj:
             return Response({"detail": "file is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            validate_file_upload(file_obj, ALLOWED_IMAGE_TYPES)
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         request.user.avatar = file_obj
         request.user.save()
 
@@ -1116,6 +1160,7 @@ class AvatarUploadView(APIView):
 
 class TodoItemViewSet(viewsets.ModelViewSet):
     serializer_class = TodoItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         if self.request.user.role == User.Role.STUDENT:
@@ -1132,6 +1177,7 @@ class TodoItemViewSet(viewsets.ModelViewSet):
 
 class CalendarEventViewSet(viewsets.ModelViewSet):
     serializer_class = CalendarEventSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         if self.request.user.role == User.Role.STUDENT:
@@ -1157,6 +1203,7 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
 
 class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Notification.objects.filter(recipient=self.request.user).order_by("-created_at")[:50]
@@ -1175,6 +1222,8 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 
 class StudentCoursesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request):
         enrollments = (
             Enrollment.objects.filter(student=request.user, is_active=True, course_section__is_active=True)
@@ -1220,6 +1269,8 @@ class StudentCoursesView(APIView):
 
 
 class TeacherCoursesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request):
         course_sections = (
             CourseSection.objects.filter(teacher=request.user, is_active=True)
@@ -1255,6 +1306,8 @@ class TeacherCoursesView(APIView):
 
 class CourseSectionDetailView(APIView):
     """Get a single course section by ID."""
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, pk):
         course_section = CourseSection.objects.filter(id=pk).select_related("course", "section", "teacher").first()
         if not course_section:
@@ -1317,6 +1370,8 @@ class CourseSectionDetailView(APIView):
 
 
 class CourseSectionContentView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, pk):
         course_section = CourseSection.objects.filter(id=pk).first()
         if not course_section:
@@ -2428,6 +2483,12 @@ class ActivitySubmitView(APIView):
         uploaded_urls = []
         files = request.FILES.getlist("files")
         for file_obj in files:
+            # Validate file using magic bytes for security
+            try:
+                validate_file_upload(file_obj)
+            except ValidationError as e:
+                return Response({"detail": f"{file_obj.name}: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
             ctype = (file_obj.content_type or "").lower()
             is_image = ctype.startswith("image/")
             is_pdf = ctype == "application/pdf" or file_obj.name.lower().endswith(".pdf")
