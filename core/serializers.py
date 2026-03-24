@@ -454,29 +454,6 @@ class PasswordResetRequestSerializer(serializers.ModelSerializer):
     """Serializer for password reset requests (admin view)."""
     user_email = serializers.EmailField(source="user.email", read_only=True)
     user_name = serializers.CharField(source="user.full_name", read_only=True)
-    resolved_by_name = serializers.CharField(source="resolved_by.full_name", read_only=True)
-
-    class Meta:
-        model = PasswordResetRequest
-        fields = (
-            "id",
-            "user",
-            "user_email",
-            "user_name",
-            "personal_email",
-            "status",
-            "created_at",
-            "resolved_at",
-            "resolved_by",
-            "resolved_by_name",
-        )
-        read_only_fields = ("id", "user", "created_at", "resolved_at", "resolved_by")
-
-
-class PasswordResetRequestSerializer(serializers.ModelSerializer):
-    """Serializer for password reset requests (admin view)."""
-    user_email = serializers.EmailField(source="user.email", read_only=True)
-    user_name = serializers.CharField(source="user.full_name", read_only=True)
     resolved_by_name = serializers.CharField(source="resolved_by.full_name", read_only=True, allow_null=True)
 
     class Meta:
