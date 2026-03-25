@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    "drf_spectacular",
     "django_celery_beat",  # Required for Celery Beat database scheduler
     "core",
 ]
@@ -184,6 +185,7 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 # Celery Configuration
@@ -247,4 +249,14 @@ LOGGING = {
             "propagate": True,
         },
     },
+}
+
+# API Documentation Settings (drf-spectacular)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "HNA Acadex API",
+    "DESCRIPTION": "Learning Management System API",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SECURITY": [{"bearerAuth": []}],
+    "COMPONENT_SPLIT_REQUEST": True,
 }

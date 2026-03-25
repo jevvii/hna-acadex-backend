@@ -5,6 +5,7 @@ from django.shortcuts import render
 from core.admin_site import admin_site
 from core.teacher_portal.site import teacher_portal_site
 from core.teacher_portal import admin  # Register teacher portal admin models
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 # Import teacher portal admin to register models
 import core.teacher_portal.admin  # noqa: F401
@@ -26,6 +27,9 @@ urlpatterns = [
     path("admin/", admin_site.urls),
     path("teacher-portal/", teacher_portal_site.urls),
     path("api/", include("core.urls")),
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 ]
 
 if settings.DEBUG:
