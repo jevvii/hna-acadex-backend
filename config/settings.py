@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from datetime import timedelta
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
@@ -141,6 +142,10 @@ if CLOUDINARY_URL:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
 
+# Disable APPEND_SLASH to prevent POST redirect issues
+# Our API endpoints already use trailing slashes in URL patterns
+APPEND_SLASH = False
+
 # Rate limiting
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
@@ -171,6 +176,8 @@ CORS_ALLOWED_ORIGINS = [
     for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
     if origin.strip()
 ]
+# Required for frontend credentials: 'include' to work
+CORS_ALLOW_CREDENTIALS = True
 
 # Production override: require explicit CORS configuration
 if not DEBUG and 'CORS_ALLOWED_ORIGINS' not in os.environ:
@@ -178,7 +185,7 @@ if not DEBUG and 'CORS_ALLOWED_ORIGINS' not in os.environ:
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "core.authentication.CookieJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -186,6 +193,24 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# JWT Configuration for HttpOnly cookie-based authentication
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    # Cookie settings for frontend integration
+    "AUTH_COOKIE": "access_token",
+    "AUTH_COOKIE_REFRESH": "refresh_token",
+    "AUTH_COOKIE_SECURE": not DEBUG,  # Secure in production, not in dev
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_SAMESITE": "Lax",
+    "AUTH_COOKIE_PATH": "/",
 }
 
 # Celery Configuration

@@ -67,6 +67,7 @@ from .models import (
     Announcement,
     AssignmentGroup,
     AttendanceRecord,
+    AuditLog,
     CalendarEvent,
     Course,
     CourseFile,
@@ -936,6 +937,15 @@ class PasswordResetRequestViewSet(viewsets.ReadOnlyModelViewSet):
             reset_request.resolved_by = request.user
             reset_request.save()
 
+            # Audit log the password reset approval
+            AuditLog.log(
+                request,
+                action='password_reset_approved',
+                target_type='PasswordResetRequest',
+                target_id=reset_request.id,
+                details={'user_email': user.email, 'sent_to': user.personal_email}
+            )
+
             return Response({
                 "detail": f"Password reset approved. New credentials sent to {user.personal_email}"
             })
@@ -960,6 +970,15 @@ class PasswordResetRequestViewSet(viewsets.ReadOnlyModelViewSet):
         reset_request.resolved_at = timezone.now()
         reset_request.resolved_by = request.user
         reset_request.save()
+
+        # Audit log the password reset decline
+        AuditLog.log(
+            request,
+            action='password_reset_declined',
+            target_type='PasswordResetRequest',
+            target_id=reset_request.id,
+            details={'user_email': reset_request.user.email}
+        )
 
         return Response({"detail": "Password reset request declined."})
 
@@ -2535,6 +2554,23 @@ class ActivitySubmissionGradeView(APIView):
         if graded.score is not None:
             graded.status = Submission.SubmissionStatus.GRADED
             graded.save(update_fields=["status", "updated_at"])
+
+            # Audit log the grade change
+            AuditLog.log(
+                request,
+                action='grade_change',
+                target_type='Submission',
+                target_id=graded.id,
+                details={
+                    'student_id': str(graded.student.id),
+                    'student_email': graded.student.email,
+                    'activity_id': str(graded.activity.id),
+                    'activity_title': graded.activity.title,
+                    'score': float(graded.score) if graded.score else None,
+                    'feedback': graded.feedback,
+                }
+            )
+
             enrollment = Enrollment.objects.filter(
                 course_section=graded.activity.course_section,
                 student=graded.student,

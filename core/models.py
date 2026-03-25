@@ -868,3 +868,44 @@ class TeacherAdvisory(models.Model):
     def advisory_section(self):
         """Convenience accessor for the advised section."""
         return self.section
+
+
+class AuditLog(models.Model):
+    """Audit log for sensitive operations."""
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='audit_logs')
+    action = models.CharField(max_length=100)  # e.g., 'grade_change', 'password_reset'
+    target_type = models.CharField(max_length=100, blank=True)  # Model name
+    target_id = models.IntegerField(null=True, blank=True)
+    details = models.JSONField(default=dict, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "audit_logs"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+            models.Index(fields=['action', 'created_at']),
+        ]
+
+    @classmethod
+    def log(cls, request, action, target_type=None, target_id=None, details=None):
+        """Create an audit log entry."""
+        return cls.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details or {},
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+        )
+
+
+def get_client_ip(request):
+    """Extract client IP from request."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0]
+    return request.META.get('REMOTE_ADDR')

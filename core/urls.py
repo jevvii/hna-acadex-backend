@@ -18,6 +18,7 @@ from .views import (
     AnnouncementViewSet,
     AssignmentGroupViewSet,
     AuthLoginView,
+    AuthLogoutView,
     AvatarUploadView,
     CalendarEventViewSet,
     ChangePasswordView,
@@ -69,6 +70,7 @@ router.register(r"activity-comments", ActivityCommentViewSet, basename="activity
 
 urlpatterns = [
     path("auth/login/", AuthLoginView.as_view(), name="auth-login"),
+    path("auth/logout/", AuthLogoutView.as_view(), name="auth-logout"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
     path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="auth-change-password"),
