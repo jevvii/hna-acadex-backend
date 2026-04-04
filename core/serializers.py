@@ -255,6 +255,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "instructions",
             "points",
             "deadline",
+            "allow_late_submissions",
             "weekly_module_id",
             "assignment_group_id",
             "allowed_file_types",

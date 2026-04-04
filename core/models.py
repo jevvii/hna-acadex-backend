@@ -349,6 +349,7 @@ class Activity(models.Model):
     instructions = models.TextField(blank=True, null=True)
     points = models.PositiveIntegerField(default=100)
     deadline = models.DateTimeField(blank=True, null=True)
+    allow_late_submissions = models.BooleanField(default=True)
     allowed_file_types = models.JSONField(blank=True, null=True)
     support_file_url = models.URLField(blank=True, null=True)
     attempt_limit = models.PositiveIntegerField(default=1)

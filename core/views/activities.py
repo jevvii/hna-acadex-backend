@@ -95,6 +95,8 @@ class ActivitySubmitView(APIView):
         now = timezone.now()
         status_value = Submission.SubmissionStatus.SUBMITTED
         if activity.deadline and now > activity.deadline:
+            if not activity.allow_late_submissions:
+                return Response({"detail": "Late submissions are not allowed for this activity."}, status=status.HTTP_400_BAD_REQUEST)
             status_value = Submission.SubmissionStatus.LATE
 
         # Create new submission with incremented attempt_number
