@@ -215,6 +215,32 @@ class CourseSectionContentView(APIView):
         activities_data = ActivitySerializer(activities, many=True).data
         quizzes_data = QuizSerializer(quizzes, many=True).data
 
+        # Add teacher stats for activities
+        if request.user.role == User.Role.TEACHER:
+            student_count = Enrollment.objects.filter(course_section=course_section, is_active=True).count()
+
+            # Get submission counts per activity
+            submission_counts = {}
+            graded_counts = {}
+            for activity in activities:
+                # Count distinct students who have submitted (any status except not_submitted)
+                submitted_students = Submission.objects.filter(
+                    activity=activity
+                ).exclude(status='not_submitted').values('student_id').distinct().count()
+                submission_counts[str(activity.id)] = submitted_students
+
+                # Count distinct students with graded submissions
+                graded_students = Submission.objects.filter(
+                    activity=activity,
+                    status='graded'
+                ).values('student_id').distinct().count()
+                graded_counts[str(activity.id)] = graded_students
+
+            for item in activities_data:
+                item['student_count'] = student_count
+                item['submission_count'] = submission_counts.get(item['id'], 0)
+                item['graded_count'] = graded_counts.get(item['id'], 0)
+
         if request.user.role == User.Role.STUDENT:
             activity_map = {
                 str(s.activity_id): s
