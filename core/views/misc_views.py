@@ -608,16 +608,16 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
 
         # Add student attempt information for students
         if request.user.role == User.Role.STUDENT:
+            # Get all submitted attempts, ordered by attempt number
+            all_attempts = QuizAttempt.objects.filter(
+                quiz=instance,
+                student=request.user,
+                is_submitted=True
+            ).order_by("attempt_number")
+
             # Get latest submitted attempt
-            latest_attempt = (
-                QuizAttempt.objects.filter(
-                    quiz=instance,
-                    student=request.user,
-                    is_submitted=True
-                )
-                .order_by("-attempt_number")
-                .first()
-            )
+            latest_attempt = all_attempts.last() if all_attempts else None
+
             # Get in-progress attempt
             in_progress = (
                 QuizAttempt.objects.filter(
@@ -629,11 +629,7 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
                 .first()
             )
 
-            attempts_used = QuizAttempt.objects.filter(
-                quiz=instance,
-                student=request.user,
-                is_submitted=True
-            ).count()
+            attempts_used = all_attempts.count()
             attempt_limit = instance.attempt_limit
 
             # Calculate time remaining for in-progress attempt
@@ -676,6 +672,31 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
                 if in_progress
                 else None
             )
+
+            # Build attempts array for history display
+            attempts_payload = []
+            for a in all_attempts:
+                attempts_payload.append({
+                    "id": str(a.id),
+                    "attempt_number": a.attempt_number,
+                    "score": float(a.score) if a.score is not None else None,
+                    "max_score": float(a.max_score) if a.max_score is not None else None,
+                    "pending_manual_grading": a.pending_manual_grading,
+                    "is_submitted": a.is_submitted,
+                    "submitted_at": a.submitted_at,
+                })
+            # Add in-progress attempt to the list if exists
+            if in_progress:
+                attempts_payload.append({
+                    "id": str(in_progress.id),
+                    "attempt_number": in_progress.attempt_number,
+                    "score": None,
+                    "max_score": None,
+                    "pending_manual_grading": False,
+                    "is_submitted": False,
+                    "submitted_at": None,
+                })
+            data["attempts"] = attempts_payload
 
         return Response(data)
 
