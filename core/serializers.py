@@ -8,6 +8,7 @@ from .models import (
     CalendarEvent,
     Course,
     CourseFile,
+    Enrollment,
     Notification,
     MeetingSession,
     AttendanceRecord,
@@ -244,6 +245,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     created_by = serializers.UUIDField(source="created_by_id", read_only=True)
     weekly_module_id = serializers.UUIDField(allow_null=True, required=False)
     assignment_group_id = serializers.UUIDField(allow_null=True, required=False)
+    student_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -265,7 +267,15 @@ class ActivitySerializer(serializers.ModelSerializer):
             "is_published",
             "created_by",
             "created_at",
+            "student_count",
         )
+
+    def get_student_count(self, obj):
+        """Return the count of active student enrollments in this activity's course section."""
+        return Enrollment.objects.filter(
+            course_section=obj.course_section,
+            is_active=True
+        ).count()
 
 
 class AssignmentGroupSerializer(serializers.ModelSerializer):
@@ -327,6 +337,7 @@ class QuizSerializer(serializers.ModelSerializer):
     weekly_module_id = serializers.UUIDField(allow_null=True, required=False)
     question_count = serializers.SerializerMethodField()
     points = serializers.SerializerMethodField()
+    student_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
@@ -348,6 +359,7 @@ class QuizSerializer(serializers.ModelSerializer):
             "created_at",
             "question_count",
             "points",
+            "student_count",
         )
 
     def get_question_count(self, obj):
@@ -357,6 +369,13 @@ class QuizSerializer(serializers.ModelSerializer):
         from django.db.models import Sum
         result = obj.questions.aggregate(total=Sum('points'))
         return result['total'] if result['total'] is not None else 0
+
+    def get_student_count(self, obj):
+        """Return the count of active student enrollments in this quiz's course section."""
+        return Enrollment.objects.filter(
+            course_section=obj.course_section,
+            is_active=True
+        ).count()
 
 
 class SubmissionSerializer(serializers.ModelSerializer):
