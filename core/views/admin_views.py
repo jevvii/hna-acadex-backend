@@ -68,8 +68,8 @@ class PasswordResetRequestViewSet(viewsets.ReadOnlyModelViewSet):
                 request,
                 action='password_reset_approved',
                 target_type='PasswordResetRequest',
-                target_id=reset_request.id,
-                details={'user_email': user.email, 'sent_to': user.personal_email}
+                target_id=None,  # Can't store UUID in IntegerField
+                details={'reset_request_id': str(reset_request.id), 'user_email': user.email, 'sent_to': user.personal_email}
             )
 
             return Response({
@@ -102,8 +102,8 @@ class PasswordResetRequestViewSet(viewsets.ReadOnlyModelViewSet):
             request,
             action='password_reset_declined',
             target_type='PasswordResetRequest',
-            target_id=reset_request.id,
-            details={'user_email': reset_request.user.email}
+            target_id=None,  # Can't store UUID in IntegerField
+            details={'reset_request_id': str(reset_request.id), 'user_email': reset_request.user.email}
         )
 
         return Response({"detail": "Password reset request declined."})

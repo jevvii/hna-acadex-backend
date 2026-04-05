@@ -246,8 +246,9 @@ class ActivitySubmissionGradeView(APIView):
                 request,
                 action='grade_change',
                 target_type='Submission',
-                target_id=graded.id,
+                target_id=None,  # Can't store UUID in IntegerField
                 details={
+                    'submission_id': str(graded.id),
                     'student_id': str(graded.student.id),
                     'student_email': graded.student.email,
                     'activity_id': str(graded.activity.id),
