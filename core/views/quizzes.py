@@ -1,7 +1,7 @@
 """
 Quiz-related views.
 """
-from django.db.models import Avg
+from django.db.models import Avg, Sum, Sum
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
@@ -22,6 +22,7 @@ from core.models import (
 from core.serializers import (
     QuizAnswerGradeSerializer,
     QuizAnswerInputSerializer,
+    QuizQuestionBulkSerializer,
     QuizQuestionWriteSerializer,
     QuizQuestionStudentSerializer,
     QuizSerializer,
@@ -77,7 +78,31 @@ class QuizTakeView(APIView):
                 ans.graded_at = timezone.now()
                 ans.save(update_fields=["is_correct", "points_awarded", "needs_manual_grading", "graded_at"])
                 total_score += points_awarded
-            else:
+            elif question.question_type == QuizQuestion.QuestionType.IDENTIFICATION:
+                # Compare text answer against correct_answer and alternate_answers
+                student_answer = (ans.text_answer or "").strip()
+                correct_answers = [question.correct_answer] + (question.alternate_answers or [])
+                if not question.case_sensitive:
+                    student_answer = student_answer.lower()
+                    correct_answers = [a.lower() for a in correct_answers if a]
+                is_correct = student_answer in correct_answers
+                points_awarded = float(question.points) if is_correct else 0.0
+                ans.is_correct = is_correct
+                ans.points_awarded = points_awarded
+                ans.needs_manual_grading = False
+                ans.graded_at = timezone.now()
+                ans.save(update_fields=["is_correct", "points_awarded", "needs_manual_grading", "graded_at"])
+                total_score += points_awarded
+            elif question.question_type == QuizQuestion.QuestionType.MULTI_SELECT:
+                # NOTE: Multi-select requires storing multiple selected choices.
+                # QuizAnswer.selected_choice is a single FK, so we defer to manual grading.
+                # Future: Add QuizAnswerMultipleChoice model for many-to-many selection.
+                pending_manual = True
+                ans.needs_manual_grading = True
+                ans.is_correct = None
+                ans.points_awarded = None
+                ans.save(update_fields=["needs_manual_grading", "is_correct", "points_awarded"])
+            else:  # ESSAY
                 pending_manual = True
                 ans.needs_manual_grading = True
                 ans.is_correct = None
@@ -688,6 +713,82 @@ class QuizQuickCreateView(APIView):
         )
 
 
+class QuizQuestionsBulkView(APIView):
+    """Bulk create, update, and delete questions for a quiz."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_teacher_access(self, request, quiz: Quiz):
+        """Same permission check pattern as existing quiz views."""
+        if request.user.role == User.Role.ADMIN:
+            return None
+        if request.user.role == User.Role.TEACHER and quiz.course_section.teacher_id == request.user.id:
+            return None
+        return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+    def post(self, request, pk):
+        """
+        Bulk upsert questions for a quiz.
+        - Questions with no id or non-existent id → create new
+        - Questions with existing id → update
+        - Existing questions not in the array → delete
+        """
+        quiz = Quiz.objects.select_related("course_section").filter(id=pk).first()
+        if not quiz:
+            return Response({"detail": "Quiz not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        denied = self._ensure_teacher_access(request, quiz)
+        if denied:
+            return denied
+
+        questions_data = request.data.get("questions", [])
+        serializer = QuizQuestionBulkSerializer(data={"questions": questions_data})
+        serializer.is_valid(raise_exception=True)
+
+        existing_ids = set(QuizQuestion.objects.filter(quiz=quiz).values_list("id", flat=True))
+        submitted_ids = set()
+        created_questions = []
+        updated_questions = []
+
+        for idx, q_data in enumerate(questions_data):
+            q_payload = dict(q_data)
+            q_payload["quiz_id"] = str(quiz.id)
+            q_payload["sort_order"] = q_data.get("sort_order", idx)
+
+            question_id = q_data.get("id")
+            if question_id:
+                # Update existing
+                question = QuizQuestion.objects.filter(id=question_id, quiz=quiz).first()
+                if question:
+                    submitted_ids.add(str(question.id))
+                    s = QuizQuestionWriteSerializer(question, data=q_payload, partial=True)
+                    s.is_valid(raise_exception=True)
+                    updated_questions.append(s.save())
+            else:
+                # Create new
+                s = QuizQuestionWriteSerializer(data=q_payload)
+                s.is_valid(raise_exception=True)
+                question = s.save()
+                submitted_ids.add(str(question.id))
+                created_questions.append(question)
+
+        # Delete questions not in the array
+        to_delete = existing_ids - submitted_ids
+        if to_delete:
+            QuizQuestion.objects.filter(id__in=to_delete).delete()
+
+        # Recalculate total points
+        total_points = QuizQuestion.objects.filter(quiz=quiz).aggregate(
+            total=Sum("points")
+        )["total"] or 0
+        quiz.points = total_points
+        quiz.save(update_fields=["points"])
+
+        _recompute_course_section_grades(quiz.course_section)
+
+        all_questions = QuizQuestion.objects.filter(quiz=quiz).order_by("sort_order")
+        return Response(QuizQuestionWriteSerializer(all_questions, many=True).data)
+
+
 __all__ = [
     'QuizTakeView',
     'QuizSubmitAttemptView',
@@ -698,4 +799,5 @@ __all__ = [
     'QuizQuestionsView',
     'QuizQuestionDetailView',
     'QuizQuickCreateView',
+    'QuizQuestionsBulkView',
 ]

@@ -69,6 +69,7 @@ from .quizzes import (
     QuizAnswerGradeView,
     QuizQuestionsView,
     QuizQuestionDetailView,
+    QuizQuestionsBulkView,
     QuizQuickCreateView,
 )
 
@@ -132,6 +133,7 @@ __all__ = [
     'QuizAnswerGradeView',
     'QuizQuestionsView',
     'QuizQuestionDetailView',
+    'QuizQuestionsBulkView',
     'QuizQuickCreateView',
     # Notification views
     'NotificationViewSet',

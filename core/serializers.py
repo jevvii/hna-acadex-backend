@@ -433,7 +433,10 @@ class QuizQuestionWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = QuizQuestion
-        fields = ("id", "quiz_id", "question_text", "question_type", "points", "sort_order", "choices")
+        fields = (
+            "id", "quiz_id", "question_text", "question_type", "points", "sort_order", "choices",
+            "correct_answer", "alternate_answers", "case_sensitive", "word_limit"
+        )
 
     def create(self, validated_data):
         choices_data = validated_data.pop("choices", [])
@@ -456,6 +459,11 @@ class QuizQuestionWriteSerializer(serializers.ModelSerializer):
                 sort_order = choice_data.pop("sort_order", idx)
                 QuizChoice.objects.create(question=instance, sort_order=sort_order, **choice_data)
         return instance
+
+
+class QuizQuestionBulkSerializer(serializers.Serializer):
+    """Serializer for bulk question upsert operations."""
+    questions = QuizQuestionWriteSerializer(many=True)
 
 
 class QuizAnswerInputSerializer(serializers.Serializer):

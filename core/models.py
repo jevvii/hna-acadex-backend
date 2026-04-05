@@ -588,7 +588,9 @@ class Submission(models.Model):
 class QuizQuestion(models.Model):
     class QuestionType(models.TextChoices):
         MULTIPLE_CHOICE = "multiple_choice", "Multiple Choice"
+        MULTI_SELECT = "multi_select", "Multiple Select"
         TRUE_FALSE = "true_false", "True/False"
+        IDENTIFICATION = "identification", "Identification"
         ESSAY = "essay", "Essay"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -597,6 +599,12 @@ class QuizQuestion(models.Model):
     question_type = models.CharField(max_length=30, choices=QuestionType.choices)
     points = models.DecimalField(max_digits=6, decimal_places=2, default=1)
     sort_order = models.PositiveIntegerField(default=0)
+    # Fields for identification type
+    correct_answer = models.TextField(blank=True, default="")
+    alternate_answers = models.JSONField(default=list, blank=True)
+    case_sensitive = models.BooleanField(default=False)
+    # Fields for essay type
+    word_limit = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
