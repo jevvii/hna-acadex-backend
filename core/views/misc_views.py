@@ -28,6 +28,7 @@ from core.models import (
     Notification,
     PushToken,
     Quiz,
+    QuizAttempt,
     TodoItem,
     User,
     WeeklyModule,
@@ -600,9 +601,83 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """Allow students to view quizzes in their enrolled courses."""
+        from core.models import QuizAttempt
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        data = serializer.data
+
+        # Add student attempt information for students
+        if request.user.role == User.Role.STUDENT:
+            # Get latest submitted attempt
+            latest_attempt = (
+                QuizAttempt.objects.filter(
+                    quiz=instance,
+                    student=request.user,
+                    is_submitted=True
+                )
+                .order_by("-attempt_number")
+                .first()
+            )
+            # Get in-progress attempt
+            in_progress = (
+                QuizAttempt.objects.filter(
+                    quiz=instance,
+                    student=request.user,
+                    is_submitted=False
+                )
+                .order_by("-attempt_number")
+                .first()
+            )
+
+            attempts_used = QuizAttempt.objects.filter(
+                quiz=instance,
+                student=request.user,
+                is_submitted=True
+            ).count()
+            attempt_limit = instance.attempt_limit
+
+            # Calculate time remaining for in-progress attempt
+            time_remaining = None
+            if in_progress and instance.time_limit_minutes:
+                elapsed = (timezone.now() - in_progress.started_at).total_seconds()
+                time_remaining = max(int((instance.time_limit_minutes * 60) - elapsed), 0)
+
+            if latest_attempt:
+                data["my_attempt"] = {
+                    "id": str(latest_attempt.id),
+                    "score": float(latest_attempt.score) if latest_attempt.score is not None else None,
+                    "max_score": float(latest_attempt.max_score) if latest_attempt.max_score is not None else None,
+                    "pending_manual_grading": latest_attempt.pending_manual_grading,
+                    "is_submitted": latest_attempt.is_submitted,
+                    "attempt_number": latest_attempt.attempt_number,
+                    "attempts_used": attempts_used,
+                    "attempts_remaining": max(attempt_limit - attempts_used, 0),
+                    "attempt_limit": attempt_limit,
+                }
+            else:
+                data["my_attempt"] = {
+                    "id": None,
+                    "score": None,
+                    "max_score": None,
+                    "pending_manual_grading": False,
+                    "is_submitted": False,
+                    "attempt_number": 0,
+                    "attempts_used": attempts_used,
+                    "attempts_remaining": max(attempt_limit - attempts_used, 0),
+                    "attempt_limit": attempt_limit,
+                }
+
+            data["my_in_progress_attempt"] = (
+                {
+                    "attempt_id": str(in_progress.id),
+                    "attempt_number": in_progress.attempt_number,
+                    "time_remaining_seconds": time_remaining,
+                }
+                if in_progress
+                else None
+            )
+
+        return Response(data)
 
     def _validate_weekly_module(self, serializer):
         weekly_module = serializer.validated_data.get("weekly_module")
