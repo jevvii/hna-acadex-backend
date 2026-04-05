@@ -776,12 +776,8 @@ class QuizQuestionsBulkView(APIView):
         if to_delete:
             QuizQuestion.objects.filter(id__in=to_delete).delete()
 
-        # Recalculate total points
-        total_points = QuizQuestion.objects.filter(quiz=quiz).aggregate(
-            total=Sum("points")
-        )["total"] or 0
-        quiz.points = total_points
-        quiz.save(update_fields=["points"])
+        # Note: Quiz doesn't have a points field - total points is computed
+        # from the sum of question points on the fly in the frontend
 
         _recompute_course_section_grades(quiz.course_section)
 
