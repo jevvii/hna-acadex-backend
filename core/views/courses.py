@@ -242,10 +242,26 @@ class CourseSectionContentView(APIView):
                 item['graded_count'] = graded_counts.get(item['id'], 0)
 
         if request.user.role == User.Role.STUDENT:
-            activity_map = {
-                str(s.activity_id): s
-                for s in Submission.objects.filter(activity__in=activities, student=request.user)
-            }
+            # Get all submissions for the student, ordered by attempt_number descending
+            # We need to pick the correct submission for each activity:
+            # - Prefer graded submissions (status='graded')
+            # - Fall back to the latest submission (highest attempt_number)
+            all_submissions = Submission.objects.filter(
+                activity__in=activities, student=request.user
+            ).order_by('-attempt_number')
+
+            # Build a map of activity_id -> best submission
+            activity_map = {}
+            for sub in all_submissions:
+                key = str(sub.activity_id)
+                existing = activity_map.get(key)
+                if existing is None:
+                    activity_map[key] = sub
+                elif sub.status == 'graded' and existing.status != 'graded':
+                    # Prefer graded submission over non-graded
+                    activity_map[key] = sub
+                # If both are graded or both are not graded, keep the existing one
+                # (which has higher attempt_number due to ordering)
             activity_stats = (
                 Submission.objects.filter(activity__in=activities, score__isnull=False)
                 .values("activity_id")
