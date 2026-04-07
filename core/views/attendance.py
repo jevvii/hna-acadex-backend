@@ -85,7 +85,7 @@ class AttendanceOverviewView(APIView):
                         "meeting_id": str(s.id),
                         "date": s.date,
                         "title": s.title,
-                        "status": rec.status if rec else AttendanceRecord.AttendanceStatus.ABSENT,
+                        "status": rec.status if rec else None,  # None means unmarked/not recorded
                         "remarks": rec.remarks if rec else None,
                     }
                 )
@@ -170,22 +170,8 @@ class AttendanceSessionCreateView(APIView):
             title=title,
             created_by=request.user,
         )
-        enrolled_students = User.objects.filter(
-            enrollments__course_section=course_section,
-            enrollments__is_active=True,
-            role=User.Role.STUDENT,
-        ).distinct()
-        AttendanceRecord.objects.bulk_create(
-            [
-                AttendanceRecord(
-                    meeting=session,
-                    student=student,
-                    status=AttendanceRecord.AttendanceStatus.ABSENT,
-                    marked_by=request.user,
-                )
-                for student in enrolled_students
-            ]
-        )
+        # Do NOT create attendance records automatically - let them be created
+        # when the teacher marks each student. Unmarked students will show as "None".
         _recompute_course_section_grades(course_section)
         return Response(MeetingSessionSerializer(session).data, status=status.HTTP_201_CREATED)
 
