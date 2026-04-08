@@ -1,0 +1,10 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools-items %}
+<li>
+    <a href="{% url 'admin:generate_grading_periods' %}" class="addlink">
+        Generate Periods for School Year
+    </a>
+</li>
+{{ block.super }}
+{% endblock %}

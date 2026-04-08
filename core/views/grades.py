@@ -1001,6 +1001,14 @@ class SubjectGradesView(APIView):
                 entries_by_enrollment[enrollment_id] = {}
             entries_by_enrollment[enrollment_id][str(entry.grading_period_id)] = entry
 
+        # Get grade level from section
+        grade_level = None
+        if course_section.section:
+            grade_level = course_section.section.grade_level
+
+        # Get period type from first grading period (or default)
+        period_type = grading_periods[0].period_type if grading_periods else 'quarter'
+
         # Build student data
         students = []
         for enrollment in enrollments:
@@ -1012,7 +1020,7 @@ class SubjectGradesView(APIView):
                 period_grades.append({
                     'period_id': str(period.id),
                     'period_label': period.label,
-                    'entry_id': str(entry.id) if entry else None,
+                    'grade_entry_id': str(entry.id) if entry else None,
                     'score': float(entry.score) if entry and entry.score is not None else None,
                     'computed_score': float(entry.computed_score) if entry and entry.computed_score is not None else None,
                     'override_score': float(entry.override_score) if entry and entry.override_score is not None else None,
@@ -1024,7 +1032,7 @@ class SubjectGradesView(APIView):
                 'student_id': str(enrollment.student.id),
                 'student_name': enrollment.student.get_full_name(),
                 'student_email': enrollment.student.email,
-                'period_grades': period_grades,
+                'periods': period_grades,
                 'final_grade': float(enrollment.final_grade) if enrollment.final_grade else None,
                 'final_grade_letter': _letter_grade(enrollment.final_grade) if enrollment.final_grade else None,
                 'grade_overridden': enrollment.manual_final_grade is not None,
@@ -1034,7 +1042,9 @@ class SubjectGradesView(APIView):
             'course_section_id': str(course_section.id),
             'course_code': course_section.course.code,
             'course_title': course_section.course.title,
-            'grading_periods': GradingPeriodSerializer(grading_periods, many=True).data,
+            'grade_level': grade_level,
+            'period_type': period_type,
+            'periods': GradingPeriodSerializer(grading_periods, many=True).data,
             'students': students,
         })
 

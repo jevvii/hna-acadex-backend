@@ -1,0 +1,110 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<p class="help">
+    Generate grading periods (Quarters and/or Semesters) for a school year.
+    This will automatically create all periods with correct dates based on your settings.
+</p>
+
+<div class="module">
+    <h2>Quick Reference</h2>
+    <table>
+        <tr>
+            <th>Grade Level</th>
+            <th>Grading Period Type</th>
+            <th>Periods</th>
+        </tr>
+        <tr>
+            <td>Grade 7, 8, 9, 10</td>
+            <td>Quarters</td>
+            <td>Q1, Q2, Q3, Q4</td>
+        </tr>
+        <tr>
+            <td>Grade 11, 12</td>
+            <td>Semesters</td>
+            <td>1st Sem, 2nd Sem</td>
+        </tr>
+    </table>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+        <h2>School Year Settings</h2>
+        <div class="form-row">
+            <label for="id_school_year">School Year:</label>
+            {{ form.school_year }}
+            <p class="help">{{ form.school_year.help_text }}</p>
+            {% if form.school_year.errors %}
+                <ul class="errorlist">
+                    {% for error in form.school_year.errors %}<li>{{ error }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+
+        <div class="form-row">
+            <label for="id_period_type">Period Type:</label>
+            {{ form.period_type }}
+            <p class="help">{{ form.period_type.help_text }}</p>
+        </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+        <h2>Start Date</h2>
+        <div class="form-row">
+            <label for="id_start_month">Start Month:</label>
+            {{ form.start_month }}
+            <p class="help">{{ form.start_month.help_text }}</p>
+        </div>
+
+        <div class="form-row">
+            <label for="id_start_day">Start Day:</label>
+            {{ form.start_day }}
+            <p class="help">{{ form.start_day.help_text }}</p>
+        </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+        <h2>Period Duration</h2>
+        <div class="form-row">
+            <label for="id_weeks_per_quarter">Weeks per Quarter:</label>
+            {{ form.weeks_per_quarter }}
+            <p class="help">{{ form.weeks_per_quarter.help_text }}</p>
+        </div>
+
+        <div class="form-row">
+            <label for="id_weeks_per_semester">Weeks per Semester:</label>
+            {{ form.weeks_per_semester }}
+            <p class="help">{{ form.weeks_per_semester.help_text }}</p>
+        </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+        <h2>Current Period</h2>
+        <div class="form-row">
+            <label for="id_set_current_period">Set Current Period:</label>
+            {{ form.set_current_period }}
+            <p class="help">{{ form.set_current_period.help_text }}</p>
+        </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+        <h2>Options</h2>
+        <div class="form-row">
+            <label for="id_overwrite">Overwrite Existing:</label>
+            {{ form.overwrite }}
+            <p class="help">{{ form.overwrite.help_text }}</p>
+        </div>
+    </fieldset>
+
+    <div class="submit-row">
+        <input type="submit" value="Generate Periods" class="default">
+        <a href="{% url 'admin:core_gradingperiod_changelist' %}" class="closelink">Cancel</a>
+    </div>
+</form>
+
+{% endblock %}
