@@ -13,6 +13,7 @@ from .models import (
     ActivityReminder,
     Announcement,
     AssignmentGroup,
+    AssignmentWeight,
     AttendanceRecord,
     CalendarEvent,
     Course,
@@ -20,6 +21,8 @@ from .models import (
     CourseSection,
     CourseSectionGroup,
     Enrollment,
+    GradeEntry,
+    GradingPeriod,
     IDCounter,
     Notification,
     MeetingSession,
@@ -1253,6 +1256,73 @@ class IDCounterAdmin(admin.ModelAdmin):
         return False
 
 
+class GradingPeriodAdmin(admin.ModelAdmin):
+    """Admin for GradingPeriod - managing academic grading periods."""
+    list_display = ("school_year", "label", "period_type", "period_number", "start_date", "end_date", "is_current")
+    list_filter = ("school_year", "period_type", "is_current")
+    search_fields = ("school_year",)
+    ordering = ("-school_year", "period_number")
+    readonly_fields = ("label", "created_at", "updated_at")
+
+    fieldsets = (
+        ("Period Info", {
+            "fields": ("school_year", "period_type", "period_number", "is_current"),
+        }),
+        ("Dates", {
+            "fields": ("start_date", "end_date"),
+        }),
+        ("Metadata", {
+            "fields": ("created_at", "updated_at"),
+            "classes": ("collapse",),
+        }),
+    )
+
+
+class GradeEntryAdmin(admin.ModelAdmin):
+    """Admin for GradeEntry - per-student per-period grades."""
+    list_display = ("student_name", "course_section", "grading_period", "score", "is_published", "updated_at")
+    list_filter = ("grading_period", "is_published", "enrollment__course_section__course__code")
+    search_fields = ("enrollment__student__first_name", "enrollment__student__last_name", "enrollment__student__email")
+    readonly_fields = ("computed_score", "computed_at", "created_at", "updated_at")
+    autocomplete_fields = ("enrollment", "grading_period")
+
+    fieldsets = (
+        ("Student & Course", {
+            "fields": ("enrollment", "grading_period"),
+        }),
+        ("Grade", {
+            "fields": ("computed_score", "override_score", "is_published"),
+        }),
+        ("Metadata", {
+            "fields": ("computed_at", "created_at", "updated_at"),
+            "classes": ("collapse",),
+        }),
+    )
+
+    def student_name(self, obj):
+        return obj.enrollment.student.get_full_name()
+    student_name.short_description = "Student"
+    student_name.admin_order_field = "enrollment__student__first_name"
+
+    def course_section(self, obj):
+        return str(obj.enrollment.course_section)
+    course_section.short_description = "Course Section"
+    course_section.admin_order_field = "enrollment__course_section"
+
+
+class AssignmentWeightAdmin(admin.ModelAdmin):
+    """Admin for AssignmentWeight - teacher-defined weighting for categories."""
+    list_display = ("course_section_info", "grading_period", "category", "weight_percent")
+    list_filter = ("grading_period", "category")
+    search_fields = ("course_section__course__code", "course_section__course__title")
+    autocomplete_fields = ("course_section", "grading_period")
+
+    def course_section_info(self, obj):
+        return f"{obj.course_section.course.code} - {obj.course_section.section.name}"
+    course_section_info.short_description = "Course Section"
+    course_section_info.admin_order_field = "course_section__course__code"
+
+
 class TeacherAdvisoryAdmin(admin.ModelAdmin):
     """Admin for TeacherAdvisory model - managing section adviser assignments."""
 
@@ -1319,3 +1389,6 @@ admin_site.register(PasswordResetRequest, PasswordResetRequestAdmin)
 admin_site.register(PushToken, PushTokenAdmin)
 admin_site.register(ActivityReminder, ActivityReminderAdmin)
 admin_site.register(IDCounter, IDCounterAdmin)
+admin_site.register(GradingPeriod, GradingPeriodAdmin)
+admin_site.register(GradeEntry, GradeEntryAdmin)
+admin_site.register(AssignmentWeight, AssignmentWeightAdmin)

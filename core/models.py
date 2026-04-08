@@ -918,3 +918,155 @@ def get_client_ip(request):
     if x_forwarded_for:
         return x_forwarded_for.split(',')[0]
     return request.META.get('REMOTE_ADDR')
+
+
+class GradingPeriod(models.Model):
+    """Grading periods for academic terms (Quarters for grades 7-10, Semesters for grades 11-12)."""
+
+    class PeriodType(models.TextChoices):
+        QUARTER = "quarter", "Quarter"
+        SEMESTER = "semester", "Semester"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    school_year = models.CharField(
+        max_length=20,
+        help_text="Academic year e.g., '2024-2025'"
+    )
+    period_type = models.CharField(
+        max_length=10,
+        choices=PeriodType.choices,
+        help_text="Quarter for grades 7-10, Semester for grades 11-12"
+    )
+    period_number = models.PositiveSmallIntegerField(
+        help_text="1-4 for quarters, 1-2 for semesters"
+    )
+    start_date = models.DateField(help_text="Start date of this grading period")
+    end_date = models.DateField(help_text="End date of this grading period")
+    is_current = models.BooleanField(
+        default=False,
+        help_text="Whether this is the current active grading period"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['school_year', 'period_number']
+        unique_together = ('school_year', 'period_type', 'period_number')
+        verbose_name = "Grading Period"
+        verbose_name_plural = "Grading Periods"
+        indexes = [
+            models.Index(fields=['school_year']),
+            models.Index(fields=['is_current']),
+        ]
+
+    def __str__(self):
+        return f"{self.school_year} - {self.label}"
+
+    @property
+    def label(self):
+        """Return human-readable period label."""
+        if self.period_type == self.PeriodType.QUARTER:
+            return f"Q{self.period_number}"
+        return f"{self.period_number}st Sem" if self.period_number == 1 else f"{self.period_number}nd Sem"
+
+
+class GradeEntry(models.Model):
+    """Individual grade per student per subject per grading period."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    enrollment = models.ForeignKey(
+        Enrollment,
+        on_delete=models.CASCADE,
+        related_name="grade_entries",
+        verbose_name="Enrollment"
+    )
+    grading_period = models.ForeignKey(
+        GradingPeriod,
+        on_delete=models.CASCADE,
+        related_name="grade_entries",
+        verbose_name="Grading Period"
+    )
+    computed_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Auto-computed from activities/quizzes"
+    )
+    override_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Teacher-entered manual override"
+    )
+    is_published = models.BooleanField(
+        default=False,
+        help_text="Whether this grade is visible to students"
+    )
+    computed_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['enrollment', 'grading_period__period_number']
+        unique_together = ('enrollment', 'grading_period')
+        verbose_name = "Grade Entry"
+        verbose_name_plural = "Grade Entries"
+        indexes = [
+            models.Index(fields=['enrollment']),
+            models.Index(fields=['grading_period']),
+            models.Index(fields=['is_published']),
+        ]
+
+    def __str__(self):
+        return f"{self.enrollment.student.full_name} - {self.grading_period.label} - {self.score}"
+
+    @property
+    def score(self):
+        """Return override score if set, otherwise computed score."""
+        return self.override_score if self.override_score is not None else self.computed_score
+
+
+class AssignmentWeight(models.Model):
+    """Teacher-defined weight for activity/quiz/exam categories within a grading period."""
+
+    class Category(models.TextChoices):
+        ACTIVITY = "activity", "Activity"
+        QUIZ = "quiz", "Quiz"
+        EXAM = "exam", "Exam"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course_section = models.ForeignKey(
+        CourseSection,
+        on_delete=models.CASCADE,
+        related_name="assignment_weights",
+        verbose_name="Course Section"
+    )
+    grading_period = models.ForeignKey(
+        GradingPeriod,
+        on_delete=models.CASCADE,
+        related_name="assignment_weights",
+        verbose_name="Grading Period"
+    )
+    category = models.CharField(
+        max_length=10,
+        choices=Category.choices,
+        help_text="Type of assignment: activity, quiz, or exam"
+    )
+    weight_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text="Weight as percentage (e.g., 30.00 for 30%)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['course_section', 'grading_period', 'category']
+        unique_together = ('course_section', 'grading_period', 'category')
+        verbose_name = "Assignment Weight"
+        verbose_name_plural = "Assignment Weights"
+
+    def __str__(self):
+        return f"{self.course_section.course.code} - {self.grading_period.label} - {self.category}: {self.weight_percent}%"

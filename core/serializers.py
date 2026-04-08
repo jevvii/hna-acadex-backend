@@ -5,10 +5,13 @@ from .models import (
     ActivityReminder,
     Announcement,
     AssignmentGroup,
+    AssignmentWeight,
     CalendarEvent,
     Course,
     CourseFile,
     Enrollment,
+    GradeEntry,
+    GradingPeriod,
     Notification,
     MeetingSession,
     AttendanceRecord,
@@ -646,3 +649,153 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             context = {**self.context, 'include_replies': False}
             return ActivityCommentSerializer(replies, many=True, context=context).data
         return []
+
+
+class GradingPeriodSerializer(serializers.ModelSerializer):
+    """Serializer for GradingPeriod model."""
+    label = serializers.ReadOnlyField()
+
+    class Meta:
+        model = GradingPeriod
+        fields = (
+            'id',
+            'school_year',
+            'period_type',
+            'period_number',
+            'label',
+            'start_date',
+            'end_date',
+            'is_current',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at', 'label')
+
+
+class GradeEntrySerializer(serializers.ModelSerializer):
+    """Serializer for GradeEntry model."""
+    period_label = serializers.SerializerMethodField()
+    student_name = serializers.CharField(source='enrollment.student.get_full_name', read_only=True)
+    course_section_id = serializers.UUIDField(source='enrollment.course_section_id', read_only=True)
+
+    class Meta:
+        model = GradeEntry
+        fields = (
+            'id',
+            'enrollment_id',
+            'grading_period_id',
+            'course_section_id',
+            'student_name',
+            'period_label',
+            'score',
+            'computed_score',
+            'override_score',
+            'is_published',
+            'computed_at',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('id', 'computed_score', 'computed_at', 'created_at', 'updated_at')
+
+    def get_period_label(self, obj):
+        return obj.grading_period.label
+
+
+class AssignmentWeightSerializer(serializers.ModelSerializer):
+    """Serializer for AssignmentWeight model."""
+
+    class Meta:
+        model = AssignmentWeight
+        fields = (
+            'id',
+            'course_section_id',
+            'grading_period_id',
+            'category',
+            'weight_percent',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+
+class GradingPeriodSerializer(serializers.ModelSerializer):
+    """Serializer for GradingPeriod model."""
+    label = serializers.ReadOnlyField()
+
+    class Meta:
+        model = GradingPeriod
+        fields = (
+            "id",
+            "school_year",
+            "period_type",
+            "period_number",
+            "label",
+            "start_date",
+            "end_date",
+            "is_current",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+
+class GradeEntrySerializer(serializers.ModelSerializer):
+    """Serializer for GradeEntry model."""
+    period_label = serializers.SerializerMethodField()
+    student_name = serializers.SerializerMethodField()
+    course_section_id = serializers.SerializerMethodField()
+    course_code = serializers.SerializerMethodField()
+    course_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GradeEntry
+        fields = (
+            "id",
+            "enrollment",
+            "grading_period",
+            "period_label",
+            "computed_score",
+            "override_score",
+            "score",
+            "is_published",
+            "student_name",
+            "course_section_id",
+            "course_code",
+            "course_title",
+            "computed_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "computed_at", "created_at", "updated_at")
+
+    def get_period_label(self, obj):
+        return obj.grading_period.label
+
+    def get_student_name(self, obj):
+        return obj.enrollment.student.get_full_name()
+
+    def get_course_section_id(self, obj):
+        return str(obj.enrollment.course_section_id)
+
+    def get_course_code(self, obj):
+        return obj.enrollment.course_section.course.code
+
+    def get_course_title(self, obj):
+        return obj.enrollment.course_section.course.title
+
+
+class AssignmentWeightSerializer(serializers.ModelSerializer):
+    """Serializer for AssignmentWeight model."""
+
+    class Meta:
+        model = AssignmentWeight
+        fields = (
+            "id",
+            "course_section",
+            "grading_period",
+            "category",
+            "weight_percent",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")

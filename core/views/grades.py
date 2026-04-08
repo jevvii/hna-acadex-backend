@@ -14,11 +14,14 @@ from core.models import (
     Activity,
     CourseSection,
     Enrollment,
+    GradeEntry,
+    GradingPeriod,
     Quiz,
     QuizAttempt,
     Submission,
     User,
 )
+from core.serializers import GradingPeriodSerializer
 from core.views.common import (
     _letter_grade,
     _recompute_enrollment_grade,
@@ -748,9 +751,399 @@ class EnrollmentGradeOverrideView(APIView):
 from core.models import QuizQuestion
 
 
+class GradingPeriodListView(APIView):
+    """List grading periods, optionally filtered by school_year."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        school_year = request.query_params.get('school_year')
+        queryset = GradingPeriod.objects.all()
+        if school_year:
+            queryset = queryset.filter(school_year=school_year)
+        queryset = queryset.order_by('school_year', 'period_number')
+        serializer = GradingPeriodSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+class StudentGradesView(APIView):
+    """Return a student's own grades for a course section (published entries only)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from core.models import CourseSection, TeacherAdvisory
+
+        # Get the course section
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Only students can access this view for their own grades
+        if request.user.role != User.Role.STUDENT:
+            return Response({"detail": "Only students can view their own grades."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get the student's enrollment
+        enrollment = Enrollment.objects.filter(
+            course_section=course_section,
+            student=request.user,
+            is_active=True
+        ).first()
+        if not enrollment:
+            return Response({"detail": "You are not enrolled in this course."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Determine period labels based on grade level
+        section = course_section.section
+        grade_level_str = section.grade_level if section else None
+
+        # Get all grading periods for this school year
+        school_year = course_section.school_year
+        grading_periods = GradingPeriod.objects.filter(
+            school_year=school_year
+        ).order_by('period_number')
+
+        # Get grade entries for this enrollment
+        grade_entries = GradeEntry.objects.filter(
+            enrollment=enrollment,
+            is_published=True  # Only published entries for students
+        ).select_related('grading_period')
+
+        # Build period grades
+        entry_by_period = {str(e.grading_period_id): e for e in grade_entries}
+        period_grades = []
+        for period in grading_periods:
+            entry = entry_by_period.get(str(period.id))
+            period_grades.append({
+                'period': GradingPeriodSerializer(period).data,
+                'score': float(entry.score) if entry and entry.score is not None else None,
+                'is_published': entry.is_published if entry else False,
+            })
+
+        # Get final grade from enrollment
+        final_grade = enrollment.final_grade
+        final_grade_letter = _letter_grade(Decimal(str(final_grade))) if final_grade else None
+
+        # Build response
+        return Response({
+            'course_section_id': str(course_section.id),
+            'course_code': course_section.course.code,
+            'course_title': course_section.course.title,
+            'grade_level': grade_level_str,
+            'periods': period_grades,
+            'final_grade': float(final_grade) if final_grade else None,
+            'final_grade_letter': final_grade_letter,
+        })
+
+
+class AdvisoryGradesView(APIView):
+    """Return all students' grades across all subjects for an advisory section."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from core.models import CourseSection, TeacherAdvisory
+
+        # Get the course section (this is for an advisory section, not a subject course)
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if user is an advisory teacher for this section
+        section = course_section.section
+        if not section:
+            return Response({"detail": "Invalid course section."}, status=status.HTTP_400_BAD_REQUEST)
+
+        is_adviser = TeacherAdvisory.objects.filter(
+            teacher=request.user,
+            section=section,
+            school_year=course_section.school_year,
+            is_active=True
+        ).exists()
+
+        # Admins can also access
+        if request.user.role != User.Role.ADMIN and not is_adviser:
+            return Response({"detail": "You are not the advisory teacher for this section."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get all students enrolled in this section (via enrollments in all course_sections for this section)
+        enrollments_in_section = Enrollment.objects.filter(
+            course_section__section=section,
+            course_section__school_year=course_section.school_year,
+            is_active=True
+        ).select_related('student', 'course_section__course')
+
+        # Get all unique students
+        students_dict = {}  # student_id -> student data
+        for enrollment in enrollments_in_section:
+            student_id = str(enrollment.student.id)
+            if student_id not in students_dict:
+                students_dict[student_id] = {
+                    'student_id': student_id,
+                    'student_name': enrollment.student.get_full_name(),
+                    'student_email': enrollment.student.email,
+                    'subjects': [],
+                    'final_average': None,
+                }
+
+        # Get all grading periods
+        grading_periods = list(GradingPeriod.objects.filter(
+            school_year=course_section.school_year
+        ).order_by('period_number'))
+
+        # Get all grade entries for these enrollments
+        enrollment_ids = [str(e.id) for e in enrollments_in_section]
+        grade_entries = GradeEntry.objects.filter(
+            enrollment_id__in=enrollment_ids,
+            is_published=True
+        ).select_related('enrollment', 'grading_period')
+
+        # Group grade entries by enrollment
+        entries_by_enrollment = {}
+        for entry in grade_entries:
+            enrollment_id = str(entry.enrollment_id)
+            if enrollment_id not in entries_by_enrollment:
+                entries_by_enrollment[enrollment_id] = []
+            entries_by_enrollment[enrollment_id].append(entry)
+
+        # Build subject grades for each student
+        subject_dict = {}  # course_section_id -> course info
+        for enrollment in enrollments_in_section:
+            student_id = str(enrollment.student.id)
+            course_section_id = str(enrollment.course_section_id)
+
+            # Track unique subjects
+            if course_section_id not in subject_dict:
+                course = enrollment.course_section.course
+                subject_dict[course_section_id] = {
+                    'subject_id': course_section_id,
+                    'subject_code': course.code,
+                    'subject_title': course.title,
+                }
+
+            # Get grades for this enrollment
+            entries = entries_by_enrollment.get(str(enrollment.id), [])
+            entry_by_period = {str(e.grading_period_id): e for e in entries}
+
+            period_grades = []
+            for period in grading_periods:
+                entry = entry_by_period.get(str(period.id))
+                period_grades.append({
+                    'period_label': period.label,
+                    'score': float(entry.score) if entry and entry.score is not None else None,
+                })
+
+            subject_grade = {
+                'subject_id': course_section_id,
+                'subject_code': enrollment.course_section.course.code,
+                'subject_title': enrollment.course_section.course.title,
+                'periods': period_grades,
+                'final_grade': float(enrollment.final_grade) if enrollment.final_grade else None,
+            }
+
+            if student_id in students_dict:
+                students_dict[student_id]['subjects'].append(subject_grade)
+
+        # Calculate final averages (average of final_grades across subjects)
+        for student_id, student_data in students_dict.items():
+            final_grades = [s['final_grade'] for s in student_data['subjects'] if s['final_grade'] is not None]
+            if final_grades:
+                student_data['final_average'] = round(sum(final_grades) / len(final_grades), 2)
+
+        # Build response
+        students_list = list(students_dict.values())
+        # Sort by student name
+        students_list.sort(key=lambda x: x['student_name'])
+
+        return Response({
+            'section_id': str(section.id),
+            'section_name': section.name,
+            'grade_level': section.grade_level,
+            'strand': section.strand,
+            'school_year': course_section.school_year,
+            'students': students_list,
+        })
+
+
+class SubjectGradesView(APIView):
+    """Return subject teacher's gradebook with per-period breakdown."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions - teacher must be assigned to this course section
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get all enrollments
+        enrollments = list(
+            Enrollment.objects.filter(course_section=course_section, is_active=True)
+            .select_related('student')
+            .order_by('student__last_name', 'student__first_name')
+        )
+
+        # Get grading periods
+        grading_periods = list(GradingPeriod.objects.filter(
+            school_year=course_section.school_year
+        ).order_by('period_number'))
+
+        # Get all grade entries for these enrollments
+        enrollment_ids = [str(e.id) for e in enrollments]
+        grade_entries = GradeEntry.objects.filter(
+            enrollment_id__in=enrollment_ids
+        ).select_related('enrollment', 'grading_period')
+
+        # Group by enrollment
+        entries_by_enrollment = {}
+        for entry in grade_entries:
+            enrollment_id = str(entry.enrollment_id)
+            if enrollment_id not in entries_by_enrollment:
+                entries_by_enrollment[enrollment_id] = {}
+            entries_by_enrollment[enrollment_id][str(entry.grading_period_id)] = entry
+
+        # Build student data
+        students = []
+        for enrollment in enrollments:
+            entry_map = entries_by_enrollment.get(str(enrollment.id), {})
+
+            period_grades = []
+            for period in grading_periods:
+                entry = entry_map.get(str(period.id))
+                period_grades.append({
+                    'period_id': str(period.id),
+                    'period_label': period.label,
+                    'entry_id': str(entry.id) if entry else None,
+                    'score': float(entry.score) if entry and entry.score is not None else None,
+                    'computed_score': float(entry.computed_score) if entry and entry.computed_score is not None else None,
+                    'override_score': float(entry.override_score) if entry and entry.override_score is not None else None,
+                    'is_published': entry.is_published if entry else False,
+                })
+
+            students.append({
+                'enrollment_id': str(enrollment.id),
+                'student_id': str(enrollment.student.id),
+                'student_name': enrollment.student.get_full_name(),
+                'student_email': enrollment.student.email,
+                'period_grades': period_grades,
+                'final_grade': float(enrollment.final_grade) if enrollment.final_grade else None,
+                'final_grade_letter': _letter_grade(enrollment.final_grade) if enrollment.final_grade else None,
+                'grade_overridden': enrollment.manual_final_grade is not None,
+            })
+
+        return Response({
+            'course_section_id': str(course_section.id),
+            'course_code': course_section.course.code,
+            'course_title': course_section.course.title,
+            'grading_periods': GradingPeriodSerializer(grading_periods, many=True).data,
+            'students': students,
+        })
+
+
+class GradeEntryUpdateView(APIView):
+    """Update a grade entry's override score."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        entry = GradeEntry.objects.select_related('enrollment__course_section').filter(id=pk).first()
+        if not entry:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions - teacher must be assigned to this course section
+        course_section = entry.enrollment.course_section
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Update override score
+        override_score = request.data.get('override_score')
+        if override_score is None or override_score == '':
+            entry.override_score = None
+        else:
+            try:
+                entry.override_score = Decimal(str(override_score))
+            except Exception:
+                return Response({"detail": "override_score must be numeric."}, status=status.HTTP_400_BAD_REQUEST)
+
+        entry.save()
+
+        return Response({
+            'id': str(entry.id),
+            'score': float(entry.score) if entry.score is not None else None,
+            'computed_score': float(entry.computed_score) if entry.computed_score is not None else None,
+            'override_score': float(entry.override_score) if entry.override_score is not None else None,
+        })
+
+
+class GradeEntryPublishView(APIView):
+    """Toggle publish status for a grade entry."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        entry = GradeEntry.objects.select_related('enrollment__course_section').filter(id=pk).first()
+        if not entry:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions - teacher must be assigned to this course section
+        course_section = entry.enrollment.course_section
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Toggle publish status
+        is_published = request.data.get('is_published', not entry.is_published)
+        entry.is_published = bool(is_published)
+        entry.save()
+
+        return Response({
+            'id': str(entry.id),
+            'is_published': entry.is_published,
+        })
+
+
+class BulkPublishGradesView(APIView):
+    """Bulk publish all grades for a grading period in a course section."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        # pk is course_section_id
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions - teacher must be assigned to this course section
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        grading_period_id = request.data.get("grading_period_id")
+        if not grading_period_id:
+            return Response({"detail": "grading_period_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update all grade entries
+        from core.models import GradeEntry
+        updated_count = GradeEntry.objects.filter(
+            enrollment__course_section=course_section,
+            grading_period_id=grading_period_id
+        ).update(is_published=True)
+
+        return Response({
+            'published_count': updated_count,
+        })
+
+
 __all__ = [
     'CourseSectionGradesView',
     'CourseSectionGradebookView',
     'CourseSectionGradesExportCSVView',
     'EnrollmentGradeOverrideView',
+    'GradingPeriodListView',
+    'StudentGradesView',
+    'AdvisoryGradesView',
+    'SubjectGradesView',
+    'GradeEntryUpdateView',
+    'GradeEntryPublishView',
+    'BulkPublishGradesView',
 ]

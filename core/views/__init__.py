@@ -49,6 +49,13 @@ from .grades import (
     CourseSectionGradebookView,
     CourseSectionGradesExportCSVView,
     EnrollmentGradeOverrideView,
+    GradingPeriodListView,
+    StudentGradesView,
+    AdvisoryGradesView,
+    SubjectGradesView,
+    GradeEntryUpdateView,
+    GradeEntryPublishView,
+    BulkPublishGradesView,
 )
 
 from .activities import (
@@ -117,6 +124,13 @@ __all__ = [
     'CourseSectionGradebookView',
     'CourseSectionGradesExportCSVView',
     'EnrollmentGradeOverrideView',
+    'GradingPeriodListView',
+    'StudentGradesView',
+    'AdvisoryGradesView',
+    'SubjectGradesView',
+    'GradeEntryUpdateView',
+    'GradeEntryPublishView',
+    'BulkPublishGradesView',
     # Activity views
     'ActivitySubmitView',
     'ActivityMySubmissionView',
