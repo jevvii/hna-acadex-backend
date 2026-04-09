@@ -111,15 +111,31 @@ class Command(BaseCommand):
         for enrollment in enrollments:
             course_section = enrollment.course_section
 
-            # Determine period type based on grade level
-            grade_level = course_section.course.grade_level
+            # Determine semester_group filter based on grade level and course section semester
+            # Grades 7-10: All quarters (semester_group is null)
+            # Grades 11-12: Quarters for this course's semester
+            grade_level = course_section.course.grade_level if course_section.course else None
             if grade_level in ['Grade 11', 'Grade 12']:
-                period_type = 'semester'
+                # Map CourseSection.semester to semester_group
+                semester_value = course_section.semester
+                if semester_value in ['1st', '1', 'First']:
+                    semester_group = 1
+                elif semester_value in ['2nd', '2', 'Second']:
+                    semester_group = 2
+                else:
+                    semester_group = None  # Default to all quarters if not specified
             else:
-                period_type = 'quarter'
+                semester_group = None  # Grades 7-10 have no semester grouping
 
-            # Filter periods by type
-            relevant_periods = [p for p in periods if p.period_type == period_type and p.school_year == course_section.school_year]
+            # Filter periods by semester_group
+            if semester_group is not None:
+                relevant_periods = [p for p in periods
+                                    if p.semester_group == semester_group
+                                    and p.school_year == course_section.school_year]
+            else:
+                relevant_periods = [p for p in periods
+                                    if p.semester_group is None
+                                    and p.school_year == course_section.school_year]
 
             for period in relevant_periods:
                 # Check if entry already exists

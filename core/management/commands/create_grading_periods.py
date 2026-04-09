@@ -3,24 +3,23 @@ Django management command to create grading periods for a school year.
 
 Usage:
     python manage.py create_grading_periods 2024-2025
-    python manage.py create_grading_periods 2024-2025 --type=quarter
-    python manage.py create_grading_periods 2024-2025 --type=semester
+    python manage.py create_grading_periods 2024-2025 --for-grade-level=7-10  # Q1-Q4 (no semester grouping)
+    python manage.py create_grading_periods 2024-2025 --for-grade-level=11-12 # Q1-Q4 grouped into semesters
     python manage.py create_grading_periods 2024-2025 --start-month=6  # June start
 
 This will create:
-- Quarters (Q1-Q4) for Grades 7-10
-- Semesters (1st Sem, 2nd Sem) for Grades 11-12
+- For Grades 7-10: Q1, Q2, Q3, Q4 (semester_group is null)
+- For Grades 11-12: Q1, Q2 (semester_group=1), Q3, Q4 (semester_group=2)
 """
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from core.models import GradingPeriod
 from datetime import date, timedelta
-from calendar import monthrange
 
 
 class Command(BaseCommand):
-    help = 'Create grading periods (Quarters or Semesters) for a school year'
+    help = 'Create grading periods (Quarters) for a school year'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -29,11 +28,11 @@ class Command(BaseCommand):
             help='School year in format YYYY-YYYY (e.g., 2024-2025)',
         )
         parser.add_argument(
-            '--type',
+            '--for-grade-level',
             type=str,
-            choices=['quarter', 'semester', 'both'],
-            default='both',
-            help='Type of grading periods to create: quarter, semester, or both (default: both)',
+            choices=['7-10', '11-12'],
+            default='7-10',
+            help='Grade level group: 7-10 (quarters only) or 11-12 (quarters grouped into semesters)',
         )
         parser.add_argument(
             '--start-month',
@@ -54,16 +53,10 @@ class Command(BaseCommand):
             help='Number of weeks per quarter (default: 10)',
         )
         parser.add_argument(
-            '--semester-weeks',
-            type=int,
-            default=20,
-            help='Number of weeks per semester (default: 20)',
-        )
-        parser.add_argument(
             '--set-current',
             type=int,
             default=1,
-            help='Period number to set as current (default: 1)',
+            help='Quarter number to set as current (default: 1)',
         )
         parser.add_argument(
             '--dry-run',
@@ -73,11 +66,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         school_year = options['school_year']
-        period_type = options['type']
+        grade_level_group = options['for_grade_level']
         start_month = options['start_month']
         start_day = options['start_day']
         quarter_weeks = options['quarter_weeks']
-        semester_weeks = options['semester_weeks']
         set_current = options['set_current']
         dry_run = options['dry_run']
 
@@ -101,28 +93,21 @@ class Command(BaseCommand):
         except ValueError as e:
             raise CommandError(f"Invalid start date: {e}")
 
-        periods_to_create = []
-
-        # Generate quarter periods
-        if period_type in ['quarter', 'both']:
-            periods_to_create.extend(
-                self._generate_quarters(school_year, start_date, quarter_weeks, set_current)
-            )
-
-        # Generate semester periods
-        if period_type in ['semester', 'both']:
-            periods_to_create.extend(
-                self._generate_semesters(school_year, start_date, semester_weeks, set_current)
-            )
+        # Generate quarter periods based on grade level group
+        periods_to_create = self._generate_quarters(
+            school_year, start_date, quarter_weeks, set_current, grade_level_group
+        )
 
         # Display what will be created
         self.stdout.write(f"\nGrading Periods for School Year {school_year}:")
-        self.stdout.write("=" * 60)
+        self.stdout.write(f"Grade Level Group: {grade_level_group}")
+        self.stdout.write("=" * 70)
 
         for period_data in periods_to_create:
             current_str = " [CURRENT]" if period_data['is_current'] else ""
+            semester_str = f" (Semester {period_data['semester_group']})" if period_data['semester_group'] else ""
             self.stdout.write(
-                f"  {period_data['label']:10} ({period_data['period_type']:8}) "
+                f"  {period_data['label']:5} {semester_str:15} "
                 f"{period_data['start_date']} - {period_data['end_date']}{current_str}"
             )
 
@@ -149,12 +134,13 @@ class Command(BaseCommand):
             for period_data in periods_to_create:
                 _, created = GradingPeriod.objects.get_or_create(
                     school_year=period_data['school_year'],
-                    period_type=period_data['period_type'],
+                    semester_group=period_data['semester_group'],
                     period_number=period_data['period_number'],
                     defaults={
                         'start_date': period_data['start_date'],
                         'end_date': period_data['end_date'],
                         'is_current': period_data['is_current'],
+                        'period_type': 'quarter',  # Always quarter now
                     }
                 )
                 if created:
@@ -164,24 +150,41 @@ class Command(BaseCommand):
             self.style.SUCCESS(f"\nSuccessfully created {created_count} grading period(s).")
         )
 
-    def _generate_quarters(self, school_year, start_date, weeks_per_quarter, set_current):
-        """Generate 4 quarter periods."""
+    def _generate_quarters(self, school_year, start_date, weeks_per_quarter, set_current, grade_level_group):
+        """
+        Generate 4 quarter periods.
+
+        For Grades 7-10: Q1-Q4 with semester_group=null
+        For Grades 11-12: Q1-Q2 with semester_group=1, Q3-Q4 with semester_group=2
+        """
         periods = []
         current_date = start_date
 
+        # Determine semester group mapping
+        # For 11-12: Q1, Q2 -> semester_group=1 (1st Sem); Q3, Q4 -> semester_group=2 (2nd Sem)
+        # For 7-10: All quarters have semester_group=null
         for quarter_num in range(1, 5):
             # Calculate end date (weeks_per_quarter weeks later)
             end_date = current_date + timedelta(weeks=weeks_per_quarter)
 
             # Adjust end date to be the day before the next quarter starts
-            # (to avoid gaps or overlaps)
             if quarter_num < 4:
                 end_date = end_date - timedelta(days=1)
+
+            # Determine semester_group
+            if grade_level_group == '11-12':
+                if quarter_num <= 2:
+                    semester_group = 1  # 1st Semester
+                else:
+                    semester_group = 2  # 2nd Semester
+            else:
+                semester_group = None  # No semester grouping for Grades 7-10
 
             periods.append({
                 'school_year': school_year,
                 'period_type': 'quarter',
                 'period_number': quarter_num,
+                'semester_group': semester_group,
                 'label': f'Q{quarter_num}',
                 'start_date': current_date,
                 'end_date': end_date,
@@ -191,29 +194,5 @@ class Command(BaseCommand):
             # Next quarter starts right after this one ends
             if quarter_num < 4:
                 current_date = end_date + timedelta(days=1)
-
-        return periods
-
-    def _generate_semesters(self, school_year, start_date, weeks_per_semester, set_current):
-        """Generate 2 semester periods."""
-        periods = []
-
-        for sem_num in range(1, 3):
-            # Calculate start and end dates
-            start = start_date + timedelta(weeks=weeks_per_semester * (sem_num - 1))
-            end = start + timedelta(weeks=weeks_per_semester) - timedelta(days=1)
-
-            # Label: "1st Sem" or "2nd Sem"
-            label = f'{sem_num}st Sem' if sem_num == 1 else f'{sem_num}nd Sem'
-
-            periods.append({
-                'school_year': school_year,
-                'period_type': 'semester',
-                'period_number': sem_num,
-                'label': label,
-                'start_date': start,
-                'end_date': end,
-                'is_current': sem_num == set_current,
-            })
 
         return periods

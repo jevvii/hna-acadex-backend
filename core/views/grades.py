@@ -790,15 +790,34 @@ class StudentGradesView(APIView):
         if not enrollment:
             return Response({"detail": "You are not enrolled in this course."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Determine period labels based on grade level
+        # Determine semester_group filter based on grade level and course section semester
         section = course_section.section
         grade_level_str = section.grade_level if section else None
 
-        # Get all grading periods for this school year
+        if grade_level_str in ['Grade 11', 'Grade 12']:
+            # For Senior High, filter by semester_group based on course_section.semester
+            semester_value = course_section.semester
+            if semester_value in ['1st', '1', 'First']:
+                semester_group = 1
+            elif semester_value in ['2nd', '2', 'Second']:
+                semester_group = 2
+            else:
+                semester_group = None
+        else:
+            semester_group = None  # Grades 7-10 have no semester grouping
+
+        # Get grading periods for this school year
         school_year = course_section.school_year
-        grading_periods = GradingPeriod.objects.filter(
-            school_year=school_year
-        ).order_by('period_number')
+        if semester_group is not None:
+            grading_periods = GradingPeriod.objects.filter(
+                school_year=school_year,
+                semester_group=semester_group
+            ).order_by('period_number')
+        else:
+            grading_periods = GradingPeriod.objects.filter(
+                school_year=school_year,
+                semester_group__isnull=True
+            ).order_by('period_number')
 
         # Get grade entries for this enrollment
         grade_entries = GradeEntry.objects.filter(
@@ -881,10 +900,23 @@ class AdvisoryGradesView(APIView):
                     'final_average': None,
                 }
 
-        # Get all grading periods
-        grading_periods = list(GradingPeriod.objects.filter(
-            school_year=course_section.school_year
-        ).order_by('period_number'))
+        # Determine semester_group filter based on grade level
+        # Grades 7-10: All quarters (semester_group is null)
+        # Grades 11-12: Quarters grouped by semester
+        grade_level = section.grade_level if section else None
+        if grade_level in ['Grade 11', 'Grade 12']:
+            # For Senior High, show all quarters for this school year
+            # The advisory teacher sees grades from all subjects across both semesters
+            grading_periods = list(GradingPeriod.objects.filter(
+                school_year=course_section.school_year,
+                semester_group__isnull=False
+            ).order_by('semester_group', 'period_number'))
+        else:
+            # For Grades 7-10, show all quarters
+            grading_periods = list(GradingPeriod.objects.filter(
+                school_year=course_section.school_year,
+                semester_group__isnull=True
+            ).order_by('period_number'))
 
         # Get all grade entries for these enrollments
         enrollment_ids = [str(e.id) for e in enrollments_in_section]
@@ -982,10 +1014,41 @@ class SubjectGradesView(APIView):
             .order_by('student__last_name', 'student__first_name')
         )
 
-        # Get grading periods
-        grading_periods = list(GradingPeriod.objects.filter(
-            school_year=course_section.school_year
-        ).order_by('period_number'))
+        # Get grade level from section to determine period type
+        grade_level = None
+        if course_section.section:
+            grade_level = course_section.section.grade_level
+
+        # Determine period type based on grade level
+        # Grades 7-10 use quarters, Grades 11-12 use semesters
+        if grade_level in ['Grade 11', 'Grade 12']:
+            # For Senior High, filter by semester_group based on course_section.semester
+            # semester='1st' -> Q1, Q2 (semester_group=1)
+            # semester='2nd' -> Q3, Q4 (semester_group=2)
+            semester_value = course_section.semester
+            if semester_value in ['1st', '1', 'First']:
+                semester_group = 1
+            elif semester_value in ['2nd', '2', 'Second']:
+                semester_group = 2
+            else:
+                semester_group = None  # Show all if semester not set
+
+            if semester_group:
+                grading_periods = list(GradingPeriod.objects.filter(
+                    school_year=course_section.school_year,
+                    semester_group=semester_group
+                ).order_by('period_number'))
+            else:
+                # Fallback: show all quarters for this school year
+                grading_periods = list(GradingPeriod.objects.filter(
+                    school_year=course_section.school_year
+                ).order_by('semester_group', 'period_number'))
+        else:
+            # For Grades 7-10, show all quarters (semester_group is null)
+            grading_periods = list(GradingPeriod.objects.filter(
+                school_year=course_section.school_year,
+                semester_group__isnull=True
+            ).order_by('period_number'))
 
         # Get all grade entries for these enrollments
         enrollment_ids = [str(e.id) for e in enrollments]
@@ -1000,14 +1063,6 @@ class SubjectGradesView(APIView):
             if enrollment_id not in entries_by_enrollment:
                 entries_by_enrollment[enrollment_id] = {}
             entries_by_enrollment[enrollment_id][str(entry.grading_period_id)] = entry
-
-        # Get grade level from section
-        grade_level = None
-        if course_section.section:
-            grade_level = course_section.section.grade_level
-
-        # Get period type from first grading period (or default)
-        period_type = grading_periods[0].period_type if grading_periods else 'quarter'
 
         # Build student data
         students = []
@@ -1043,7 +1098,7 @@ class SubjectGradesView(APIView):
             'course_code': course_section.course.code,
             'course_title': course_section.course.title,
             'grade_level': grade_level,
-            'period_type': period_type,
+            'semester_group': semester_group,  # For Grades 11-12, which semester this course belongs to
             'periods': GradingPeriodSerializer(grading_periods, many=True).data,
             'students': students,
         })

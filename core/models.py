@@ -921,11 +921,17 @@ def get_client_ip(request):
 
 
 class GradingPeriod(models.Model):
-    """Grading periods for academic terms (Quarters for grades 7-10, Semesters for grades 11-12)."""
+    """Grading periods for academic terms.
+
+    For Grades 7-10: Q1, Q2, Q3, Q4 (semester_group is null)
+    For Grades 11-12: Q1+Q2 (semester_group=1), Q3+Q4 (semester_group=2)
+
+    The semester_group groups quarters into semesters for Senior High.
+    Q1+Q2 = 1st Semester, Q3+Q4 = 2nd Semester
+    """
 
     class PeriodType(models.TextChoices):
         QUARTER = "quarter", "Quarter"
-        SEMESTER = "semester", "Semester"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     school_year = models.CharField(
@@ -935,10 +941,16 @@ class GradingPeriod(models.Model):
     period_type = models.CharField(
         max_length=10,
         choices=PeriodType.choices,
-        help_text="Quarter for grades 7-10, Semester for grades 11-12"
+        default=PeriodType.QUARTER,
+        help_text="Always 'quarter' - semesters are computed from quarter groups"
     )
     period_number = models.PositiveSmallIntegerField(
-        help_text="1-4 for quarters, 1-2 for semesters"
+        help_text="1-4 for Q1, Q2, Q3, Q4"
+    )
+    semester_group = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="For Grades 11-12: 1 for Q1+Q2 (1st Sem), 2 for Q3+Q4 (2nd Sem). Null for Grades 7-10."
     )
     start_date = models.DateField(help_text="Start date of this grading period")
     end_date = models.DateField(help_text="End date of this grading period")
@@ -950,13 +962,14 @@ class GradingPeriod(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['school_year', 'period_number']
-        unique_together = ('school_year', 'period_type', 'period_number')
+        ordering = ['school_year', 'semester_group', 'period_number']
+        unique_together = ('school_year', 'semester_group', 'period_number')
         verbose_name = "Grading Period"
         verbose_name_plural = "Grading Periods"
         indexes = [
             models.Index(fields=['school_year']),
             models.Index(fields=['is_current']),
+            models.Index(fields=['semester_group']),
         ]
 
     def __str__(self):
@@ -965,9 +978,16 @@ class GradingPeriod(models.Model):
     @property
     def label(self):
         """Return human-readable period label."""
-        if self.period_type == self.PeriodType.QUARTER:
-            return f"Q{self.period_number}"
-        return f"{self.period_number}st Sem" if self.period_number == 1 else f"{self.period_number}nd Sem"
+        return f"Q{self.period_number}"
+
+    @property
+    def semester_label(self):
+        """Return semester label if this quarter belongs to a semester group."""
+        if self.semester_group == 1:
+            return "1st Sem"
+        elif self.semester_group == 2:
+            return "2nd Sem"
+        return None
 
 
 class GradeEntry(models.Model):

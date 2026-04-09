@@ -1257,16 +1257,17 @@ class IDCounterAdmin(admin.ModelAdmin):
 
 
 class GradingPeriodAdmin(admin.ModelAdmin):
-    """Admin for GradingPeriod - managing academic grading periods."""
-    list_display = ("school_year", "label", "period_type", "period_number", "start_date", "end_date", "is_current")
-    list_filter = ("school_year", "period_type", "is_current")
+    """Admin for GradingPeriod - managing academic grading periods (quarters)."""
+    list_display = ("school_year", "label", "semester_group_display", "period_number", "start_date", "end_date", "is_current")
+    list_filter = ("school_year", "semester_group", "is_current")
     search_fields = ("school_year",)
-    ordering = ("-school_year", "period_number")
+    ordering = ("-school_year", "semester_group", "period_number")
     readonly_fields = ("label", "created_at", "updated_at")
+    change_list_template = "admin/core/gradingperiod/change_list.html"
 
     fieldsets = (
         ("Period Info", {
-            "fields": ("school_year", "period_type", "period_number", "is_current"),
+            "fields": ("school_year", "period_number", "semester_group", "is_current"),
         }),
         ("Dates", {
             "fields": ("start_date", "end_date"),
@@ -1276,6 +1277,120 @@ class GradingPeriodAdmin(admin.ModelAdmin):
             "classes": ("collapse",),
         }),
     )
+
+    def semester_group_display(self, obj):
+        if obj.semester_group is None:
+            return "Grades 7-10"
+        return f"Semester {obj.semester_group} (Grade 11-12)"
+    semester_group_display.short_description = "Group"
+    semester_group_display.admin_order_field = "semester_group"
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path('generate-periods/', self.admin_site.admin_view(self.generate_periods_view), name='core_gradingperiod_generate_periods'),
+        ]
+        return custom_urls + urls
+
+    def generate_periods_view(self, request):
+        """View for generating grading periods for a school year."""
+        from django.shortcuts import render, redirect
+        from django.contrib import messages
+        from django.db import transaction
+        from datetime import date, timedelta
+        from .models import GradingPeriod
+
+        if request.method == 'POST':
+            school_year = request.POST.get('school_year')
+            grade_level_group = request.POST.get('grade_level_group', '7-10')
+            start_month = int(request.POST.get('start_month', 6))
+            start_day = int(request.POST.get('start_day', 1))
+            quarter_weeks = int(request.POST.get('quarter_weeks', 10))
+            set_current = int(request.POST.get('set_current', 1))
+
+            # Validate school year format
+            try:
+                years = school_year.split('-')
+                if len(years) != 2:
+                    raise ValueError()
+                start_year = int(years[0])
+                end_year = int(years[1])
+                if end_year != start_year + 1:
+                    raise ValueError()
+            except (ValueError, IndexError):
+                messages.error(request, f"Invalid school year format '{school_year}'. Expected format: YYYY-YYYY (e.g., 2024-2025)")
+                return redirect(request.path)
+
+            # Calculate start date
+            try:
+                start_date = date(start_year, start_month, start_day)
+            except ValueError as e:
+                messages.error(request, f"Invalid start date: {e}")
+                return redirect(request.path)
+
+            # Generate quarter periods
+            periods_to_create = []
+            current_date = start_date
+
+            for quarter_num in range(1, 5):
+                end_date = current_date + timedelta(weeks=quarter_weeks)
+                if quarter_num < 4:
+                    end_date = end_date - timedelta(days=1)
+
+                # Determine semester_group
+                if grade_level_group == '11-12':
+                    semester_group = 1 if quarter_num <= 2 else 2
+                else:
+                    semester_group = None
+
+                periods_to_create.append({
+                    'school_year': school_year,
+                    'period_type': 'quarter',
+                    'period_number': quarter_num,
+                    'semester_group': semester_group,
+                    'start_date': current_date,
+                    'end_date': end_date,
+                    'is_current': quarter_num == set_current,
+                })
+
+                if quarter_num < 4:
+                    current_date = end_date + timedelta(days=1)
+
+            # Create periods
+            created_count = 0
+            with transaction.atomic():
+                for period_data in periods_to_create:
+                    _, created = GradingPeriod.objects.get_or_create(
+                        school_year=period_data['school_year'],
+                        semester_group=period_data['semester_group'],
+                        period_number=period_data['period_number'],
+                        defaults={
+                            'start_date': period_data['start_date'],
+                            'end_date': period_data['end_date'],
+                            'is_current': period_data['is_current'],
+                            'period_type': 'quarter',
+                        }
+                    )
+                    if created:
+                        created_count += 1
+
+            messages.success(request, f"Successfully created {created_count} grading periods for {school_year}.")
+            return redirect('..')
+
+        # GET request - show form
+        context = {
+            'title': 'Generate Grading Periods',
+            'opts': self.model._meta,
+            'has_view_permission': True,
+            'site_header': 'HNA Acadex Admin',
+        }
+        return render(request, 'admin/core/gradingperiod/generate_periods.html', context)
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['show_generate_button'] = True
+        return super().changelist_view(request, extra_context)
 
 
 class GradeEntryAdmin(admin.ModelAdmin):
