@@ -206,7 +206,10 @@ class Command(BaseCommand):
         """
         Compute a student's score for a grading period based on activities and quizzes.
 
-        Returns a Decimal score (0-100) or None if no graded items found.
+        HOLISTIC COMPUTATION: ALL published activities and quizzes in the period are counted.
+        Ungraded/missing submissions count as 0.
+
+        Returns a Decimal score (0-100) or None if no items found.
         """
         # Get activities in this period
         activities = Activity.objects.filter(
@@ -224,11 +227,17 @@ class Command(BaseCommand):
             close_at__date__lte=end_date,
         )
 
-        activity_scores = []
-        quiz_scores = []
+        # If no items at all, return None
+        if not activities.exists() and not quizzes.exists():
+            return None
+
+        # HOLISTIC: Count ALL items, missing/ungraded = 0
+        all_scores = []
+        total_items = 0
 
         # Get activity submissions
         for activity in activities:
+            total_items += 1
             submission = Submission.objects.filter(
                 activity=activity,
                 student=student
@@ -237,10 +246,14 @@ class Command(BaseCommand):
             if submission and submission.score is not None:
                 # Normalize to 0-100 scale
                 normalized = (submission.score / Decimal(str(activity.points))) * Decimal('100')
-                activity_scores.append(normalized)
+                all_scores.append(normalized)
+            else:
+                # HOLISTIC: No submission or no score = 0
+                all_scores.append(Decimal('0'))
 
         # Get quiz attempts
         for quiz in quizzes:
+            total_items += 1
             attempt = QuizAttempt.objects.filter(
                 quiz=quiz,
                 student=student,
@@ -250,18 +263,18 @@ class Command(BaseCommand):
             if attempt and attempt.score is not None and attempt.max_score:
                 # Normalize to 0-100 scale
                 normalized = (attempt.score / attempt.max_score) * Decimal('100')
-                quiz_scores.append(normalized)
+                all_scores.append(normalized)
+            else:
+                # HOLISTIC: No attempt or no score = 0
+                all_scores.append(Decimal('0'))
 
-        # Combine scores
-        all_scores = activity_scores + quiz_scores
-
-        if not all_scores:
+        # If no items found, return None
+        if total_items == 0:
             return None
 
-        # Calculate average
+        # Calculate average - ALL items counted
         total = sum(all_scores)
-        count = len(all_scores)
-        average = total / Decimal(str(count))
+        average = total / Decimal(str(total_items))
 
         # Round to 2 decimal places
         return round(average, 2)

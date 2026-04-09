@@ -38,6 +38,8 @@ from .views import (
     GradeEntryUpdateView,
     GradeEntryPublishView,
     BulkPublishGradesView,
+    BulkPublishFinalGradesView,
+    ComputeFinalGradeView,
     MeView,
     NotificationViewSet,
     PasswordResetRequestViewSet,
@@ -124,5 +126,7 @@ urlpatterns = [
     path("grade-entries/<uuid:pk>/", GradeEntryUpdateView.as_view(), name="grade-entry-update"),
     path("grade-entries/<uuid:pk>/publish/", GradeEntryPublishView.as_view(), name="grade-entry-publish"),
     path("course-sections/<uuid:pk>/grades/bulk-publish/", BulkPublishGradesView.as_view(), name="grades-bulk-publish"),
+    path("course-sections/<uuid:pk>/grades/bulk-publish-final/", BulkPublishFinalGradesView.as_view(), name="grades-bulk-publish-final"),
+    path("enrollments/<uuid:pk>/compute-final-grade/", ComputeFinalGradeView.as_view(), name="enrollment-compute-final-grade"),
     path("", include(router.urls)),
 ]

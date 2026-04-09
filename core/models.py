@@ -287,6 +287,10 @@ class Enrollment(models.Model):
     )
     final_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     manual_final_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    is_final_published = models.BooleanField(
+        default=False,
+        help_text="Whether the final grade is visible to students"
+    )
     is_active = models.BooleanField(default=True)
     enrolled_at = models.DateTimeField(auto_now_add=True)
 

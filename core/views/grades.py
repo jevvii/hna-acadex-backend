@@ -847,8 +847,9 @@ class StudentGradesView(APIView):
             'course_title': course_section.course.title,
             'grade_level': grade_level_str,
             'periods': period_grades,
-            'final_grade': float(final_grade) if final_grade else None,
-            'final_grade_letter': final_grade_letter,
+            'final_grade': float(final_grade) if final_grade and enrollment.is_final_published else None,
+            'final_grade_letter': final_grade_letter if enrollment.is_final_published else None,
+            'is_final_published': enrollment.is_final_published,
         })
 
 
@@ -1091,7 +1092,11 @@ class SubjectGradesView(APIView):
                 'final_grade': float(enrollment.final_grade) if enrollment.final_grade else None,
                 'final_grade_letter': _letter_grade(enrollment.final_grade) if enrollment.final_grade else None,
                 'grade_overridden': enrollment.manual_final_grade is not None,
+                'is_final_published': enrollment.is_final_published,
             })
+
+        # Check if all final grades are published
+        all_final_published = all(s.get('is_final_published', False) for s in students) if students else False
 
         return Response({
             'course_section_id': str(course_section.id),
@@ -1101,6 +1106,7 @@ class SubjectGradesView(APIView):
             'semester_group': semester_group,  # For Grades 11-12, which semester this course belongs to
             'periods': GradingPeriodSerializer(grading_periods, many=True).data,
             'students': students,
+            'all_final_published': all_final_published,
         })
 
 
@@ -1199,6 +1205,168 @@ class BulkPublishGradesView(APIView):
         })
 
 
+def _compute_final_grade_from_entries(enrollment: Enrollment, semester_group: int | None = None) -> Decimal | None:
+    """
+    Compute final grade from grade entries.
+
+    For Grades 7-10: Average of all 4 quarters
+    For Grades 11-12: Average of 2 quarters in the semester
+
+    Returns None if no published grade entries exist.
+    """
+    grade_level = enrollment.course_section.course.grade_level if enrollment.course_section.course else None
+
+    # Filter grade entries by semester_group for SHS
+    if semester_group is not None:
+        # Get grading periods for this semester
+        period_ids = GradingPeriod.objects.filter(
+            semester_group=semester_group,
+            school_year=enrollment.course_section.school_year
+        ).values_list('id', flat=True)
+
+        entries = GradeEntry.objects.filter(
+            enrollment=enrollment,
+            is_published=True,
+            grading_period_id__in=period_ids
+        )
+    else:
+        # All quarters for JHS
+        entries = GradeEntry.objects.filter(
+            enrollment=enrollment,
+            is_published=True
+        )
+
+    if not entries.exists():
+        return None
+
+    scores = [e.score for e in entries if e.score is not None]
+
+    if not scores:
+        return None
+
+    # Calculate average
+    total = sum(scores)
+    average = Decimal(str(total)) / Decimal(str(len(scores)))
+
+    # Round to 2 decimal places
+    return average.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+class ComputeFinalGradeView(APIView):
+    """Compute and optionally publish final grade from grade entries."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        """
+        Compute final grade for an enrollment.
+
+        Request body:
+        - publish: bool - Whether to publish the final grade
+        """
+        from core.models import Enrollment
+
+        enrollment = Enrollment.objects.filter(id=pk).first()
+        if not enrollment:
+            return Response({"detail": "Enrollment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions
+        course_section = enrollment.course_section
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Determine semester_group
+        grade_level = course_section.course.grade_level if course_section.course else None
+        semester_group = None
+        if grade_level in ['Grade 11', 'Grade 12']:
+            semester_value = course_section.semester
+            if semester_value in ['1st', '1', 'First']:
+                semester_group = 1
+            elif semester_value in ['2nd', '2', 'Second']:
+                semester_group = 2
+
+        # Compute final grade from entries
+        final_grade = _compute_final_grade_from_entries(enrollment, semester_group)
+
+        if final_grade is None:
+            return Response({
+                "detail": "No published grade entries found.",
+                "final_grade": None,
+            })
+
+        # Check if we should publish
+        publish = request.data.get('publish', False)
+        if publish:
+            enrollment.final_grade = final_grade
+            enrollment.is_final_published = True
+            enrollment.save(update_fields=['final_grade', 'is_final_published'])
+        else:
+            # Just return the computed value without saving
+            pass
+
+        return Response({
+            'enrollment_id': str(enrollment.id),
+            'final_grade': float(final_grade),
+            'final_grade_letter': _letter_grade(final_grade),
+            'is_published': enrollment.is_final_published if publish else False,
+        })
+
+
+class BulkPublishFinalGradesView(APIView):
+    """Bulk publish final grades for all students in a course section."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        """
+        Compute and publish final grades for all enrollments in a course section.
+
+        Final grades are computed from grade entries:
+        - Grades 7-10: Average of all 4 quarters
+        - Grades 11-12: Average of 2 quarters in the semester
+        """
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check permissions
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Determine semester_group
+        grade_level = course_section.course.grade_level if course_section.course else None
+        semester_group = None
+        if grade_level in ['Grade 11', 'Grade 12']:
+            semester_value = course_section.semester
+            if semester_value in ['1st', '1', 'First']:
+                semester_group = 1
+            elif semester_value in ['2nd', '2', 'Second']:
+                semester_group = 2
+
+        # Get all active enrollments
+        enrollments = Enrollment.objects.filter(
+            course_section=course_section,
+            is_active=True
+        )
+
+        published_count = 0
+        for enrollment in enrollments:
+            # Compute final grade from entries
+            final_grade = _compute_final_grade_from_entries(enrollment, semester_group)
+
+            if final_grade is not None:
+                enrollment.final_grade = final_grade
+                enrollment.is_final_published = True
+                enrollment.save(update_fields=['final_grade', 'is_final_published'])
+                published_count += 1
+
+        return Response({
+            'published_count': published_count,
+        })
+
+
 __all__ = [
     'CourseSectionGradesView',
     'CourseSectionGradebookView',
@@ -1211,4 +1379,6 @@ __all__ = [
     'GradeEntryUpdateView',
     'GradeEntryPublishView',
     'BulkPublishGradesView',
+    'ComputeFinalGradeView',
+    'BulkPublishFinalGradesView',
 ]
