@@ -28,6 +28,7 @@ from core.models import (
     Submission,
     GradeEntry,
 )
+from core.grade_computation import compute_period_grade
 
 
 class Command(BaseCommand):
@@ -144,13 +145,11 @@ class Command(BaseCommand):
                     grading_period=period
                 ).first()
 
-                # Compute score for this period
-                computed_score = self._compute_period_score(
+                # Compute score for this period using DepEd weighted computation
+                computed_score = compute_period_grade(
                     enrollment.student,
                     course_section,
-                    period.start_date,
-                    period.end_date,
-                    verbose
+                    period,
                 )
 
                 if computed_score is None:
@@ -204,77 +203,22 @@ class Command(BaseCommand):
 
     def _compute_period_score(self, student, course_section, start_date, end_date, verbose=False):
         """
-        Compute a student's score for a grading period based on activities and quizzes.
+        DEPRECATED: Use compute_period_grade from core.grade_computation instead.
 
-        HOLISTIC COMPUTATION: ALL published activities and quizzes in the period are counted.
-        Ungraded/missing submissions count as 0.
+        This method is kept for backward compatibility. It now delegates to the
+        DepEd-weighted computation via compute_period_grade.
 
-        Returns a Decimal score (0-100) or None if no items found.
+        Note: This method takes start_date/end_date, but compute_period_grade
+        takes a GradingPeriod object. We look up the matching GradingPeriod.
         """
-        # Get activities in this period
-        activities = Activity.objects.filter(
-            course_section=course_section,
-            is_published=True,
-            deadline__date__gte=start_date,
-            deadline__date__lte=end_date,
-        )
+        from core.models import GradingPeriod
 
-        # Get quizzes in this period
-        quizzes = Quiz.objects.filter(
-            course_section=course_section,
-            is_published=True,
-            close_at__date__gte=start_date,
-            close_at__date__lte=end_date,
-        )
+        period = GradingPeriod.objects.filter(
+            start_date=start_date,
+            end_date=end_date,
+        ).first()
 
-        # If no items at all, return None
-        if not activities.exists() and not quizzes.exists():
+        if period is None:
             return None
 
-        # HOLISTIC: Count ALL items, missing/ungraded = 0
-        all_scores = []
-        total_items = 0
-
-        # Get activity submissions
-        for activity in activities:
-            total_items += 1
-            submission = Submission.objects.filter(
-                activity=activity,
-                student=student
-            ).order_by('-attempt_number').first()
-
-            if submission and submission.score is not None:
-                # Normalize to 0-100 scale
-                normalized = (submission.score / Decimal(str(activity.points))) * Decimal('100')
-                all_scores.append(normalized)
-            else:
-                # HOLISTIC: No submission or no score = 0
-                all_scores.append(Decimal('0'))
-
-        # Get quiz attempts
-        for quiz in quizzes:
-            total_items += 1
-            attempt = QuizAttempt.objects.filter(
-                quiz=quiz,
-                student=student,
-                is_submitted=True
-            ).order_by('-submitted_at').first()
-
-            if attempt and attempt.score is not None and attempt.max_score:
-                # Normalize to 0-100 scale
-                normalized = (attempt.score / attempt.max_score) * Decimal('100')
-                all_scores.append(normalized)
-            else:
-                # HOLISTIC: No attempt or no score = 0
-                all_scores.append(Decimal('0'))
-
-        # If no items found, return None
-        if total_items == 0:
-            return None
-
-        # Calculate average - ALL items counted
-        total = sum(all_scores)
-        average = total / Decimal(str(total_items))
-
-        # Round to 2 decimal places
-        return round(average, 2)
+        return compute_period_grade(student, course_section, period)
