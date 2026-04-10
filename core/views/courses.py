@@ -78,6 +78,7 @@ class StudentCoursesView(APIView):
                     "course_tag": course_tag,
                     "semester": cs.semester,
                     "school_year": cs.school_year,
+                    "category": course.category,
                     # Grade metadata for badge display
                     "grade_summary": grade_metadata,
                 }
@@ -116,6 +117,7 @@ class TeacherCoursesView(APIView):
                     "student_count": cs.student_count,
                     "semester": cs.semester,
                     "school_year": cs.school_year,
+                    "category": course.category,
                 }
             )
         return Response(data)
@@ -161,6 +163,7 @@ class CourseSectionDetailView(APIView):
                 "color_overlay": course.color_overlay,
                 "grade_level": course.grade_level,
                 "strand": course.strand,
+                "category": course.category,
                 "school_year": course.school_year,
                 "semester": course.semester,
                 "num_weeks": course.num_weeks,

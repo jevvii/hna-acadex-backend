@@ -194,13 +194,13 @@ class Section(models.Model):
 
 class Course(models.Model):
     class SubjectCategory(models.TextChoices):
-        LANGUAGES_AP_ESP = 'languages_ap_esp', 'Languages, AP, ESP'
-        SCIENCE_MATH = 'science_math', 'Science and Math'
-        MAPEH_EPP_TLE = 'mapeh_epp_tle', 'MAPEH, EPP, TLE'
-        SHS_CORE = 'shs_core', 'SHS Core Subject'
-        SHS_APPLIED = 'shs_applied', 'SHS Applied Subject'
-        SHS_SPECIALIZED = 'shs_specialized', 'SHS Specialized Subject'
-        SHS_TVL = 'shs_tvl', 'SHS TVL Track'
+        LANGUAGES_AP_ESP = "languages_ap_esp", "Languages, AP, ESP"
+        SCIENCE_MATH = "science_math", "Science and Math"
+        MAPEH_EPP_TLE = "mapeh_epp_tle", "MAPEH, EPP, TLE"
+        SHS_CORE = "shs_core", "SHS Core Subject"
+        SHS_APPLIED = "shs_applied", "SHS Applied Subject"
+        SHS_SPECIALIZED = "shs_specialized", "SHS Specialized Subject"
+        SHS_TVL = "shs_tvl", "SHS TVL Track"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(
@@ -223,6 +223,7 @@ class Course(models.Model):
         choices=SubjectCategory.choices,
         null=True,
         blank=True,
+        verbose_name="Subject Category",
         help_text="Subject classification for DepEd grade weight defaults",
     )
     school_year = models.CharField(max_length=20)
