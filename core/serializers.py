@@ -11,6 +11,7 @@ from .models import (
     CourseFile,
     Enrollment,
     GradeEntry,
+    GradeWeightConfig,
     GradingPeriod,
     Notification,
     MeetingSession,
@@ -802,3 +803,27 @@ class AssignmentWeightSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+
+class GradeWeightConfigSerializer(serializers.ModelSerializer):
+    """Serializer for GradeWeightConfig with computed subject category info."""
+    subject_category = serializers.SerializerMethodField()
+    category_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GradeWeightConfig
+        fields = [
+            'id', 'course_section', 'written_works', 'performance_tasks',
+            'quarterly_assessment', 'is_customized', 'subject_category',
+            'category_label', 'updated_at',
+        ]
+        read_only_fields = ['id', 'course_section', 'is_customized', 'updated_at']
+
+    def get_subject_category(self, obj):
+        return obj.course_section.course.category
+
+    def get_category_label(self, obj):
+        cat = obj.course_section.course.category
+        if cat:
+            return dict(Course.SubjectCategory.choices).get(cat, cat)
+        return None

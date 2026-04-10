@@ -15,18 +15,20 @@ from core.models import (
     CourseSection,
     Enrollment,
     GradeEntry,
+    GradeWeightConfig,
     GradingPeriod,
     Quiz,
     QuizAttempt,
     Submission,
     User,
 )
-from core.serializers import GradingPeriodSerializer
+from core.serializers import GradingPeriodSerializer, GradeWeightConfigSerializer
 from core.views.common import (
     _letter_grade,
     _recompute_enrollment_grade,
     _batch_recompute_enrollment_grades,
 )
+from core.grade_computation import get_or_create_weight_config
 
 
 class CourseSectionGradesView(APIView):
@@ -1367,6 +1369,79 @@ class BulkPublishFinalGradesView(APIView):
         })
 
 
+class GradeWeightConfigView(APIView):
+    """GET/PUT grade weight configuration for a course section."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        course_section = CourseSection.objects.select_related('course').filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Permission check: subject teacher or admin
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        config = get_or_create_weight_config(course_section)
+        serializer = GradeWeightConfigSerializer(config)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        course_section = CourseSection.objects.select_related('course').filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Permission check: subject teacher or admin
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        written_works = request.data.get('written_works')
+        performance_tasks = request.data.get('performance_tasks')
+        quarterly_assessment = request.data.get('quarterly_assessment')
+
+        # Validate required fields
+        if written_works is None or performance_tasks is None or quarterly_assessment is None:
+            return Response(
+                {"detail": "written_works, performance_tasks, and quarterly_assessment are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate they are integers
+        try:
+            written_works = int(written_works)
+            performance_tasks = int(performance_tasks)
+            quarterly_assessment = int(quarterly_assessment)
+        except (ValueError, TypeError):
+            return Response(
+                {"detail": "All weights must be integers."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate sum equals 100
+        total = written_works + performance_tasks + quarterly_assessment
+        if total != 100:
+            return Response(
+                {"detail": f"Weights must sum to 100. Current total: {total}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get or create config, then update
+        config = get_or_create_weight_config(course_section)
+        config.written_works = written_works
+        config.performance_tasks = performance_tasks
+        config.quarterly_assessment = quarterly_assessment
+        config.is_customized = True
+        config.updated_by = request.user
+        config.save()
+
+        serializer = GradeWeightConfigSerializer(config)
+        return Response(serializer.data)
+
+
 __all__ = [
     'CourseSectionGradesView',
     'CourseSectionGradebookView',
@@ -1381,4 +1456,5 @@ __all__ = [
     'BulkPublishGradesView',
     'ComputeFinalGradeView',
     'BulkPublishFinalGradesView',
+    'GradeWeightConfigView',
 ]

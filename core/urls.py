@@ -31,6 +31,7 @@ from .views import (
     DashboardStatsView,
     EnrollmentGradeOverrideView,
     ForgotPasswordRequestView,
+    GradeWeightConfigView,
     GradingPeriodListView,
     StudentGradesView,
     AdvisoryGradesView,
@@ -94,6 +95,7 @@ urlpatterns = [
     path("course-sections/<uuid:pk>/grades/export/", CourseSectionGradesExportCSVView.as_view(), name="course-section-grades-export"),
     path("course-sections/<uuid:pk>/gradebook/", CourseSectionGradebookView.as_view(), name="course-section-gradebook"),
     path("course-sections/<uuid:pk>/grades/", CourseSectionGradesView.as_view(), name="course-section-grades"),
+    path("course-sections/<uuid:pk>/grade-weights/", GradeWeightConfigView.as_view(), name="grade-weight-config"),
     path(
         "course/<uuid:course_id>/section/<uuid:section_id>/grades/export/",
         CourseSectionGradesExportCSVView.as_view(),
