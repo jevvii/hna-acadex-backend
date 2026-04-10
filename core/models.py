@@ -1,6 +1,7 @@
 # hna-acadex-backend/core/models.py
 import uuid
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -349,6 +350,15 @@ class Activity(models.Model):
         LATEST = "latest", "Latest"
         HIGHEST = "highest", "Highest"
 
+    class ComponentType(models.TextChoices):
+        WRITTEN_WORKS = "written_works", "Written Works"
+        PERFORMANCE_TASK = "performance_task", "Performance Task"
+        QUARTERLY_ASSESSMENT = "quarterly_assessment", "Quarterly Assessment"
+
+    class ExamType(models.TextChoices):
+        MONTHLY = "monthly", "Monthly Exam"
+        QUARTERLY = "quarterly", "Quarterly Exam"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course_section = models.ForeignKey(CourseSection, on_delete=models.CASCADE, related_name="activities")
     weekly_module = models.ForeignKey(
@@ -379,9 +389,41 @@ class Activity(models.Model):
         choices=ScorePolicy.choices,
         default=ScorePolicy.HIGHEST,
     )
+    component_type = models.CharField(
+        max_length=25,
+        choices=ComponentType.choices,
+        null=True,
+        blank=True,
+        verbose_name="Component Type",
+        help_text="DepEd grade component: Written Works, Performance Task, or Quarterly Assessment",
+    )
+    is_exam = models.BooleanField(
+        default=False,
+        verbose_name="Is Exam",
+        help_text="Whether this activity is an exam (Monthly or Quarterly)",
+    )
+    exam_type = models.CharField(
+        max_length=10,
+        choices=ExamType.choices,
+        null=True,
+        blank=True,
+        verbose_name="Exam Type",
+        help_text="Type of exam: Monthly (counts as Written Works) or Quarterly (counts as Quarterly Assessment)",
+    )
     is_published = models.BooleanField(default=True)
     created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        super().clean()
+        if self.is_exam and not self.exam_type:
+            raise ValidationError(
+                {"exam_type": "exam_type must be set when is_exam is True."}
+            )
+        if self.is_exam and self.exam_type == "monthly":
+            self.component_type = self.ComponentType.WRITTEN_WORKS
+        elif self.is_exam and self.exam_type == "quarterly":
+            self.component_type = self.ComponentType.QUARTERLY_ASSESSMENT
 
     class Meta:
         indexes = [
