@@ -22,6 +22,7 @@ from .models import (
     CourseSectionGroup,
     Enrollment,
     GradeEntry,
+    GradeWeightConfig,
     GradingPeriod,
     IDCounter,
     Notification,
@@ -1428,6 +1429,19 @@ class GradeEntryAdmin(admin.ModelAdmin):
     course_section.admin_order_field = "enrollment__course_section"
 
 
+class GradeWeightConfigAdmin(admin.ModelAdmin):
+    """Admin for GradeWeightConfig - DepEd grade weight configuration per course section."""
+    list_display = ("course_section_info", "written_works", "performance_tasks", "quarterly_assessment", "is_customized", "updated_by", "updated_at")
+    list_filter = ("is_customized", "course_section__course__category")
+    search_fields = ("course_section__course__code", "course_section__course__title", "course_section__section__name")
+    autocomplete_fields = ("course_section", "updated_by")
+
+    def course_section_info(self, obj):
+        return f"{obj.course_section.course.code} - {obj.course_section.section.name}"
+    course_section_info.short_description = "Course Section"
+    course_section_info.admin_order_field = "course_section__course__code"
+
+
 class AssignmentWeightAdmin(admin.ModelAdmin):
     """Admin for AssignmentWeight - teacher-defined weighting for categories."""
     list_display = ("course_section_info", "grading_period", "category", "weight_percent")
@@ -1509,4 +1523,5 @@ admin_site.register(ActivityReminder, ActivityReminderAdmin)
 admin_site.register(IDCounter, IDCounterAdmin)
 admin_site.register(GradingPeriod, GradingPeriodAdmin)
 admin_site.register(GradeEntry, GradeEntryAdmin)
+admin_site.register(GradeWeightConfig, GradeWeightConfigAdmin)
 admin_site.register(AssignmentWeight, AssignmentWeightAdmin)

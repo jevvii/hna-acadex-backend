@@ -1069,6 +1069,61 @@ class GradeEntry(models.Model):
         return self.override_score if self.override_score is not None else self.computed_score
 
 
+class GradeWeightConfig(models.Model):
+    """Teacher-defined or DepEd-default grade weight configuration per course section."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course_section = models.OneToOneField(
+        CourseSection,
+        on_delete=models.CASCADE,
+        related_name="grade_weight_config",
+        verbose_name="Course Section",
+    )
+    written_works = models.PositiveIntegerField(
+        default=25,
+        verbose_name="Written Works Weight (%)",
+        help_text="Weight for Written Works component (quizzes + written activities + monthly exams)",
+    )
+    performance_tasks = models.PositiveIntegerField(
+        default=50,
+        verbose_name="Performance Tasks Weight (%)",
+        help_text="Weight for Performance Tasks component (performance activities)",
+    )
+    quarterly_assessment = models.PositiveIntegerField(
+        default=25,
+        verbose_name="Quarterly Assessment Weight (%)",
+        help_text="Weight for Quarterly Assessment component (quarterly exams)",
+    )
+    is_customized = models.BooleanField(
+        default=False,
+        help_text="Whether the teacher has customized the weights from DepEd defaults",
+    )
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="grade_weight_configs",
+        verbose_name="Updated By",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Grade Weight Configuration"
+        verbose_name_plural = "Grade Weight Configurations"
+
+    def __str__(self):
+        return f"{self.course_section} - WW:{self.written_works}% PT:{self.performance_tasks}% QA:{self.quarterly_assessment}%"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        total = self.written_works + self.performance_tasks + self.quarterly_assessment
+        if total != 100:
+            raise ValidationError(
+                f"Weights must sum to 100%. Current total: {total}%"
+            )
+
+
 class AssignmentWeight(models.Model):
     """Teacher-defined weight for activity/quiz/exam categories within a grading period."""
 
