@@ -11,6 +11,7 @@ from .models import (
     Activity,
     ActivityComment,
     ActivityReminder,
+    AdviserOverrideLog,
     Announcement,
     AssignmentGroup,
     AssignmentWeight,
@@ -22,6 +23,7 @@ from .models import (
     CourseSectionGroup,
     Enrollment,
     GradeEntry,
+    GradeSubmission,
     GradeWeightConfig,
     GradingPeriod,
     IDCounter,
@@ -35,6 +37,7 @@ from .models import (
     QuizChoice,
     QuizQuestion,
     Section,
+    SectionReportCard,
     Submission,
     TeacherAdvisory,
     TodoItem,
@@ -1399,8 +1402,8 @@ class GradingPeriodAdmin(admin.ModelAdmin):
 
 class GradeEntryAdmin(admin.ModelAdmin):
     """Admin for GradeEntry - per-student per-period grades."""
-    list_display = ("student_name", "course_section", "grading_period", "score", "is_published", "updated_at")
-    list_filter = ("grading_period", "is_published", "enrollment__course_section__course__code")
+    list_display = ("student_name", "course_section", "grading_period", "score", "is_published", "adviser_overridden", "updated_at")
+    list_filter = ("grading_period", "is_published", "adviser_overridden", "enrollment__course_section__course__code")
     search_fields = ("enrollment__student__first_name", "enrollment__student__last_name", "enrollment__student__email")
     readonly_fields = ("computed_score", "computed_at", "created_at", "updated_at")
     autocomplete_fields = ("enrollment", "grading_period")
@@ -1410,7 +1413,7 @@ class GradeEntryAdmin(admin.ModelAdmin):
             "fields": ("enrollment", "grading_period"),
         }),
         ("Grade", {
-            "fields": ("computed_score", "override_score", "is_published"),
+            "fields": ("computed_score", "override_score", "is_published", "adviser_overridden"),
         }),
         ("Metadata", {
             "fields": ("computed_at", "created_at", "updated_at"),
@@ -1453,6 +1456,43 @@ class AssignmentWeightAdmin(admin.ModelAdmin):
         return f"{obj.course_section.course.code} - {obj.course_section.section.name}"
     course_section_info.short_description = "Course Section"
     course_section_info.admin_order_field = "course_section__course__code"
+
+
+class GradeSubmissionAdmin(admin.ModelAdmin):
+    """Admin for GradeSubmission - tracks submission status per subject+period."""
+    list_display = ("course_section_info", "grading_period", "status", "submitted_by", "submitted_at", "taken_back_at")
+    list_filter = ("status", "grading_period")
+    search_fields = ("course_section__course__code", "course_section__course__title")
+    autocomplete_fields = ("course_section", "grading_period", "submitted_by")
+
+    def course_section_info(self, obj):
+        return f"{obj.course_section.course.code} - {obj.course_section.section.name}"
+    course_section_info.short_description = "Course Section"
+    course_section_info.admin_order_field = "course_section__course__code"
+
+
+class SectionReportCardAdmin(admin.ModelAdmin):
+    """Admin for SectionReportCard - tracks report card publication per section+period."""
+    list_display = ("section_info", "grading_period", "is_published", "published_by", "published_at")
+    list_filter = ("is_published", "grading_period")
+    search_fields = ("section__name",)
+    autocomplete_fields = ("section", "grading_period", "published_by")
+
+    def section_info(self, obj):
+        return f"{obj.section.name} (Grade {obj.section.grade_level})"
+    section_info.short_description = "Section"
+
+
+class AdviserOverrideLogAdmin(admin.ModelAdmin):
+    """Admin for AdviserOverrideLog - read-only audit trail of adviser grade overrides."""
+    list_display = ("grade_entry_info", "adviser", "previous_score", "new_score", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("adviser__first_name", "adviser__last_name", "adviser__email")
+    readonly_fields = ("grade_entry", "adviser", "previous_score", "new_score", "created_at", "updated_at")
+
+    def grade_entry_info(self, obj):
+        return str(obj.grade_entry)
+    grade_entry_info.short_description = "Grade Entry"
 
 
 class TeacherAdvisoryAdmin(admin.ModelAdmin):
@@ -1525,3 +1565,6 @@ admin_site.register(GradingPeriod, GradingPeriodAdmin)
 admin_site.register(GradeEntry, GradeEntryAdmin)
 admin_site.register(GradeWeightConfig, GradeWeightConfigAdmin)
 admin_site.register(AssignmentWeight, AssignmentWeightAdmin)
+admin_site.register(GradeSubmission, GradeSubmissionAdmin)
+admin_site.register(SectionReportCard, SectionReportCardAdmin)
+admin_site.register(AdviserOverrideLog, AdviserOverrideLogAdmin)

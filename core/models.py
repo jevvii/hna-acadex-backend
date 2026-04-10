@@ -1087,6 +1087,10 @@ class GradeEntry(models.Model):
         default=False,
         help_text="Whether this grade is visible to students"
     )
+    adviser_overridden = models.BooleanField(
+        default=False,
+        help_text="Whether an adviser has overridden this grade"
+    )
     computed_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -1208,3 +1212,123 @@ class AssignmentWeight(models.Model):
 
     def __str__(self):
         return f"{self.course_section.course.code} - {self.grading_period.label} - {self.category}: {self.weight_percent}%"
+
+
+class GradeSubmissionStatus(models.TextChoices):
+    DRAFT = "draft", "Draft"
+    SUBMITTED = "submitted", "Submitted"
+    PUBLISHED = "published", "Published"
+
+
+class GradeSubmission(models.Model):
+    """Tracks submission status of grades for a course section in a grading period."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    course_section = models.ForeignKey(
+        CourseSection,
+        on_delete=models.CASCADE,
+        related_name="grade_submissions",
+        verbose_name="Course Section",
+    )
+    grading_period = models.ForeignKey(
+        GradingPeriod,
+        on_delete=models.CASCADE,
+        related_name="grade_submissions",
+        verbose_name="Grading Period",
+    )
+    submitted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_grades",
+        verbose_name="Submitted By",
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    taken_back_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=10,
+        choices=GradeSubmissionStatus.choices,
+        default=GradeSubmissionStatus.DRAFT,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("course_section", "grading_period")
+        ordering = ["-created_at"]
+        verbose_name = "Grade Submission"
+        verbose_name_plural = "Grade Submissions"
+
+    def __str__(self):
+        return f"{self.course_section} - {self.grading_period} - {self.status}"
+
+
+class SectionReportCard(models.Model):
+    """Tracks report card publication status for a section in a grading period."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    section = models.ForeignKey(
+        Section,
+        on_delete=models.CASCADE,
+        related_name="report_cards",
+        verbose_name="Section",
+    )
+    grading_period = models.ForeignKey(
+        GradingPeriod,
+        on_delete=models.CASCADE,
+        related_name="report_cards",
+        verbose_name="Grading Period",
+    )
+    published_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="published_report_cards",
+        verbose_name="Published By",
+    )
+    published_at = models.DateTimeField(null=True, blank=True)
+    is_published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("section", "grading_period")
+        ordering = ["-created_at"]
+        verbose_name = "Section Report Card"
+        verbose_name_plural = "Section Report Cards"
+
+    def __str__(self):
+        status = "Published" if self.is_published else "Unpublished"
+        return f"{self.section} - {self.grading_period} - {status}"
+
+
+class AdviserOverrideLog(models.Model):
+    """Audit log for adviser overrides on student grades."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    grade_entry = models.ForeignKey(
+        GradeEntry,
+        on_delete=models.CASCADE,
+        related_name="override_logs",
+        verbose_name="Grade Entry",
+    )
+    adviser = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="adviser_overrides",
+        verbose_name="Adviser",
+    )
+    previous_score = models.DecimalField(max_digits=5, decimal_places=2)
+    new_score = models.DecimalField(max_digits=5, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Adviser Override Log"
+        verbose_name_plural = "Adviser Override Logs"
+
+    def __str__(self):
+        return f"Override by {self.adviser}: {self.previous_score} -> {self.new_score}"
