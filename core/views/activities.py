@@ -25,7 +25,6 @@ from core.serializers import (
     SubmissionSerializer,
 )
 from core.views.common import (
-    _recompute_enrollment_grade,
     _sync_student_activity_items,
     _sync_course_section_students_activity_items,
     _notify_students_for_course_section,
@@ -110,9 +109,6 @@ class ActivitySubmitView(APIView):
             submitted_at=now,
             status=status_value,
         )
-        enrollment = Enrollment.objects.filter(course_section=activity.course_section, student=request.user, is_active=True).first()
-        if enrollment:
-            _recompute_enrollment_grade(enrollment)
         _sync_student_activity_items(request.user)
         return Response(SubmissionSerializer(submission).data)
 
@@ -257,14 +253,6 @@ class ActivitySubmissionGradeView(APIView):
                     'feedback': graded.feedback,
                 }
             )
-
-            enrollment = Enrollment.objects.filter(
-                course_section=graded.activity.course_section,
-                student=graded.student,
-                is_active=True,
-            ).first()
-            if enrollment:
-                _recompute_enrollment_grade(enrollment)
 
             # Send push notification to student when grade is released
             if was_ungraded:

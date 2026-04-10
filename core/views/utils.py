@@ -278,41 +278,8 @@ def _compute_attendance_percentage(enrollment: Enrollment) -> Decimal | None:
     return _quantize_pct(max(Decimal("0"), min(pct, Decimal("100"))))
 
 
-def _compute_enrollment_grade(enrollment: Enrollment) -> Decimal | None:
-    if enrollment.manual_final_grade is not None:
-        return _quantize_pct(Decimal(enrollment.manual_final_grade))
-
-    components = {
-        "activities": _compute_activity_percentage(enrollment),
-        "quizzes": _compute_quiz_percentage(enrollment),
-        "attendance": _compute_attendance_percentage(enrollment),
-    }
-    active_components = [(name, pct) for name, pct in components.items() if pct is not None]
-    if not active_components:
-        return None
-
-    active_weight_total = sum((GRADE_COMPONENT_WEIGHTS.get(name, Decimal("0")) for name, _ in active_components), Decimal("0"))
-    if active_weight_total <= 0:
-        return None
-
-    total = Decimal("0")
-    for name, pct in active_components:
-        weight = GRADE_COMPONENT_WEIGHTS.get(name, Decimal("0"))
-        total += (pct * weight) / active_weight_total
-    return _quantize_pct(max(Decimal("0"), min(total, Decimal("100"))))
-
-
-def _recompute_enrollment_grade(enrollment: Enrollment) -> Enrollment:
-    enrollment.final_grade = _compute_enrollment_grade(enrollment)
-    enrollment.save(update_fields=["final_grade"])
-    return enrollment
-
-
-def _recompute_course_section_grades(course_section):
-    from core.models import CourseSection
-    enrollments = Enrollment.objects.filter(course_section=course_section, is_active=True).select_related("student")
-    for enrollment in enrollments:
-        _recompute_enrollment_grade(enrollment)
+# Grade computation functions are canonical in common.py
+from core.views.common import _compute_enrollment_grade, _recompute_enrollment_grade, _recompute_course_section_grades
 
 
 def _get_grade_summary_metadata(enrollment: Enrollment) -> dict:

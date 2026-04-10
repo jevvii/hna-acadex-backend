@@ -377,16 +377,22 @@ def _compute_enrollment_grade(enrollment: Enrollment) -> Decimal | None:
 
 
 def _recompute_enrollment_grade(enrollment: Enrollment) -> Enrollment:
+    """Compute enrollment grade without persisting to DB.
+
+    Note: Enrollment.final_grade is now set during report card publishing,
+    not auto-computed on every grade change.
+    """
     enrollment.final_grade = _compute_enrollment_grade(enrollment)
-    enrollment.save(update_fields=["final_grade"])
     return enrollment
 
 
 def _batch_recompute_enrollment_grades(enrollments: list[Enrollment]) -> dict[str, Decimal | None]:
-    """
-    Batch compute and update final grades for multiple enrollments efficiently.
+    """Batch compute final grades for multiple enrollments efficiently.
     Returns a dict mapping enrollment_id -> final_grade for quick lookup.
-    This avoids N+1 queries by prefetching related data.
+
+    Note: Enrollment.final_grade is now set during report card publishing,
+    not auto-computed on every grade change. This function computes grades
+    in-memory without persisting to DB.
     """
     if not enrollments:
         return {}
@@ -493,7 +499,6 @@ def _batch_recompute_enrollment_grades(enrollments: list[Enrollment]) -> dict[st
         if enrollment.manual_final_grade is not None:
             results[str(enrollment.id)] = _quantize_pct(Decimal(enrollment.manual_final_grade))
             enrollment.final_grade = results[str(enrollment.id)]
-            enrollment.save(update_fields=["final_grade"])
             continue
 
         cs_id = enrollment.course_section_id
@@ -529,7 +534,6 @@ def _batch_recompute_enrollment_grades(enrollments: list[Enrollment]) -> dict[st
         if not active_components:
             results[str(enrollment.id)] = None
             enrollment.final_grade = None
-            enrollment.save(update_fields=["final_grade"])
             continue
 
         active_weight_total = sum(
@@ -539,7 +543,6 @@ def _batch_recompute_enrollment_grades(enrollments: list[Enrollment]) -> dict[st
         if active_weight_total <= 0:
             results[str(enrollment.id)] = None
             enrollment.final_grade = None
-            enrollment.save(update_fields=["final_grade"])
             continue
 
         total = Decimal("0")
@@ -550,7 +553,6 @@ def _batch_recompute_enrollment_grades(enrollments: list[Enrollment]) -> dict[st
         final_grade = _quantize_pct(max(Decimal("0"), min(total, Decimal("100"))))
         results[str(enrollment.id)] = final_grade
         enrollment.final_grade = final_grade
-        enrollment.save(update_fields=["final_grade"])
 
     return results
 
@@ -839,6 +841,11 @@ def _batch_get_grade_summary_metadata(enrollments: list[Enrollment]) -> dict[str
 
 
 def _recompute_course_section_grades(course_section: CourseSection):
+    """Compute grades for all enrollments in a course section without persisting.
+
+    Note: Enrollment.final_grade is now set during report card publishing,
+    not auto-computed on every grade change.
+    """
     enrollments = Enrollment.objects.filter(course_section=course_section, is_active=True).select_related("student")
     for enrollment in enrollments:
         _recompute_enrollment_grade(enrollment)

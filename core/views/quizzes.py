@@ -28,8 +28,6 @@ from core.serializers import (
     QuizSerializer,
 )
 from core.views.common import (
-    _recompute_enrollment_grade,
-    _recompute_course_section_grades,
     _sync_student_activity_items,
     _sync_course_section_students_activity_items,
     _notify_students_for_course_section,
@@ -115,13 +113,6 @@ class QuizTakeView(APIView):
         attempt.score = total_score
         attempt.pending_manual_grading = pending_manual
         attempt.save(update_fields=["is_submitted", "submitted_at", "max_score", "score", "pending_manual_grading"])
-        enrollment = Enrollment.objects.filter(
-            course_section=attempt.quiz.course_section,
-            student=attempt.student,
-            is_active=True,
-        ).first()
-        if enrollment:
-            _recompute_enrollment_grade(enrollment)
         _sync_student_activity_items(attempt.student)
         return attempt
 
@@ -496,13 +487,6 @@ class QuizAnswerGradeView(APIView):
         attempt.score = points_total
         attempt.pending_manual_grading = pending
         attempt.save(update_fields=["score", "pending_manual_grading"])
-        enrollment = Enrollment.objects.filter(
-            course_section=attempt.quiz.course_section,
-            student=attempt.student,
-            is_active=True,
-        ).first()
-        if enrollment:
-            _recompute_enrollment_grade(enrollment)
 
         # Send notification when grading is complete (no more pending)
         if was_pending and not pending:
@@ -584,7 +568,6 @@ class QuizQuestionsView(APIView):
         serializer = QuizQuestionWriteSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         question = serializer.save()
-        _recompute_course_section_grades(quiz.course_section)
         return Response(QuizQuestionWriteSerializer(question).data, status=status.HTTP_201_CREATED)
 
 
@@ -613,7 +596,6 @@ class QuizQuestionDetailView(APIView):
         serializer = QuizQuestionWriteSerializer(question, data=payload, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        _recompute_course_section_grades(question.quiz.course_section)
         return Response(QuizQuestionWriteSerializer(question).data)
 
     def delete(self, request, pk):
@@ -623,9 +605,7 @@ class QuizQuestionDetailView(APIView):
         denied = self._ensure_teacher_access(request, question)
         if denied:
             return denied
-        course_section = question.quiz.course_section
         question.delete()
-        _recompute_course_section_grades(course_section)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -701,7 +681,6 @@ class QuizQuickCreateView(APIView):
             s.is_valid(raise_exception=True)
             created_questions.append(s.save())
 
-        _recompute_course_section_grades(quiz.course_section)
         _sync_course_section_students_activity_items(quiz.course_section)
 
         return Response(
@@ -778,8 +757,6 @@ class QuizQuestionsBulkView(APIView):
 
         # Note: Quiz doesn't have a points field - total points is computed
         # from the sum of question points on the fly in the frontend
-
-        _recompute_course_section_grades(quiz.course_section)
 
         all_questions = QuizQuestion.objects.filter(quiz=quiz).order_by("sort_order")
         return Response(QuizQuestionWriteSerializer(all_questions, many=True).data)

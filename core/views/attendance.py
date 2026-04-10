@@ -16,7 +16,6 @@ from core.serializers import (
     AttendanceRecordSerializer,
     MeetingSessionSerializer,
 )
-from core.views.common import _recompute_course_section_grades
 
 
 class AttendanceOverviewView(APIView):
@@ -172,7 +171,6 @@ class AttendanceSessionCreateView(APIView):
         )
         # Do NOT create attendance records automatically - let them be created
         # when the teacher marks each student. Unmarked students will show as "None".
-        _recompute_course_section_grades(course_section)
         return Response(MeetingSessionSerializer(session).data, status=status.HTTP_201_CREATED)
 
 
@@ -189,7 +187,6 @@ class AttendanceSessionDeleteView(APIView):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         course_section = session.course_section
         session.delete()
-        _recompute_course_section_grades(course_section)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -212,7 +209,6 @@ class AttendanceRecordBulkUpdateView(APIView):
                 marked_by=request.user,
                 updated_at=AttendanceRecordBulkUpdateView._get_current_time(),
             )
-            _recompute_course_section_grades(session.course_section)
             return Response({"ok": True})
         if bulk_action == "clear_all":
             AttendanceRecord.objects.filter(meeting=session).update(
@@ -221,7 +217,6 @@ class AttendanceRecordBulkUpdateView(APIView):
                 marked_by=request.user,
                 updated_at=AttendanceRecordBulkUpdateView._get_current_time(),
             )
-            _recompute_course_section_grades(session.course_section)
             return Response({"ok": True})
 
         records = request.data.get("records") or []
@@ -243,7 +238,6 @@ class AttendanceRecordBulkUpdateView(APIView):
                     "marked_by": request.user,
                 },
             )
-        _recompute_course_section_grades(session.course_section)
         return Response({"ok": True})
 
     @staticmethod

@@ -47,7 +47,6 @@ from core.serializers import (
     WeeklyModuleSerializer,
 )
 from core.views.common import (
-    _recompute_course_section_grades,
     _sync_course_section_students_activity_items,
     _sync_student_activity_items,
     _sync_student_items_best_effort,
@@ -240,16 +239,12 @@ class AssignmentGroupViewSet(TeacherCourseSectionScopedModelViewSet):
 
     def perform_create(self, serializer):
         group = serializer.save()
-        _recompute_course_section_grades(group.course_section)
 
     def perform_update(self, serializer):
         group = serializer.save()
-        _recompute_course_section_grades(group.course_section)
 
     def perform_destroy(self, instance):
-        course_section = instance.course_section
         super().perform_destroy(instance)
-        _recompute_course_section_grades(course_section)
 
 
 class ActivityViewSet(TeacherCourseSectionScopedModelViewSet):
@@ -332,7 +327,6 @@ class ActivityViewSet(TeacherCourseSectionScopedModelViewSet):
     def perform_create(self, serializer):
         self._validate_weekly_module(serializer)
         activity = serializer.save(created_by=self.request.user)
-        _recompute_course_section_grades(activity.course_section)
         _sync_course_section_students_activity_items(activity.course_section)
         if activity.is_published:
             _notify_students_for_course_section(
@@ -354,7 +348,6 @@ class ActivityViewSet(TeacherCourseSectionScopedModelViewSet):
         old_description = before.description
 
         updated = serializer.save()
-        _recompute_course_section_grades(updated.course_section)
         _sync_course_section_students_activity_items(updated.course_section)
 
         became_published = (not old_published) and bool(updated.is_published)
@@ -386,7 +379,6 @@ class ActivityViewSet(TeacherCourseSectionScopedModelViewSet):
     def perform_destroy(self, instance):
         course_section = instance.course_section
         super().perform_destroy(instance)
-        _recompute_course_section_grades(course_section)
         _sync_course_section_students_activity_items(course_section)
 
 
@@ -709,7 +701,6 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
     def perform_create(self, serializer):
         self._validate_weekly_module(serializer)
         quiz = serializer.save()
-        _recompute_course_section_grades(quiz.course_section)
         _sync_course_section_students_activity_items(quiz.course_section)
         if quiz.is_published:
             _notify_students_for_course_section(
@@ -732,7 +723,6 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
         old_close_at = before.close_at
 
         updated = serializer.save()
-        _recompute_course_section_grades(updated.course_section)
         _sync_course_section_students_activity_items(updated.course_section)
 
         became_published = (not old_published) and bool(updated.is_published)
@@ -765,7 +755,6 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
     def perform_destroy(self, instance):
         course_section = instance.course_section
         super().perform_destroy(instance)
-        _recompute_course_section_grades(course_section)
         _sync_course_section_students_activity_items(course_section)
 
 

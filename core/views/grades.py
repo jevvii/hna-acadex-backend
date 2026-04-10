@@ -25,8 +25,7 @@ from core.models import (
 from core.serializers import GradingPeriodSerializer, GradeWeightConfigSerializer
 from core.views.common import (
     _letter_grade,
-    _recompute_enrollment_grade,
-    _batch_recompute_enrollment_grades,
+    _compute_enrollment_grade,
 )
 from core.grade_computation import get_or_create_weight_config
 
@@ -48,8 +47,6 @@ class CourseSectionGradesView(APIView):
             .select_related("student")
             .order_by("student__last_name", "student__first_name")
         )
-        # Batch recompute grades to avoid N+1 queries
-        _batch_recompute_enrollment_grades(enrollments)
         rows = []
         for e in enrollments:
             grade = float(e.final_grade) if e.final_grade is not None else None
@@ -137,9 +134,6 @@ class CourseSectionGradebookView(APIView):
             if key not in attempts_by_quiz:
                 attempts_by_quiz[key] = []
             attempts_by_quiz[key].append(a)
-
-        # Batch recompute all enrollment grades to avoid N+1 queries
-        _batch_recompute_enrollment_grades(all_enrollments)
 
         # Build student data
         active_students = []
@@ -649,9 +643,6 @@ class CourseSectionGradesExportCSVView(APIView):
         )
         student_ids = [e.student_id for e in enrollments]
 
-        # Batch compute grades to avoid N+1 queries
-        _batch_recompute_enrollment_grades(enrollments)
-
         submission_map: dict[tuple[str, str], Submission] = {}
         if activities and student_ids:
             submissions = Submission.objects.filter(
@@ -737,7 +728,8 @@ class EnrollmentGradeOverrideView(APIView):
             except Exception:
                 return Response({"detail": "manual_final_grade must be numeric."}, status=status.HTTP_400_BAD_REQUEST)
 
-        _recompute_enrollment_grade(enrollment)
+        enrollment.save(update_fields=["manual_final_grade"])
+        enrollment.final_grade = _compute_enrollment_grade(enrollment)
         return Response(
             {
                 "enrollment_id": str(enrollment.id),

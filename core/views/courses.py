@@ -27,7 +27,6 @@ from core.serializers import (
     WeeklyModuleSerializer,
 )
 from core.views.common import (
-    _batch_recompute_enrollment_grades,
     _batch_get_grade_summary_metadata,
     _letter_grade,
 )
@@ -44,8 +43,7 @@ class StudentCoursesView(APIView):
             .order_by("course_section__course__title")
         )
 
-        # Batch compute grades to avoid N+1 queries
-        _batch_recompute_enrollment_grades(enrollments)
+        # Get grade summary metadata for badge display
         grade_summaries = _batch_get_grade_summary_metadata(enrollments)
 
         data = []
