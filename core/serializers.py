@@ -223,7 +223,7 @@ class SectionSerializer(serializers.ModelSerializer):
 class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
-        fields = ['id', 'code', 'title', 'description', 'cover_image_url', 'color_overlay', 'grade_level', 'strand', 'school_year', 'semester', 'num_weeks', 'is_active', 'created_at', 'updated_at']
+        fields = ['id', 'code', 'title', 'description', 'cover_image_url', 'color_overlay', 'grade_level', 'strand', 'category', 'school_year', 'semester', 'num_weeks', 'is_active', 'created_at', 'updated_at']
 
 
 class WeeklyModuleSerializer(serializers.ModelSerializer):

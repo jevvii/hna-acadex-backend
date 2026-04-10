@@ -686,8 +686,8 @@ class SectionAdmin(admin.ModelAdmin):
 
 
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ("code", "title", "school_year", "semester", "is_active")
-    list_filter = ("school_year", "semester", "is_active")
+    list_display = ("code", "title", "category", "school_year", "semester", "is_active")
+    list_filter = ("category", "school_year", "semester", "is_active")
     search_fields = ("code", "title")
     fieldsets = (
         ("Course Details", {
@@ -695,6 +695,9 @@ class CourseAdmin(admin.ModelAdmin):
         }),
         ("Academic Period", {
             "fields": ("school_year", "semester", "num_weeks")
+        }),
+        ("Classification", {
+            "fields": ("grade_level", "strand", "category")
         }),
         ("Display Settings", {
             "fields": ("cover_image_url", "color_overlay"),

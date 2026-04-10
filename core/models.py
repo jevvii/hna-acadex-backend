@@ -193,6 +193,15 @@ class Section(models.Model):
 
 
 class Course(models.Model):
+    class SubjectCategory(models.TextChoices):
+        LANGUAGES_AP_ESP = 'languages_ap_esp', 'Languages, AP, ESP'
+        SCIENCE_MATH = 'science_math', 'Science and Math'
+        MAPEH_EPP_TLE = 'mapeh_epp_tle', 'MAPEH, EPP, TLE'
+        SHS_CORE = 'shs_core', 'SHS Core Subject'
+        SHS_APPLIED = 'shs_applied', 'SHS Applied Subject'
+        SHS_SPECIALIZED = 'shs_specialized', 'SHS Specialized Subject'
+        SHS_TVL = 'shs_tvl', 'SHS TVL Track'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(
         max_length=50,
@@ -209,6 +218,13 @@ class Course(models.Model):
     color_overlay = models.CharField(max_length=20, blank=True, null=True)
     grade_level = models.CharField(max_length=20, choices=User.GradeLevel.choices, blank=True, null=True)
     strand = models.CharField(max_length=10, choices=User.Strand.choices, blank=True, null=True)
+    category = models.CharField(
+        max_length=30,
+        choices=SubjectCategory.choices,
+        null=True,
+        blank=True,
+        help_text="Subject classification for DepEd grade weight defaults",
+    )
     school_year = models.CharField(max_length=20)
     semester = models.CharField(max_length=20, blank=True, null=True)
     num_weeks = models.PositiveIntegerField(default=18)

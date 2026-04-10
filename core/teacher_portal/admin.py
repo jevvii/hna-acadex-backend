@@ -371,8 +371,8 @@ class TeacherUserAdmin(admin.ModelAdmin):
 class TeacherCourseAdmin(admin.ModelAdmin):
     """Admin for teachers to create courses for their curriculum."""
 
-    list_display = ['code', 'title', 'school_year', 'semester', 'grade_level', 'strand', 'is_active']
-    list_filter = ['school_year', 'semester', 'is_active']
+    list_display = ['code', 'title', 'category', 'school_year', 'semester', 'grade_level', 'strand', 'is_active']
+    list_filter = ['category', 'school_year', 'semester', 'is_active']
     search_fields = ['code', 'title']
     ordering = ['school_year', 'code']
 
@@ -385,7 +385,7 @@ class TeacherCourseAdmin(admin.ModelAdmin):
             'fields': ('school_year', 'semester', 'num_weeks'),
         }),
         ('Classification', {
-            'fields': ('grade_level', 'strand'),
+            'fields': ('grade_level', 'strand', 'category'),
         }),
         ('Status', {
             'fields': ('is_active',),
