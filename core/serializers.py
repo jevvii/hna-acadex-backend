@@ -3,6 +3,7 @@ from .models import (
     Activity,
     ActivityComment,
     ActivityReminder,
+    AdviserOverrideLog,
     Announcement,
     AssignmentGroup,
     AssignmentWeight,
@@ -11,6 +12,7 @@ from .models import (
     CourseFile,
     Enrollment,
     GradeEntry,
+    GradeSubmission,
     GradeWeightConfig,
     GradingPeriod,
     Notification,
@@ -24,6 +26,7 @@ from .models import (
     QuizChoice,
     QuizQuestion,
     Section,
+    SectionReportCard,
     Submission,
     TodoItem,
     User,
@@ -827,3 +830,24 @@ class GradeWeightConfigSerializer(serializers.ModelSerializer):
         if cat:
             return dict(Course.SubjectCategory.choices).get(cat, cat)
         return None
+
+
+class GradeSubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GradeSubmission
+        fields = ['id', 'course_section', 'grading_period', 'submitted_by', 'submitted_at', 'taken_back_at', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'submitted_by', 'submitted_at', 'taken_back_at', 'created_at', 'updated_at']
+
+
+class SectionReportCardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SectionReportCard
+        fields = ['id', 'section', 'grading_period', 'published_by', 'published_at', 'is_published', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'published_by', 'published_at', 'created_at', 'updated_at']
+
+
+class AdviserOverrideLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AdviserOverrideLog
+        fields = ['id', 'grade_entry', 'adviser', 'previous_score', 'new_score', 'created_at']
+        read_only_fields = ['id', 'adviser', 'created_at']

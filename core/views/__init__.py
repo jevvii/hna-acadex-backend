@@ -59,6 +59,12 @@ from .grades import (
     BulkPublishGradesView,
     BulkPublishFinalGradesView,
     ComputeFinalGradeView,
+    GradeSubmissionSubmitView,
+    GradeSubmissionTakeBackView,
+    ReportCardPublishView,
+    ReportCardUnpublishView,
+    AdviserOverrideView,
+    StudentReportCardView,
 )
 
 from .activities import (
@@ -137,6 +143,12 @@ __all__ = [
     'BulkPublishGradesView',
     'BulkPublishFinalGradesView',
     'ComputeFinalGradeView',
+    'GradeSubmissionSubmitView',
+    'GradeSubmissionTakeBackView',
+    'ReportCardPublishView',
+    'ReportCardUnpublishView',
+    'AdviserOverrideView',
+    'StudentReportCardView',
     # Activity views
     'ActivitySubmitView',
     'ActivityMySubmissionView',

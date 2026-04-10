@@ -6,19 +6,25 @@ from decimal import Decimal, ROUND_HALF_UP
 from io import StringIO, BytesIO
 from django.db.models import Avg, Sum
 from django.http import StreamingHttpResponse, HttpResponse
+from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import (
     Activity,
+    AdviserOverrideLog,
     CourseSection,
     Enrollment,
     GradeEntry,
+    GradeSubmission,
+    GradeSubmissionStatus,
     GradeWeightConfig,
     GradingPeriod,
     Quiz,
     QuizAttempt,
+    Section,
+    SectionReportCard,
     Submission,
     User,
 )
@@ -972,6 +978,50 @@ class AdvisoryGradesView(APIView):
             if final_grades:
                 student_data['final_average'] = round(sum(final_grades) / len(final_grades), 2)
 
+        # Get submission status per subject (course_section) for each grading period
+        course_section_ids = list(subject_dict.keys())
+        submissions = GradeSubmission.objects.filter(
+            course_section_id__in=course_section_ids,
+            grading_period__in=grading_periods,
+        ).select_related('course_section', 'grading_period')
+
+        submission_status = []
+        for cs_id, info in subject_dict.items():
+            cs_submissions = [s for s in submissions if str(s.course_section_id) == cs_id]
+            submission_status.append({
+                'subject_id': cs_id,
+                'subject_code': info['subject_code'],
+                'subject_title': info['subject_title'],
+                'periods': [
+                    {
+                        'grading_period_id': str(gp.id),
+                        'period_label': gp.label,
+                        'status': next(
+                            (s.status for s in cs_submissions if str(s.grading_period_id) == str(gp.id)),
+                            GradeSubmissionStatus.DRAFT,
+                        ),
+                    }
+                    for gp in grading_periods
+                ],
+            })
+
+        # Get report card status per period
+        report_cards = SectionReportCard.objects.filter(
+            section=section,
+            grading_period__in=grading_periods,
+        ).select_related('grading_period')
+
+        report_card_by_period = {str(rc.grading_period_id): rc for rc in report_cards}
+        report_card_status = []
+        for gp in grading_periods:
+            rc = report_card_by_period.get(str(gp.id))
+            report_card_status.append({
+                'grading_period_id': str(gp.id),
+                'period_label': gp.label,
+                'is_published': rc.is_published if rc else False,
+                'published_at': rc.published_at if rc else None,
+            })
+
         # Build response
         students_list = list(students_dict.values())
         # Sort by student name
@@ -984,6 +1034,8 @@ class AdvisoryGradesView(APIView):
             'strand': section.strand,
             'school_year': course_section.school_year,
             'students': students_list,
+            'submission_status': submission_status,
+            'report_card_status': report_card_status,
         })
 
 
@@ -1092,6 +1144,24 @@ class SubjectGradesView(APIView):
         # Check if all final grades are published
         all_final_published = all(s.get('is_final_published', False) for s in students) if students else False
 
+        # Get submission status for each grading period
+        submissions = GradeSubmission.objects.filter(
+            course_section=course_section,
+            grading_period__in=grading_periods,
+        ).select_related('grading_period')
+
+        submission_by_period = {str(s.grading_period_id): s for s in submissions}
+        submission_list = []
+        for period in grading_periods:
+            sub = submission_by_period.get(str(period.id))
+            submission_list.append({
+                'grading_period_id': str(period.id),
+                'period_label': period.label,
+                'status': sub.status if sub else GradeSubmissionStatus.DRAFT,
+                'submitted_by': str(sub.submitted_by_id) if sub and sub.submitted_by_id else None,
+                'submitted_at': sub.submitted_at if sub else None,
+            })
+
         return Response({
             'course_section_id': str(course_section.id),
             'course_code': course_section.course.code,
@@ -1099,6 +1169,7 @@ class SubjectGradesView(APIView):
             'grade_level': grade_level,
             'semester_group': semester_group,  # For Grades 11-12, which semester this course belongs to
             'periods': GradingPeriodSerializer(grading_periods, many=True).data,
+            'submissions': submission_list,
             'students': students,
             'all_final_published': all_final_published,
         })
@@ -1119,6 +1190,17 @@ class GradeEntryUpdateView(APIView):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Check GradeSubmission status - only allow edits when status is draft
+        submission = GradeSubmission.objects.filter(
+            course_section=course_section,
+            grading_period=entry.grading_period,
+        ).first()
+        if submission and submission.status != GradeSubmissionStatus.DRAFT:
+            return Response(
+                {"detail": f"Cannot edit grades: submission status is {submission.status}. Only draft submissions can be edited."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Update override score
         override_score = request.data.get('override_score')
@@ -1434,6 +1516,389 @@ class GradeWeightConfigView(APIView):
         return Response(serializer.data)
 
 
+class GradeSubmissionSubmitView(APIView):
+    """Subject teacher submits period grades."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        # pk = course_section_id
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Only subject teacher or admin can submit
+        if request.user.role != User.Role.ADMIN and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        grading_period_id = request.data.get("grading_period_id")
+        if not grading_period_id:
+            return Response({"detail": "grading_period_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        grading_period = GradingPeriod.objects.filter(id=grading_period_id).first()
+        if not grading_period:
+            return Response({"detail": "Grading period not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check that at least one grade entry exists
+        has_entries = GradeEntry.objects.filter(
+            enrollment__course_section=course_section,
+            grading_period=grading_period,
+        ).exists()
+        if not has_entries:
+            return Response({"detail": "No grade entries exist for this period."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get or create the submission
+        submission, created = GradeSubmission.objects.get_or_create(
+            course_section=course_section,
+            grading_period=grading_period,
+        )
+
+        # Can only submit from draft status
+        if submission.status != GradeSubmissionStatus.DRAFT:
+            return Response({"detail": f"Cannot submit: current status is {submission.status}."}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission.status = GradeSubmissionStatus.SUBMITTED
+        submission.submitted_by = request.user
+        submission.submitted_at = timezone.now()
+        submission.save()
+
+        return Response({
+            "submission_id": str(submission.id),
+            "status": submission.status,
+            "submitted_at": submission.submitted_at,
+        })
+
+
+class GradeSubmissionTakeBackView(APIView):
+    """Subject teacher takes back submitted period grades."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role != User.Role.ADMIN and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        grading_period_id = request.data.get("grading_period_id")
+        if not grading_period_id:
+            return Response({"detail": "grading_period_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission = GradeSubmission.objects.filter(
+            course_section=course_section,
+            grading_period_id=grading_period_id,
+        ).first()
+
+        if not submission:
+            return Response({"detail": "No submission found for this period."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Can only take back from submitted status (not published)
+        if submission.status != GradeSubmissionStatus.SUBMITTED:
+            return Response({"detail": f"Cannot take back: current status is {submission.status}."}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission.status = GradeSubmissionStatus.DRAFT
+        submission.taken_back_at = timezone.now()
+        submission.save()
+
+        return Response({
+            "submission_id": str(submission.id),
+            "status": submission.status,
+        })
+
+
+class ReportCardPublishView(APIView):
+    """Adviser publishes report card for a section and grading period."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, section_id):
+        from core.models import TeacherAdvisory
+
+        section = Section.objects.filter(id=section_id).first()
+        if not section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Only the active adviser or admin can publish
+        if request.user.role != User.Role.ADMIN:
+            is_adviser = TeacherAdvisory.objects.filter(
+                teacher=request.user,
+                section=section,
+                is_active=True,
+            ).exists()
+            if not is_adviser:
+                return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        grading_period_id = request.data.get("grading_period_id")
+        if not grading_period_id:
+            return Response({"detail": "grading_period_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        grading_period = GradingPeriod.objects.filter(id=grading_period_id).first()
+        if not grading_period:
+            return Response({"detail": "Grading period not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get or create the report card
+        report_card, created = SectionReportCard.objects.get_or_create(
+            section=section,
+            grading_period=grading_period,
+        )
+
+        report_card.is_published = True
+        report_card.published_by = request.user
+        report_card.published_at = timezone.now()
+        report_card.save()
+
+        # Set all related GradeSubmissions to published
+        course_sections = CourseSection.objects.filter(section=section, is_active=True)
+        updated_count = GradeSubmission.objects.filter(
+            course_section__in=course_sections,
+            grading_period=grading_period,
+            status=GradeSubmissionStatus.SUBMITTED,
+        ).update(status=GradeSubmissionStatus.PUBLISHED)
+
+        # Recompute Enrollment.final_grade for all students in this section for this period
+        enrollments = Enrollment.objects.filter(
+            course_section__in=course_sections,
+            is_active=True,
+        )
+        for enrollment in enrollments:
+            # Final grade = average of all published GradeEntry scores
+            entries = GradeEntry.objects.filter(
+                enrollment=enrollment,
+                is_published=True,
+            )
+            scores = [e.score for e in entries if e.score is not None]
+            if scores:
+                enrollment.final_grade = round(sum(scores) / len(scores), 2)
+            else:
+                enrollment.final_grade = None
+            enrollment.save(update_fields=["final_grade"])
+
+        return Response({
+            "report_card_id": str(report_card.id),
+            "is_published": report_card.is_published,
+            "published_at": report_card.published_at,
+            "submissions_published_count": updated_count,
+        })
+
+
+class ReportCardUnpublishView(APIView):
+    """Adviser unpublishes report card for a section and grading period."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, section_id):
+        from core.models import TeacherAdvisory
+
+        section = Section.objects.filter(id=section_id).first()
+        if not section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role != User.Role.ADMIN:
+            is_adviser = TeacherAdvisory.objects.filter(
+                teacher=request.user,
+                section=section,
+                is_active=True,
+            ).exists()
+            if not is_adviser:
+                return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        grading_period_id = request.data.get("grading_period_id")
+        if not grading_period_id:
+            return Response({"detail": "grading_period_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        report_card = SectionReportCard.objects.filter(
+            section=section,
+            grading_period_id=grading_period_id,
+        ).first()
+
+        if not report_card:
+            return Response({"detail": "No report card found for this period."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not report_card.is_published:
+            return Response({"detail": "Report card is not published."}, status=status.HTTP_400_BAD_REQUEST)
+
+        report_card.is_published = False
+        report_card.save()
+
+        # Revert all related GradeSubmissions from published to submitted
+        course_sections = CourseSection.objects.filter(section=section, is_active=True)
+        GradeSubmission.objects.filter(
+            course_section__in=course_sections,
+            grading_period_id=grading_period_id,
+            status=GradeSubmissionStatus.PUBLISHED,
+        ).update(status=GradeSubmissionStatus.SUBMITTED)
+
+        return Response({
+            "report_card_id": str(report_card.id),
+            "is_published": report_card.is_published,
+        })
+
+
+class AdviserOverrideView(APIView):
+    """Adviser directly overrides a grade entry."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        # pk = grade_entry_id
+        grade_entry = GradeEntry.objects.filter(id=pk).select_related(
+            "enrollment__course_section__section"
+        ).first()
+        if not grade_entry:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Only the adviser of the section or admin can override
+        if request.user.role != User.Role.ADMIN:
+            from core.models import TeacherAdvisory
+            is_adviser = TeacherAdvisory.objects.filter(
+                teacher=request.user,
+                section=grade_entry.enrollment.course_section.section,
+                is_active=True,
+            ).exists()
+            if not is_adviser:
+                return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Only allowed when GradeSubmission.status = submitted (not published)
+        submission = GradeSubmission.objects.filter(
+            course_section=grade_entry.enrollment.course_section,
+            grading_period=grade_entry.grading_period,
+        ).first()
+
+        if not submission or submission.status != GradeSubmissionStatus.SUBMITTED:
+            return Response(
+                {"detail": "Can only override grades when submission status is submitted."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        override_score = request.data.get("override_score")
+        if override_score is None:
+            return Response({"detail": "override_score is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        previous_score = grade_entry.score
+        new_score = Decimal(str(override_score))
+
+        # Create audit log
+        AdviserOverrideLog.objects.create(
+            grade_entry=grade_entry,
+            adviser=request.user,
+            previous_score=previous_score if previous_score is not None else Decimal("0"),
+            new_score=new_score,
+        )
+
+        grade_entry.override_score = new_score
+        grade_entry.adviser_overridden = True
+        grade_entry.save(update_fields=["override_score", "adviser_overridden"])
+
+        return Response({
+            "grade_entry_id": str(grade_entry.id),
+            "previous_score": float(previous_score) if previous_score is not None else None,
+            "new_score": float(new_score),
+            "adviser_overridden": True,
+        })
+
+
+class StudentReportCardView(APIView):
+    """Student's own report card — only shows published periods."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != User.Role.STUDENT:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        enrollments = list(
+            Enrollment.objects.filter(
+                student=request.user, is_active=True, course_section__is_active=True
+            ).select_related("course_section__course", "course_section__section", "course_section__teacher")
+        )
+
+        if not enrollments:
+            return Response({"subjects": [], "periods": [], "overall_average": None})
+
+        # Determine which sections the student is in
+        sections = {e.course_section.section for e in enrollments}
+
+        # Get all published report cards for these sections
+        published_report_cards = SectionReportCard.objects.filter(
+            section__in=sections,
+            is_published=True,
+        ).select_related("grading_period")
+
+        published_period_ids = [rc.grading_period_id for rc in published_report_cards]
+
+        if not published_period_ids:
+            return Response({
+                "section_name": None,
+                "grade_level": None,
+                "strand": None,
+                "school_year": None,
+                "periods": [],
+                "subjects": [],
+                "overall_average": None,
+            })
+
+        # Get grading period details
+        grading_periods = GradingPeriod.objects.filter(id__in=published_period_ids).order_by("period_number")
+
+        # Build subjects with period grades
+        subjects = []
+        all_final_grades = []
+
+        for enrollment in enrollments:
+            cs = enrollment.course_section
+            course = cs.course
+            teacher = cs.teacher
+
+            # Get published grade entries for this enrollment
+            entries = GradeEntry.objects.filter(
+                enrollment=enrollment,
+                grading_period_id__in=published_period_ids,
+            ).select_related("grading_period")
+
+            period_grades = []
+            entry_scores = []
+
+            for gp in grading_periods:
+                entry = next((e for e in entries if e.grading_period_id == gp.id), None)
+                score = float(entry.score) if entry and entry.score is not None else None
+                period_grades.append({
+                    "period_label": gp.label,
+                    "score": score,
+                    "adviser_overridden": entry.adviser_overridden if entry else False,
+                })
+                if score is not None:
+                    entry_scores.append(score)
+
+            # Final grade for this subject = average of period scores
+            final_grade = round(sum(entry_scores) / len(entry_scores), 2) if entry_scores else None
+            if final_grade is not None:
+                all_final_grades.append(final_grade)
+
+            subjects.append({
+                "course_section_id": str(cs.id),
+                "course_code": course.code,
+                "course_title": course.title,
+                "teacher_name": teacher.full_name if teacher else None,
+                "period_grades": period_grades,
+                "final_grade": final_grade,
+                "final_grade_letter": _letter_grade(Decimal(str(final_grade))) if final_grade is not None else None,
+            })
+
+        overall_average = round(sum(all_final_grades) / len(all_final_grades), 2) if all_final_grades else None
+
+        # Get section info from the first enrollment
+        first_section = list(sections)[0] if sections else None
+
+        return Response({
+            "section_name": first_section.name if first_section else None,
+            "grade_level": first_section.grade_level if first_section else None,
+            "strand": first_section.strand if first_section else None,
+            "school_year": enrollments[0].course_section.school_year if enrollments else None,
+            "periods": [
+                {"id": str(gp.id), "label": gp.label, "period_number": gp.period_number}
+                for gp in grading_periods
+            ],
+            "subjects": subjects,
+            "overall_average": overall_average,
+        })
+
+
 __all__ = [
     'CourseSectionGradesView',
     'CourseSectionGradebookView',
@@ -1449,4 +1914,10 @@ __all__ = [
     'ComputeFinalGradeView',
     'BulkPublishFinalGradesView',
     'GradeWeightConfigView',
+    'GradeSubmissionSubmitView',
+    'GradeSubmissionTakeBackView',
+    'ReportCardPublishView',
+    'ReportCardUnpublishView',
+    'AdviserOverrideView',
+    'StudentReportCardView',
 ]
