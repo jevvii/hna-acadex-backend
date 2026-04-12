@@ -940,6 +940,30 @@ class AdvisoryGradesView(APIView):
                 semester_group__isnull=True
             ).order_by('period_number'))
 
+        # Fallback: If no grading periods found for advisory's school_year,
+        # try to use the most recent school_year from existing GradingPeriods.
+        # This handles cases where a new school_year is set but GradingPeriods haven't been created yet.
+        if not grading_periods:
+            latest_period = GradingPeriod.objects.order_by('-school_year').first()
+            if latest_period:
+                fallback_year = latest_period.school_year
+                logger.warning(
+                    f"No grading periods found for school_year '{school_year}' "
+                    f"in AdvisoryGradesView for section {section_id}. "
+                    f"Falling back to most recent school_year '{fallback_year}'."
+                )
+                school_year = fallback_year
+                if grade_level in ['Grade 11', 'Grade 12']:
+                    grading_periods = list(GradingPeriod.objects.filter(
+                        school_year=school_year,
+                        semester_group__isnull=False
+                    ).order_by('semester_group', 'period_number'))
+                else:
+                    grading_periods = list(GradingPeriod.objects.filter(
+                        school_year=school_year,
+                        semester_group__isnull=True
+                    ).order_by('period_number'))
+
         # Get all grade entries for these enrollments
         # Advisers see all grades (not just published) for override capability
         enrollment_ids = [str(e.id) for e in enrollments_in_section]
@@ -1062,6 +1086,7 @@ class AdvisoryGradesView(APIView):
             'strand': section.strand,
             'school_year': school_year,
             'students': students_list,
+            'periods': GradingPeriodSerializer(grading_periods, many=True).data,
             'submission_status': submission_status,
             'report_card_status': report_card_status,
         })
