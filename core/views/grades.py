@@ -890,38 +890,6 @@ class AdvisoryGradesView(APIView):
 
         school_year = advisory.school_year
 
-        # Check if user is an advisory teacher for this section
-        is_adviser = TeacherAdvisory.objects.filter(
-            teacher=request.user,
-            section=section,
-            school_year=school_year,
-            is_active=True
-        ).exists()
-
-        # Admins can also access
-        if request.user.role != User.Role.ADMIN and not is_adviser:
-            return Response({"detail": "You are not the advisory teacher for this section."}, status=status.HTTP_403_FORBIDDEN)
-
-        # Get all students enrolled in this section (via enrollments in all course_sections for this section)
-        enrollments_in_section = Enrollment.objects.filter(
-            course_section__section=section,
-            course_section__school_year=school_year,
-            is_active=True
-        ).select_related('student', 'course_section__course')
-
-        # Get all unique students
-        students_dict = {}  # student_id -> student data
-        for enrollment in enrollments_in_section:
-            student_id = str(enrollment.student.id)
-            if student_id not in students_dict:
-                students_dict[student_id] = {
-                    'student_id': student_id,
-                    'student_name': enrollment.student.get_full_name(),
-                    'student_email': enrollment.student.email,
-                    'subjects': [],
-                    'final_average': None,
-                }
-
         # Determine semester_group filter based on grade level
         # Grades 7-10: All quarters (semester_group is null)
         # Grades 11-12: Quarters grouped by semester
@@ -963,6 +931,53 @@ class AdvisoryGradesView(APIView):
                         school_year=school_year,
                         semester_group__isnull=True
                     ).order_by('period_number'))
+
+        # Check if user is an advisory teacher for this section
+        is_adviser = TeacherAdvisory.objects.filter(
+            teacher=request.user,
+            section=section,
+            school_year=school_year,
+            is_active=True
+        ).exists()
+
+        # Admins can also access
+        if request.user.role != User.Role.ADMIN and not is_adviser:
+            return Response({"detail": "You are not the advisory teacher for this section."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Get all students enrolled in this section (via enrollments in all course_sections for this section)
+        # NOTE: This query must come AFTER the school_year fallback logic to ensure consistency
+        enrollments_in_section = Enrollment.objects.filter(
+            course_section__section=section,
+            course_section__school_year=school_year,
+            is_active=True
+        ).select_related('student', 'course_section__course')
+
+        # Debug: Log enrollment info to help diagnose missing subjects
+        if enrollments_in_section:
+            course_sections_found = set(e.course_section.course.code for e in enrollments_in_section)
+            logger.info(
+                f"AdvisoryGradesView: section={section.name}, school_year={school_year}, "
+                f"enrollments_count={enrollments_in_section.count()}, "
+                f"course_sections={list(course_sections_found)}"
+            )
+        else:
+            logger.warning(
+                f"AdvisoryGradesView: No enrollments found for section={section.name}, school_year={school_year}. "
+                f"Check if course_sections have matching section and school_year."
+            )
+
+        # Get all unique students
+        students_dict = {}  # student_id -> student data
+        for enrollment in enrollments_in_section:
+            student_id = str(enrollment.student.id)
+            if student_id not in students_dict:
+                students_dict[student_id] = {
+                    'student_id': student_id,
+                    'student_name': enrollment.student.get_full_name(),
+                    'student_email': enrollment.student.email,
+                    'subjects': [],
+                    'final_average': None,
+                }
 
         # Get all grade entries for these enrollments
         # Advisers see all grades (not just published) for override capability
@@ -1040,9 +1055,9 @@ class AdvisoryGradesView(APIView):
         for cs_id, info in subject_dict.items():
             cs_submissions = [s for s in submissions if str(s.course_section_id) == cs_id]
             submission_status.append({
-                'subject_id': cs_id,
-                'subject_code': info['subject_code'],
-                'subject_title': info['subject_title'],
+                'course_section_id': cs_id,
+                'course_code': info['subject_code'],
+                'course_title': info['subject_title'],
                 'teacher_name': info.get('teacher_name', ''),
                 'periods': [
                     {
@@ -1271,6 +1286,61 @@ class GradeEntryUpdateView(APIView):
             'id': str(entry.id),
             'score': float(entry.score) if entry.score is not None else None,
             'computed_score': float(entry.computed_score) if entry.computed_score is not None else None,
+            'override_score': float(entry.override_score) if entry.override_score is not None else None,
+        })
+
+
+class GradeEntryCreateView(APIView):
+    """Create a new grade entry with manual override score."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        enrollment_id = request.data.get('enrollment_id')
+        grading_period_id = request.data.get('grading_period_id')
+        override_score = request.data.get('override_score')
+
+        # Validate required fields
+        if not enrollment_id:
+            return Response({"detail": "enrollment_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not grading_period_id:
+            return Response({"detail": "grading_period_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate enrollment exists and teacher owns course section
+        enrollment = Enrollment.objects.filter(id=enrollment_id).select_related('course_section').first()
+        if not enrollment:
+            return Response({"detail": "Enrollment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        course_section = enrollment.course_section
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Check period is in Draft status
+        submission = GradeSubmission.objects.filter(
+            course_section=course_section,
+            grading_period_id=grading_period_id,
+        ).first()
+        if submission and submission.status != GradeSubmissionStatus.DRAFT:
+            return Response(
+                {"detail": f"Cannot create entry: submission status is {submission.status}. Only draft submissions can be edited."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get or create grade entry
+        entry, created = GradeEntry.objects.get_or_create(
+            enrollment=enrollment,
+            grading_period_id=grading_period_id,
+            defaults={'override_score': override_score}
+        )
+
+        if not created:
+            entry.override_score = override_score
+            entry.save()
+
+        return Response({
+            'id': str(entry.id),
+            'score': float(entry.score) if entry.score is not None else None,
             'override_score': float(entry.override_score) if entry.override_score is not None else None,
         })
 
