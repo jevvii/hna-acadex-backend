@@ -86,4 +86,13 @@ celerybeat-schedule*
 # ============================================
 # Logs
 # ============================================
-logs/
+logs/# Build artifacts
+.next/
+node_modules/
+
+# Database backups
+*.backup-*
+*.phase*-backup
+db.sqlite3.backup-*
+db.sqlite3.phase*-backup
+
