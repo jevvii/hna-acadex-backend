@@ -2,6 +2,7 @@
 Gradebook and grades-related views.
 """
 import csv
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from io import StringIO, BytesIO
 from django.db.models import Avg, Sum
@@ -10,6 +11,8 @@ from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 
 from core.models import (
     Activity,
@@ -840,8 +843,14 @@ class StudentGradesView(APIView):
         final_grade = enrollment.final_grade
         final_grade_letter = _letter_grade(Decimal(str(final_grade))) if final_grade else None
 
+        # Deprecation warning
+        logger.warning(
+            'DEPRECATED endpoint called: course-sections grades student view. '
+            'Caller: %s', request.META.get('HTTP_USER_AGENT', 'unknown')
+        )
+
         # Build response
-        return Response({
+        response = Response({
             'course_section_id': str(course_section.id),
             'course_code': course_section.course.code,
             'course_title': course_section.course.title,
@@ -851,29 +860,41 @@ class StudentGradesView(APIView):
             'final_grade_letter': final_grade_letter if enrollment.is_final_published else None,
             'is_final_published': enrollment.is_final_published,
         })
+        response['X-Deprecated'] = (
+            'This endpoint is deprecated. '
+            'Use GET /api/students/me/report-card/ instead. '
+            'Will be removed after React Native app migration.'
+        )
+        return response
 
 
 class AdvisoryGradesView(APIView):
     """Return all students' grades across all subjects for an advisory section."""
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, pk):
-        from core.models import CourseSection, TeacherAdvisory
+    def get(self, request, section_id):
+        from core.models import CourseSection, TeacherAdvisory, Section
 
-        # Get the course section (this is for an advisory section, not a subject course)
-        course_section = CourseSection.objects.filter(id=pk).first()
-        if not course_section:
-            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        # Get the section directly
+        section = Section.objects.filter(id=section_id).first()
+        if not section:
+            return Response({"detail": "Section not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get the active advisory assignment to determine school year
+        advisory = TeacherAdvisory.objects.filter(
+            section=section,
+            is_active=True
+        ).select_related('section').first()
+        if not advisory:
+            return Response({"detail": "No active advisory for this section."}, status=status.HTTP_404_NOT_FOUND)
+
+        school_year = advisory.school_year
 
         # Check if user is an advisory teacher for this section
-        section = course_section.section
-        if not section:
-            return Response({"detail": "Invalid course section."}, status=status.HTTP_400_BAD_REQUEST)
-
         is_adviser = TeacherAdvisory.objects.filter(
             teacher=request.user,
             section=section,
-            school_year=course_section.school_year,
+            school_year=school_year,
             is_active=True
         ).exists()
 
@@ -884,7 +905,7 @@ class AdvisoryGradesView(APIView):
         # Get all students enrolled in this section (via enrollments in all course_sections for this section)
         enrollments_in_section = Enrollment.objects.filter(
             course_section__section=section,
-            course_section__school_year=course_section.school_year,
+            course_section__school_year=school_year,
             is_active=True
         ).select_related('student', 'course_section__course')
 
@@ -909,21 +930,21 @@ class AdvisoryGradesView(APIView):
             # For Senior High, show all quarters for this school year
             # The advisory teacher sees grades from all subjects across both semesters
             grading_periods = list(GradingPeriod.objects.filter(
-                school_year=course_section.school_year,
+                school_year=school_year,
                 semester_group__isnull=False
             ).order_by('semester_group', 'period_number'))
         else:
             # For Grades 7-10, show all quarters
             grading_periods = list(GradingPeriod.objects.filter(
-                school_year=course_section.school_year,
+                school_year=school_year,
                 semester_group__isnull=True
             ).order_by('period_number'))
 
         # Get all grade entries for these enrollments
+        # Advisers see all grades (not just published) for override capability
         enrollment_ids = [str(e.id) for e in enrollments_in_section]
         grade_entries = GradeEntry.objects.filter(
             enrollment_id__in=enrollment_ids,
-            is_published=True
         ).select_related('enrollment', 'grading_period')
 
         # Group grade entries by enrollment
@@ -943,10 +964,12 @@ class AdvisoryGradesView(APIView):
             # Track unique subjects
             if course_section_id not in subject_dict:
                 course = enrollment.course_section.course
+                teacher_name = enrollment.course_section.teacher.get_full_name() if enrollment.course_section.teacher else 'Unassigned'
                 subject_dict[course_section_id] = {
                     'subject_id': course_section_id,
                     'subject_code': course.code,
                     'subject_title': course.title,
+                    'teacher_name': teacher_name,
                 }
 
             # Get grades for this enrollment
@@ -957,14 +980,18 @@ class AdvisoryGradesView(APIView):
             for period in grading_periods:
                 entry = entry_by_period.get(str(period.id))
                 period_grades.append({
+                    'grading_period_id': str(period.id),
                     'period_label': period.label,
                     'score': float(entry.score) if entry and entry.score is not None else None,
+                    'is_published': entry.is_published if entry else False,
+                    'grade_entry_id': str(entry.id) if entry else None,
                 })
 
             subject_grade = {
                 'subject_id': course_section_id,
                 'subject_code': enrollment.course_section.course.code,
                 'subject_title': enrollment.course_section.course.title,
+                'teacher_name': subject_dict[course_section_id]['teacher_name'],
                 'periods': period_grades,
                 'final_grade': float(enrollment.final_grade) if enrollment.final_grade else None,
             }
@@ -992,6 +1019,7 @@ class AdvisoryGradesView(APIView):
                 'subject_id': cs_id,
                 'subject_code': info['subject_code'],
                 'subject_title': info['subject_title'],
+                'teacher_name': info.get('teacher_name', ''),
                 'periods': [
                     {
                         'grading_period_id': str(gp.id),
@@ -1032,7 +1060,7 @@ class AdvisoryGradesView(APIView):
             'section_name': section.name,
             'grade_level': section.grade_level,
             'strand': section.strand,
-            'school_year': course_section.school_year,
+            'school_year': school_year,
             'students': students_list,
             'submission_status': submission_status,
             'report_card_status': report_card_status,

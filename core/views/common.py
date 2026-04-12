@@ -352,6 +352,18 @@ def _compute_attendance_percentage(enrollment: Enrollment) -> Decimal | None:
     return _quantize_pct(max(Decimal("0"), min(pct, Decimal("100"))))
 
 
+# NOTE: This function is no longer called automatically on grade save.
+# Auto-calling was removed in Phase 1 of the grading redesign
+# (2026-04-11) to decouple enrollment final_grade from activity/quiz
+# grading triggers.
+#
+# Current usage:
+# - Can be called manually for diagnostic purposes
+# - May be used in future to suggest period scores from activity data
+# - The student-facing final grade is now computed from GradeEntry
+#   averages at display time (not stored in Enrollment.final_grade)
+#
+# Do not remove this function until React Native migration is complete.
 def _compute_enrollment_grade(enrollment: Enrollment) -> Decimal | None:
     if enrollment.manual_final_grade is not None:
         return _quantize_pct(Decimal(enrollment.manual_final_grade))

@@ -305,6 +305,8 @@ class Enrollment(models.Model):
     )
     final_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     manual_final_grade = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # DEPRECATED: Use SectionReportCard.is_published instead.
+    # Kept for React Native app backward compatibility.
     is_final_published = models.BooleanField(
         default=False,
         help_text="Whether the final grade is visible to students"
@@ -1083,6 +1085,9 @@ class GradeEntry(models.Model):
         blank=True,
         help_text="Teacher-entered manual override"
     )
+    # DEPRECATED: Use SectionReportCard.is_published instead.
+    # Kept for React Native app backward compatibility.
+    # Remove after RN app migrates to /api/students/me/report-card/
     is_published = models.BooleanField(
         default=False,
         help_text="Whether this grade is visible to students"
@@ -1170,6 +1175,10 @@ class GradeWeightConfig(models.Model):
             )
 
 
+# DEPRECATED: Superseded by GradeWeightConfig model.
+# AssignmentWeight used activity/quiz/exam categories (70/20/10).
+# GradeWeightConfig uses DepEd components (WW/PT/QA).
+# Remove after confirming no active queries depend on this model.
 class AssignmentWeight(models.Model):
     """Teacher-defined weight for activity/quiz/exam categories within a grading period."""
 

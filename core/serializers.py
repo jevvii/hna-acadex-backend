@@ -36,6 +36,8 @@ from .models import (
 
 class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
+    advisory_section_id = serializers.SerializerMethodField()
+    advisory_section_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -56,10 +58,12 @@ class UserSerializer(serializers.ModelSerializer):
             "student_id",
             "theme",
             "requires_setup",
+            "advisory_section_id",
+            "advisory_section_name",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "avatar_url", "requires_setup", "full_name")
+        read_only_fields = ("id", "created_at", "updated_at", "avatar_url", "requires_setup", "full_name", "advisory_section_id", "advisory_section_name")
 
     def get_avatar_url(self, obj: User):
         request = self.context.get("request")
@@ -69,6 +73,20 @@ class UserSerializer(serializers.ModelSerializer):
             url = obj.avatar.url
             return request.build_absolute_uri(url) if request else url
         return None
+
+    def get_advisory_section_id(self, obj: User):
+        from .models import TeacherAdvisory
+        advisory = TeacherAdvisory.objects.filter(
+            teacher=obj, is_active=True
+        ).select_related('section').first()
+        return str(advisory.section.id) if advisory else None
+
+    def get_advisory_section_name(self, obj: User):
+        from .models import TeacherAdvisory
+        advisory = TeacherAdvisory.objects.filter(
+            teacher=obj, is_active=True
+        ).select_related('section').first()
+        return f"{advisory.section.name}" if advisory else None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
