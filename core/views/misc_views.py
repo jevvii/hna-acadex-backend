@@ -69,7 +69,7 @@ class TodoItemViewSet(viewsets.ModelViewSet):
         return (
             TodoItem.objects.filter(user=self.request.user)
             .select_related("activity__course_section", "quiz__course_section")
-            .order_by("is_done", "due_at")
+            .order_by("-created_at")
         )
 
     def perform_create(self, serializer):
