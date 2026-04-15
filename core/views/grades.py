@@ -1737,6 +1737,38 @@ class BulkPublishFinalGradesView(APIView):
         })
 
 
+class BulkTakeBackFinalGradesView(APIView):
+    """Bulk take back published final grades for all students in a course section."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        course_section = CourseSection.objects.filter(id=pk).first()
+        if not course_section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == User.Role.TEACHER and course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        enrollments = Enrollment.objects.filter(
+            course_section=course_section,
+            is_active=True,
+            is_final_published=True,
+        )
+        taken_back_count = enrollments.count()
+
+        if taken_back_count > 0:
+            enrollments.update(
+                final_grade=None,
+                is_final_published=False,
+            )
+
+        return Response({
+            'taken_back_count': taken_back_count,
+        })
+
+
 class GradeWeightConfigView(APIView):
     """GET/PUT grade weight configuration for a course section."""
     permission_classes = [permissions.IsAuthenticated]

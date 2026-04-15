@@ -5,6 +5,7 @@ from django.db.models import Count, Q
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from collections import defaultdict
 
 from core.models import (
     Activity,
@@ -66,6 +67,7 @@ class StudentCoursesView(APIView):
                     "course_title": course.title,
                     "cover_image_url": course.cover_image_url,
                     "color_overlay": course.color_overlay,
+                    "section_id": str(sec.id),
                     "section_name": sec.name,
                     "strand": sec.strand,
                     "grade_level": sec.grade_level,
@@ -88,17 +90,53 @@ class TeacherCoursesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        course_sections = (
+        course_sections = list(
             CourseSection.objects.filter(teacher=request.user, is_active=True)
             .select_related("course", "section")
             .annotate(student_count=Count("enrollments", filter=Q(enrollments__is_active=True)))
             .order_by("course__title")
         )
+        course_section_ids = [cs.id for cs in course_sections]
+
+        enrollments = list(
+            Enrollment.objects.filter(
+                course_section_id__in=course_section_ids,
+                is_active=True,
+                course_section__is_active=True,
+            ).select_related("course_section", "student")
+        )
+        grade_summaries = _batch_get_grade_summary_metadata(enrollments)
+        progress_by_section: dict[str, dict] = defaultdict(lambda: {
+            "graded_items_count": 0,
+            "total_items_count": 0,
+            "pending_items_count": 0,
+        })
+
+        for enrollment in enrollments:
+            summary = grade_summaries.get(str(enrollment.id), {})
+            section_key = str(enrollment.course_section_id)
+            total_items_count = int(summary.get("total_items_count", 0))
+            excluded_count = int(summary.get("excluded_count", 0))
+            relevant_total = max(total_items_count - excluded_count, 0)
+
+            progress_by_section[section_key]["graded_items_count"] += int(summary.get("graded_items_count", 0))
+            progress_by_section[section_key]["total_items_count"] += relevant_total
+            progress_by_section[section_key]["pending_items_count"] += int(
+                summary.get("pending_items_count", summary.get("pending_count", 0))
+            )
+
         data = []
         for cs in course_sections:
             course = cs.course
             sec = cs.section
             course_tag = f"{course.code}@{sec.strand}-{sec.name}" if sec.strand and sec.strand != "NONE" else f"{course.code}@{sec.name}"
+            progress = progress_by_section.get(str(cs.id), {
+                "graded_items_count": 0,
+                "total_items_count": 0,
+                "pending_items_count": 0,
+            })
+            total_items = progress["total_items_count"]
+            progress_percent = round((progress["graded_items_count"] / total_items) * 100, 1) if total_items > 0 else 0.0
             data.append(
                 {
                     "teacher_id": str(request.user.id),
@@ -108,6 +146,7 @@ class TeacherCoursesView(APIView):
                     "course_title": course.title,
                     "cover_image_url": course.cover_image_url,
                     "color_overlay": course.color_overlay,
+                    "section_id": str(sec.id),
                     "section_name": sec.name,
                     "strand": sec.strand,
                     "grade_level": sec.grade_level,
@@ -116,6 +155,12 @@ class TeacherCoursesView(APIView):
                     "semester": cs.semester,
                     "school_year": cs.school_year,
                     "category": course.category,
+                    "grade_progress": {
+                        "graded_items_count": progress["graded_items_count"],
+                        "total_items_count": total_items,
+                        "pending_items_count": progress["pending_items_count"],
+                        "progress_percent": progress_percent,
+                    },
                 }
             )
         return Response(data)
