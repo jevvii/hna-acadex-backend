@@ -24,6 +24,7 @@ from core.models import (
     GradeSubmissionStatus,
     GradeWeightConfig,
     GradingPeriod,
+    Notification,
     Quiz,
     QuizAttempt,
     Section,
@@ -36,7 +37,10 @@ from core.views.common import (
     _letter_grade,
     _compute_enrollment_grade,
 )
-from core.grade_computation import get_or_create_weight_config
+from core.grade_computation import (
+    get_or_create_weight_config,
+    recompute_grade_entries_for_course_section,
+)
 
 
 class CourseSectionGradesView(APIView):
@@ -979,8 +983,19 @@ class AdvisoryGradesView(APIView):
                     'final_average': None,
                 }
 
+        # Get submission status map per subject-period.
+        # Advisory view should only expose scores once a subject teacher has submitted.
+        course_section_ids = list({str(e.course_section_id) for e in enrollments_in_section})
+        submissions = GradeSubmission.objects.filter(
+            course_section_id__in=course_section_ids,
+            grading_period__in=grading_periods,
+        ).select_related('course_section', 'grading_period')
+        submission_status_map = {
+            (str(s.course_section_id), str(s.grading_period_id)): s.status
+            for s in submissions
+        }
+
         # Get all grade entries for these enrollments
-        # Advisers see all grades (not just published) for override capability
         enrollment_ids = [str(e.id) for e in enrollments_in_section]
         grade_entries = GradeEntry.objects.filter(
             enrollment_id__in=enrollment_ids,
@@ -1014,17 +1029,54 @@ class AdvisoryGradesView(APIView):
             # Get grades for this enrollment
             entries = entries_by_enrollment.get(str(enrollment.id), [])
             entry_by_period = {str(e.grading_period_id): e for e in entries}
+            relevant_periods = grading_periods
+
+            course_grade_level = enrollment.course_section.course.grade_level if enrollment.course_section.course else None
+            if course_grade_level in ['Grade 11', 'Grade 12']:
+                semester_group = None
+                semester_value = enrollment.course_section.semester
+                if semester_value in ['1st', '1', 'First']:
+                    semester_group = 1
+                elif semester_value in ['2nd', '2', 'Second']:
+                    semester_group = 2
+                if semester_group is not None:
+                    relevant_periods = [p for p in grading_periods if p.semester_group == semester_group]
 
             period_grades = []
             for period in grading_periods:
                 entry = entry_by_period.get(str(period.id))
+                period_status = submission_status_map.get(
+                    (course_section_id, str(period.id)),
+                    GradeSubmissionStatus.DRAFT,
+                )
+                is_visible_to_adviser = period_status in [
+                    GradeSubmissionStatus.SUBMITTED,
+                    GradeSubmissionStatus.PUBLISHED,
+                ]
                 period_grades.append({
                     'grading_period_id': str(period.id),
                     'period_label': period.label,
-                    'score': float(entry.score) if entry and entry.score is not None else None,
-                    'is_published': entry.is_published if entry else False,
-                    'grade_entry_id': str(entry.id) if entry else None,
+                    'score': float(entry.score) if is_visible_to_adviser and entry and entry.score is not None else None,
+                    'is_published': entry.is_published if is_visible_to_adviser and entry else False,
+                    'grade_entry_id': str(entry.id) if is_visible_to_adviser and entry else None,
                 })
+
+            relevant_period_ids = {str(period.id) for period in relevant_periods}
+            relevant_scores = [
+                period_grade['score']
+                for period_grade in period_grades
+                if period_grade['grading_period_id'] in relevant_period_ids and period_grade['score'] is not None
+            ]
+            has_complete_relevant_scores = len(relevant_periods) > 0 and len(relevant_scores) == len(relevant_periods)
+            computed_visible_final = (
+                round(sum(relevant_scores) / len(relevant_scores), 2)
+                if has_complete_relevant_scores else None
+            )
+
+            final_visible_to_adviser = (
+                enrollment.is_final_published
+                and computed_visible_final is not None
+            )
 
             subject_grade = {
                 'subject_id': course_section_id,
@@ -1032,7 +1084,7 @@ class AdvisoryGradesView(APIView):
                 'subject_title': enrollment.course_section.course.title,
                 'teacher_name': subject_dict[course_section_id]['teacher_name'],
                 'periods': period_grades,
-                'final_grade': float(enrollment.final_grade) if enrollment.final_grade else None,
+                'final_grade': computed_visible_final if final_visible_to_adviser else None,
             }
 
             if student_id in students_dict:
@@ -1045,11 +1097,6 @@ class AdvisoryGradesView(APIView):
                 student_data['final_average'] = round(sum(final_grades) / len(final_grades), 2)
 
         # Get submission status per subject (course_section) for each grading period
-        course_section_ids = list(subject_dict.keys())
-        submissions = GradeSubmission.objects.filter(
-            course_section_id__in=course_section_ids,
-            grading_period__in=grading_periods,
-        ).select_related('course_section', 'grading_period')
 
         submission_status = []
         for cs_id, info in subject_dict.items():
@@ -1104,6 +1151,117 @@ class AdvisoryGradesView(APIView):
             'periods': GradingPeriodSerializer(grading_periods, many=True).data,
             'submission_status': submission_status,
             'report_card_status': report_card_status,
+        })
+
+
+class AdvisorySubjectReminderView(APIView):
+    """Send adviser reminders to subject teachers with pending grade submissions."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, section_id):
+        from core.models import TeacherAdvisory
+
+        section = Section.objects.filter(id=section_id).first()
+        if not section:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role != User.Role.ADMIN:
+            is_adviser = TeacherAdvisory.objects.filter(
+                teacher=request.user,
+                section=section,
+                school_year=section.school_year,
+                is_active=True,
+            ).exists()
+            if not is_adviser:
+                return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        target_course_section_id = request.data.get("course_section_id")
+        course_sections = CourseSection.objects.filter(
+            section=section,
+            school_year=section.school_year,
+            is_active=True,
+        ).select_related("course", "teacher")
+
+        if target_course_section_id:
+            course_sections = course_sections.filter(id=target_course_section_id)
+            if not course_sections.exists():
+                return Response({"detail": "Subject not found in this advisory section."}, status=status.HTTP_404_NOT_FOUND)
+
+        if section.grade_level in ['Grade 11', 'Grade 12']:
+            grading_periods = list(GradingPeriod.objects.filter(
+                school_year=section.school_year,
+                semester_group__isnull=False,
+            ).order_by('semester_group', 'period_number'))
+        else:
+            grading_periods = list(GradingPeriod.objects.filter(
+                school_year=section.school_year,
+                semester_group__isnull=True,
+            ).order_by('period_number'))
+
+        period_ids = [str(p.id) for p in grading_periods]
+        submissions = GradeSubmission.objects.filter(
+            course_section__in=course_sections,
+            grading_period_id__in=period_ids,
+        )
+        submission_status_map = {
+            (str(s.course_section_id), str(s.grading_period_id)): s.status
+            for s in submissions
+        }
+
+        sent_count = 0
+        skipped_count = 0
+        reminded_subjects: list[str] = []
+
+        for course_section in course_sections:
+            teacher = course_section.teacher
+            if not teacher:
+                skipped_count += 1
+                continue
+
+            relevant_periods = grading_periods
+            if section.grade_level in ['Grade 11', 'Grade 12']:
+                semester_group = None
+                semester_value = course_section.semester
+                if semester_value in ['1st', '1', 'First']:
+                    semester_group = 1
+                elif semester_value in ['2nd', '2', 'Second']:
+                    semester_group = 2
+                if semester_group is not None:
+                    relevant_periods = [p for p in grading_periods if p.semester_group == semester_group]
+
+            if not relevant_periods:
+                skipped_count += 1
+                continue
+
+            has_pending = any(
+                submission_status_map.get(
+                    (str(course_section.id), str(period.id)),
+                    GradeSubmissionStatus.DRAFT,
+                ) == GradeSubmissionStatus.DRAFT
+                for period in relevant_periods
+            )
+
+            if not has_pending:
+                skipped_count += 1
+                continue
+
+            Notification.objects.create(
+                recipient=teacher,
+                type=Notification.NotificationType.SYSTEM,
+                title=f"Reminder: Submit {course_section.course.code} grades",
+                body=(
+                    f"{request.user.get_full_name()} requested submission of pending grades "
+                    f"for advisory section {section.name} ({section.school_year})."
+                ),
+                course_section=course_section,
+            )
+            reminded_subjects.append(course_section.course.code)
+            sent_count += 1
+
+        return Response({
+            "sent_count": sent_count,
+            "skipped_count": skipped_count,
+            "subjects": reminded_subjects,
         })
 
 
@@ -1243,6 +1401,16 @@ class SubjectGradesView(APIView):
         })
 
 
+def _invalidate_published_final_for_enrollment(enrollment: Enrollment) -> None:
+    """Clear a published final when period grades are edited in draft mode."""
+    if not enrollment.is_final_published and enrollment.final_grade is None:
+        return
+
+    enrollment.final_grade = None
+    enrollment.is_final_published = False
+    enrollment.save(update_fields=['final_grade', 'is_final_published'])
+
+
 class GradeEntryUpdateView(APIView):
     """Update a grade entry's override score."""
     permission_classes = [permissions.IsAuthenticated]
@@ -1281,6 +1449,7 @@ class GradeEntryUpdateView(APIView):
                 return Response({"detail": "override_score must be numeric."}, status=status.HTTP_400_BAD_REQUEST)
 
         entry.save()
+        _invalidate_published_final_for_enrollment(entry.enrollment)
 
         return Response({
             'id': str(entry.id),
@@ -1337,6 +1506,8 @@ class GradeEntryCreateView(APIView):
         if not created:
             entry.override_score = override_score
             entry.save()
+
+        _invalidate_published_final_for_enrollment(enrollment)
 
         return Response({
             'id': str(entry.id),
@@ -1635,6 +1806,9 @@ class GradeWeightConfigView(APIView):
         config.updated_by = request.user
         config.save()
 
+        # Keep GradeEntry computed scores in sync with updated weights.
+        recompute_grade_entries_for_course_section(course_section)
+
         serializer = GradeWeightConfigSerializer(config)
         return Response(serializer.data)
 
@@ -1692,7 +1866,7 @@ class GradeSubmissionSubmitView(APIView):
 
 
 class GradeSubmissionTakeBackView(APIView):
-    """Subject teacher takes back submitted period grades."""
+    """Subject teacher takes back submitted or published period grades."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
@@ -1715,17 +1889,55 @@ class GradeSubmissionTakeBackView(APIView):
         if not submission:
             return Response({"detail": "No submission found for this period."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Can only take back from submitted status (not published)
-        if submission.status != GradeSubmissionStatus.SUBMITTED:
+        # Can only take back from submitted/published status
+        if submission.status not in [GradeSubmissionStatus.SUBMITTED, GradeSubmissionStatus.PUBLISHED]:
             return Response({"detail": f"Cannot take back: current status is {submission.status}."}, status=status.HTTP_400_BAD_REQUEST)
+
+        report_card_unpublished = False
+        previous_status = submission.status
+
+        # If currently published, first unpublish the section report card for this period
+        # and move related submissions back to submitted, then set this one to draft.
+        if previous_status == GradeSubmissionStatus.PUBLISHED:
+            course_sections_in_section = CourseSection.objects.filter(
+                section=course_section.section,
+                is_active=True,
+            )
+            GradeSubmission.objects.filter(
+                course_section__in=course_sections_in_section,
+                grading_period_id=grading_period_id,
+                status=GradeSubmissionStatus.PUBLISHED,
+            ).update(status=GradeSubmissionStatus.SUBMITTED)
+
+            report_card_unpublished = SectionReportCard.objects.filter(
+                section=course_section.section,
+                grading_period_id=grading_period_id,
+                is_published=True,
+            ).update(
+                is_published=False,
+                published_by=None,
+                published_at=None,
+            ) > 0
 
         submission.status = GradeSubmissionStatus.DRAFT
         submission.taken_back_at = timezone.now()
         submission.save()
 
+        # A period take-back invalidates any previously published subject finals.
+        Enrollment.objects.filter(
+            course_section=course_section,
+            is_active=True,
+            is_final_published=True,
+        ).update(
+            final_grade=None,
+            is_final_published=False,
+        )
+
         return Response({
             "submission_id": str(submission.id),
             "status": submission.status,
+            "previous_status": previous_status,
+            "report_card_unpublished": report_card_unpublished,
         })
 
 

@@ -10,7 +10,11 @@ from core.serializers import NotificationSerializer
 from core.pagination import NotificationPagination
 
 
-class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class NotificationViewSet(
+    mixins.ListModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = NotificationPagination

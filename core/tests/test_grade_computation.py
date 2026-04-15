@@ -373,6 +373,39 @@ class QuarterlyExamAsQuarterlyAssessmentTest(ComputePeriodGradeTestBase):
         self.assertEqual(result, Decimal("82.50"))
 
 
+class UndatedExamFallbackToCreatedAtTest(ComputePeriodGradeTestBase):
+    """Exams without deadline are bucketed by created_at date."""
+
+    def test_undated_quarterly_exam_is_included(self):
+        student = self._create_student()
+        cs = self._create_course_section()
+        period = self._create_grading_period()
+
+        GradeWeightConfig.objects.create(
+            course_section=cs,
+            written_works=25,
+            performance_tasks=50,
+            quarterly_assessment=25,
+        )
+
+        ww_act = self._create_activity(cs, points=100, component_type="written_works")
+        self._create_submission(ww_act, student, 80)
+
+        pt_act = self._create_activity(cs, points=100, component_type="performance_task")
+        self._create_submission(pt_act, student, 90)
+
+        q_exam = self._create_activity(cs, points=100, is_exam=True, exam_type="quarterly")
+        Activity.objects.filter(id=q_exam.id).update(
+            deadline=None,
+            created_at=_make_datetime(date(2024, 11, 20)),
+        )
+        q_exam.refresh_from_db()
+        self._create_submission(q_exam, student, 70)
+
+        result = compute_period_grade(student, cs, period)
+        self.assertEqual(result, Decimal("82.50"))
+
+
 class ComponentTypeNoneAsPerformanceTaskTest(ComputePeriodGradeTestBase):
     """Activity with component_type=None counts as Performance Task."""
 

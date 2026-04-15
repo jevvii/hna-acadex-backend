@@ -81,19 +81,96 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user.role == User.Role.STUDENT:
-            _sync_student_items_best_effort(self.request.user)
-        qs = CalendarEvent.objects.filter(Q(creator=self.request.user) | Q(is_personal=False))
+        user = self.request.user
+        if user.role == User.Role.STUDENT:
+            _sync_student_items_best_effort(user)
+
+        if user.role == User.Role.ADMIN:
+            qs = CalendarEvent.objects.all()
+        else:
+            shared_scope = Q(is_personal=False, course_section__isnull=True)
+            if user.role == User.Role.STUDENT:
+                enrolled_section_ids = Enrollment.objects.filter(
+                    student=user,
+                    is_active=True,
+                ).values_list("course_section_id", flat=True)
+                shared_scope |= Q(is_personal=False, course_section_id__in=enrolled_section_ids)
+            elif user.role == User.Role.TEACHER:
+                teaching_section_ids = CourseSection.objects.filter(
+                    teacher=user,
+                    is_active=True,
+                ).values_list("id", flat=True)
+                shared_scope |= Q(is_personal=False, course_section_id__in=teaching_section_ids)
+            qs = CalendarEvent.objects.filter(Q(creator=user) | shared_scope).distinct()
+
         start = self.request.query_params.get("start")
         end = self.request.query_params.get("end")
         if start:
-            qs = qs.filter(start_at__gte=start)
+            qs = qs.filter(start_at__date__gte=start)
         if end:
-            qs = qs.filter(start_at__lte=end)
+            qs = qs.filter(start_at__date__lte=end)
         return qs.order_by("start_at")
 
     def perform_create(self, serializer):
-        serializer.save(creator=self.request.user)
+        user = self.request.user
+        is_personal = serializer.validated_data.get("is_personal", True)
+        course_section = serializer.validated_data.get("course_section")
+
+        if not is_personal:
+            if user.role not in {User.Role.ADMIN, User.Role.TEACHER}:
+                raise permissions.PermissionDenied("Only teachers and admins can create shared events.")
+            if user.role == User.Role.TEACHER:
+                if not course_section or course_section.teacher_id != user.id:
+                    raise permissions.PermissionDenied("You can only create shared events for your own course sections.")
+
+        event = serializer.save(creator=user, is_personal=is_personal)
+        self._send_event_notifications(event)
+
+    def _send_event_notifications(self, event: CalendarEvent):
+        recipient_ids: set = set()
+        if event.creator_id:
+            recipient_ids.add(event.creator_id)
+
+        if not event.is_personal:
+            if event.course_section_id:
+                if event.course_section and event.course_section.teacher_id:
+                    recipient_ids.add(event.course_section.teacher_id)
+                recipient_ids.update(
+                    Enrollment.objects.filter(
+                        course_section_id=event.course_section_id,
+                        is_active=True,
+                        student__status=User.Status.ACTIVE,
+                    ).values_list("student_id", flat=True)
+                )
+            elif self.request.user.role == User.Role.ADMIN:
+                recipient_ids.update(
+                    User.objects.filter(
+                        status=User.Status.ACTIVE,
+                        role__in=[User.Role.TEACHER, User.Role.STUDENT],
+                    ).values_list("id", flat=True)
+                )
+
+        recipient_ids.discard(None)
+        if not recipient_ids:
+            return
+
+        start_at = timezone.localtime(event.start_at)
+        start_label = start_at.strftime("%b %d, %Y")
+        if not event.all_day:
+            start_label = f"{start_label} at {start_at.strftime('%I:%M %p').lstrip('0')}"
+
+        body = f"{event.get_event_type_display()} scheduled for {start_label}"
+        notifications = [
+            Notification(
+                recipient_id=recipient_id,
+                type=Notification.NotificationType.SYSTEM,
+                title=f"Calendar: {event.title}",
+                body=body,
+                course_section=event.course_section,
+            )
+            for recipient_id in recipient_ids
+        ]
+        Notification.objects.bulk_create(notifications)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -525,7 +602,7 @@ class AnnouncementViewSet(TeacherCourseSectionScopedModelViewSet):
                 recipient_id=recipient_id,
                 type=notif_type,
                 title=announcement.title,
-                body=announcement.body[:200] if announcement.body else "",
+                body=announcement.body if announcement.body else "",
                 course_section=announcement.course_section,
                 announcement=announcement,
             )

@@ -1,6 +1,8 @@
 """
 Activity and submission views.
 """
+from decimal import Decimal, InvalidOperation
+
 from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -24,6 +26,7 @@ from core.serializers import (
     SubmissionGradeSerializer,
     SubmissionSerializer,
 )
+from core.grade_computation import recompute_grade_entries_for_student
 from core.views.common import (
     _sync_student_activity_items,
     _sync_course_section_students_activity_items,
@@ -236,6 +239,7 @@ class ActivitySubmissionGradeView(APIView):
         if graded.score is not None:
             graded.status = Submission.SubmissionStatus.GRADED
             graded.save(update_fields=["status", "updated_at"])
+            recompute_grade_entries_for_student(graded.activity.course_section, graded.student)
 
             # Audit log the grade change
             AuditLog.log(
@@ -279,6 +283,156 @@ class ActivitySubmissionGradeView(APIView):
             )
 
             # Send push notification
+            data = {
+                "type": "grade_released",
+                "activity_id": str(activity.id),
+                "course_section_id": str(activity.course_section_id),
+            }
+
+            send_push_notification_to_users(
+                user_ids=[str(student.id)],
+                title=f"Grade Released: {activity.title}",
+                body=f"Your submission has been graded. Score: {submission.score}/{activity.points}",
+                data=data,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to send grade notification: {e}")
+
+
+class ActivityStudentGradeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        from core.models import AuditLog
+
+        activity = Activity.objects.select_related("course_section").filter(id=pk).first()
+        if not activity:
+            return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.role == User.Role.TEACHER and activity.course_section.teacher_id != request.user.id:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role not in [User.Role.TEACHER, User.Role.ADMIN]:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+
+        student_id = request.data.get("student_id")
+        if not student_id:
+            return Response({"detail": "student_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        student = User.objects.filter(id=student_id, role=User.Role.STUDENT).first()
+        if not student:
+            return Response({"detail": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        enrolled = Enrollment.objects.filter(
+            course_section=activity.course_section,
+            student=student,
+            is_active=True,
+        ).exists()
+        if not enrolled:
+            return Response(
+                {"detail": "Student is not actively enrolled in this course section."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        score_raw = request.data.get("score")
+        if score_raw in [None, ""]:
+            return Response({"detail": "score is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            score_value = Decimal(str(score_raw))
+        except (TypeError, ValueError, InvalidOperation):
+            return Response({"detail": "score must be a valid number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if score_value < 0:
+            return Response({"detail": "score cannot be negative."}, status=status.HTTP_400_BAD_REQUEST)
+
+        max_points = Decimal(str(activity.points or 0))
+        if score_value > max_points:
+            return Response(
+                {"detail": f"score cannot exceed activity points ({activity.points})."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        feedback_raw = request.data.get("feedback")
+        feedback_value = feedback_raw if isinstance(feedback_raw, str) and feedback_raw.strip() else None
+
+        latest_submission = (
+            Submission.objects.filter(activity=activity, student=student)
+            .order_by("-attempt_number")
+            .first()
+        )
+        was_ungraded = latest_submission.score is None if latest_submission else True
+
+        now = timezone.now()
+
+        if latest_submission:
+            serializer = SubmissionGradeSerializer(
+                latest_submission,
+                data={"score": score_value, "feedback": feedback_value},
+                partial=True,
+            )
+            serializer.is_valid(raise_exception=True)
+            graded = serializer.save(graded_at=now)
+            graded.status = Submission.SubmissionStatus.GRADED
+            update_fields = ["status", "updated_at"]
+            if graded.submitted_at is None:
+                graded.submitted_at = now
+                update_fields.append("submitted_at")
+            graded.save(update_fields=update_fields)
+        else:
+            graded = Submission.objects.create(
+                activity=activity,
+                student=student,
+                attempt_number=1,
+                file_urls=[],
+                text_content=None,
+                status=Submission.SubmissionStatus.GRADED,
+                score=score_value,
+                feedback=feedback_value,
+                submitted_at=now,
+                graded_at=now,
+            )
+
+        AuditLog.log(
+            request,
+            action='grade_change',
+            target_type='Submission',
+            target_id=None,  # Can't store UUID in IntegerField
+            details={
+                'submission_id': str(graded.id),
+                'student_id': str(graded.student.id),
+                'student_email': graded.student.email,
+                'activity_id': str(graded.activity.id),
+                'activity_title': graded.activity.title,
+                'score': float(graded.score) if graded.score is not None else None,
+                'feedback': graded.feedback,
+            }
+        )
+
+        if was_ungraded:
+            self._send_grade_notification(graded)
+
+        recompute_grade_entries_for_student(activity.course_section, student)
+
+        return Response(SubmissionSerializer(graded).data)
+
+    def _send_grade_notification(self, submission: Submission):
+        """Send push notification to student when grade is released."""
+        from core.push_notifications import send_push_notification_to_users
+
+        try:
+            activity = submission.activity
+            student = submission.student
+
+            Notification.objects.create(
+                recipient=student,
+                type=Notification.NotificationType.GRADE_RELEASED,
+                title=f"Grade Released: {activity.title}",
+                body=f"Your submission for '{activity.title}' has been graded. Score: {submission.score}/{activity.points}",
+                course_section=activity.course_section,
+                activity=activity,
+            )
+
             data = {
                 "type": "grade_released",
                 "activity_id": str(activity.id),
@@ -583,6 +737,7 @@ __all__ = [
     'ActivityMySubmissionView',
     'ActivitySubmissionsForTeacherView',
     'ActivitySubmissionGradeView',
+    'ActivityStudentGradeView',
     'ActivityCommentViewSet',
     'ActivityCommentsByActivityView',
 ]

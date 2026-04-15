@@ -3,9 +3,18 @@
 
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Sum, Q
 
-from core.models import GradeWeightConfig, Activity, Quiz, Submission, QuizAttempt
+from core.models import (
+    GradeWeightConfig,
+    Activity,
+    Quiz,
+    Submission,
+    QuizAttempt,
+    GradingPeriod,
+    GradeEntry,
+    Enrollment,
+)
 from core.grade_constants import DEPED_DEFAULT_WEIGHTS, DEFAULT_WEIGHTS
 
 
@@ -51,12 +60,22 @@ def compute_period_grade(student, course_section, grading_period):
     start_date = grading_period.start_date
     end_date = grading_period.end_date
 
-    # Get published activities whose deadline falls within the grading period
+    # Get published activities for the grading period.
+    # Primary bucket uses deadline; for exams with no deadline, fall back to created_at.
     activities = Activity.objects.filter(
         course_section=course_section,
         is_published=True,
-        deadline__date__gte=start_date,
-        deadline__date__lte=end_date,
+    ).filter(
+        Q(
+            deadline__date__gte=start_date,
+            deadline__date__lte=end_date,
+        )
+        | Q(
+            is_exam=True,
+            deadline__isnull=True,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+        )
     )
 
     # Get published quizzes whose close_at falls within the grading period
@@ -235,3 +254,103 @@ def _compute_component_percentage(items):
         return None
 
     return (total_earned / total_possible) * Decimal("100")
+
+
+def _resolve_semester_group_for_course_section(course_section):
+    grade_level = course_section.course.grade_level if course_section.course else None
+    if grade_level not in ["Grade 11", "Grade 12"]:
+        return None
+
+    semester_value = course_section.semester
+    if semester_value in ["1st", "1", "First"]:
+        return 1
+    if semester_value in ["2nd", "2", "Second"]:
+        return 2
+    return None
+
+
+def get_relevant_grading_periods(course_section):
+    grade_level = course_section.course.grade_level if course_section.course else None
+    semester_group = _resolve_semester_group_for_course_section(course_section)
+
+    base_qs = GradingPeriod.objects.filter(school_year=course_section.school_year)
+    if grade_level in ["Grade 11", "Grade 12"]:
+        if semester_group is not None:
+            return list(base_qs.filter(semester_group=semester_group).order_by("period_number"))
+        return list(base_qs.order_by("semester_group", "period_number"))
+
+    return list(base_qs.filter(semester_group__isnull=True).order_by("period_number"))
+
+
+def _invalidate_published_final_for_enrollment(enrollment):
+    if not enrollment.is_final_published and enrollment.final_grade is None:
+        return
+    enrollment.final_grade = None
+    enrollment.is_final_published = False
+    enrollment.save(update_fields=["final_grade", "is_final_published"])
+
+
+def recompute_grade_entries_for_enrollment(enrollment, periods=None):
+    """Recompute computed_score for all relevant periods of an enrollment."""
+    if periods is None:
+        periods = get_relevant_grading_periods(enrollment.course_section)
+
+    changed = False
+    for period in periods:
+        computed_score = compute_period_grade(
+            enrollment.student,
+            enrollment.course_section,
+            period,
+        )
+        entry = GradeEntry.objects.filter(
+            enrollment=enrollment,
+            grading_period=period,
+        ).first()
+
+        if entry is None:
+            if computed_score is None:
+                continue
+            GradeEntry.objects.create(
+                enrollment=enrollment,
+                grading_period=period,
+                computed_score=computed_score,
+                is_published=False,
+            )
+            changed = True
+            continue
+
+        if entry.computed_score != computed_score:
+            entry.computed_score = computed_score
+            entry.save(update_fields=["computed_score", "updated_at", "computed_at"])
+            changed = True
+
+    if changed:
+        _invalidate_published_final_for_enrollment(enrollment)
+    return changed
+
+
+def recompute_grade_entries_for_student(course_section, student):
+    enrollment = Enrollment.objects.filter(
+        course_section=course_section,
+        student=student,
+        is_active=True,
+    ).first()
+    if not enrollment:
+        return False
+
+    periods = get_relevant_grading_periods(course_section)
+    return recompute_grade_entries_for_enrollment(enrollment, periods=periods)
+
+
+def recompute_grade_entries_for_course_section(course_section):
+    periods = get_relevant_grading_periods(course_section)
+    enrollments = Enrollment.objects.filter(
+        course_section=course_section,
+        is_active=True,
+    ).select_related("student")
+
+    changed_enrollments = 0
+    for enrollment in enrollments:
+        if recompute_grade_entries_for_enrollment(enrollment, periods=periods):
+            changed_enrollments += 1
+    return changed_enrollments

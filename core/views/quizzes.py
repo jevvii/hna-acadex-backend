@@ -644,6 +644,10 @@ class QuizQuickCreateView(APIView):
             except (TypeError, ValueError):
                 return default
 
+        score_selection_policy = request.data.get("score_selection_policy", Quiz.ScorePolicy.HIGHEST)
+        if score_selection_policy not in [Quiz.ScorePolicy.HIGHEST, Quiz.ScorePolicy.LATEST]:
+            score_selection_policy = Quiz.ScorePolicy.HIGHEST
+
         quiz = Quiz.objects.create(
             course_section=course_section,
             weekly_module=weekly_module,
@@ -651,6 +655,7 @@ class QuizQuickCreateView(APIView):
             instructions=request.data.get("instructions"),
             time_limit_minutes=to_int(request.data.get("time_limit_minutes"), None),
             attempt_limit=to_int(request.data.get("attempt_limit"), 1),
+            score_selection_policy=score_selection_policy,
             open_at=request.data.get("open_at") or None,
             close_at=request.data.get("close_at") or None,
             is_published=request.data.get("is_published", True),

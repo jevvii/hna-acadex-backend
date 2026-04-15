@@ -53,6 +53,7 @@ from .grades import (
     GradeWeightConfigView,
     StudentGradesView,
     AdvisoryGradesView,
+    AdvisorySubjectReminderView,
     SubjectGradesView,
     GradeEntryCreateView,
     GradeEntryUpdateView,
@@ -73,6 +74,7 @@ from .activities import (
     ActivityMySubmissionView,
     ActivitySubmissionsForTeacherView,
     ActivitySubmissionGradeView,
+    ActivityStudentGradeView,
     ActivityCommentsByActivityView,
     ActivityCommentViewSet,
 )
@@ -138,6 +140,7 @@ __all__ = [
     'GradeWeightConfigView',
     'StudentGradesView',
     'AdvisoryGradesView',
+    'AdvisorySubjectReminderView',
     'SubjectGradesView',
     'GradeEntryCreateView',
     'GradeEntryUpdateView',
@@ -156,6 +159,7 @@ __all__ = [
     'ActivityMySubmissionView',
     'ActivitySubmissionsForTeacherView',
     'ActivitySubmissionGradeView',
+    'ActivityStudentGradeView',
     'ActivityCommentsByActivityView',
     'ActivityCommentViewSet',
     # Quiz views
