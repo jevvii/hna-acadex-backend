@@ -3,8 +3,11 @@ Gradebook and grades-related views.
 """
 import csv
 import logging
+import re
 from decimal import Decimal, ROUND_HALF_UP
 from io import StringIO, BytesIO
+from pathlib import Path
+from zipfile import ZipFile, ZIP_DEFLATED
 from django.db.models import Avg, Sum
 from django.http import StreamingHttpResponse, HttpResponse
 from django.utils import timezone
@@ -2099,6 +2102,321 @@ class ReportCardUnpublishView(APIView):
         })
 
 
+class AdvisorySF9ExportView(APIView):
+    """Generate SF9 files for advisory students (single or bulk)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    JHS_SUBJECT_ROWS = [
+        (9, ["filipino"]),
+        (10, ["english"]),
+        (11, ["mathematics", "math"]),
+        (13, ["science"]),
+        (14, ["aralingpanlipunan", "ap"]),
+        (15, ["edukasyonsapagpapakatao", "esp"]),
+        (17, ["edukasyongpantahananatpangkabuhayan", "tle", "epp"]),
+        (19, ["mapeh", "music", "arts", "physicaleducation", "health"]),
+    ]
+
+    # Subjects extracted from the provided SHS SF9 template (.pub)
+    SHS_FIRST_SEM_SUBJECTS = [
+        ("Oral Communication", ["oralcommunication"]),
+        ("Komunikasyon at Pananaliksik sa Wika at Kulturang Pilipino", ["komunikasyonatpananaliksik"]),
+        ("Introduction to the Philosophy of the Human Person", ["introductiontothephilosophyofthehumanperson", "pambungsapilosopiyangtao", "pilosopiya"]),
+        ("Physical Education and Health 1", ["physicaleducationandhealth1", "peh1"]),
+        ("General Mathematics", ["generalmathematics"]),
+        ("Earth Science", ["earthscience"]),
+        ("Empowerment Technologies", ["empowermenttechnologies", "empowermenttechnology"]),
+        ("Pre-Calculus", ["precalculus"]),
+        ("General Chemistry 1", ["generalchemistry1"]),
+    ]
+
+    SHS_SECOND_SEM_SUBJECTS = [
+        ("Reading and Writing", ["readingandwriting"]),
+        ("Pagbasa at Pagsusuri ng Iba't-Ibang Teksto Tungo sa Pananaliksik", ["pagbasaatpagsusuri", "teksto", "pananaliksik"]),
+        ("Personal Development / Pansariling Kaunlaran", ["personaldevelopment", "pansarilingkaunlaran"]),
+        ("Physical Education and Health 2", ["physicaleducationandhealth2", "peh2"]),
+        ("Statistics and Probability", ["statisticsandprobability"]),
+        ("Disaster Readiness and Risk Reduction", ["disasterreadinessandriskreduction", "drrr"]),
+        ("Practical Research 1", ["practicalresearch1"]),
+        ("Basic Calculus", ["basiccalculus"]),
+        ("General Chemistry 2", ["generalchemistry2"]),
+    ]
+
+    def _normalize(self, value: str | None) -> str:
+        if not value:
+            return ""
+        return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+    def _find_subject(self, subjects: list[dict], aliases: list[str]) -> dict | None:
+        normalized_aliases = [self._normalize(alias) for alias in aliases]
+        for subject in subjects:
+            title = self._normalize(subject.get("subject_title"))
+            code = self._normalize(subject.get("subject_code"))
+            for alias in normalized_aliases:
+                if alias and (alias in title or alias in code):
+                    return subject
+        return None
+
+    def _period_score(self, subject: dict | None, label: str) -> float | None:
+        if not subject:
+            return None
+        wanted = self._normalize(label)
+        for period in subject.get("periods", []):
+            if self._normalize(period.get("period_label")) == wanted:
+                return period.get("score")
+        return None
+
+    def _safe_filename(self, value: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("_")
+        return cleaned or "sf9"
+
+    def _is_student_cleared(self, student: dict) -> bool:
+        subjects = student.get("subjects", [])
+        if not subjects:
+            return False
+        if student.get("final_average") is None:
+            return False
+        return all(subject.get("final_grade") is not None for subject in subjects)
+
+    def _remarks(self, score: float | None) -> str:
+        if score is None:
+            return ""
+        return "Passed" if score >= 75 else "Failed"
+
+    def _write_jhs_sf9(
+        self,
+        *,
+        template_path: Path,
+        advisory_data: dict,
+        student: dict,
+        student_user: User | None,
+    ) -> bytes:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(template_path)
+        ws_progress = workbook["Sheet1"]
+        ws_info = workbook["Sheet2"]
+        subjects = student.get("subjects", [])
+
+        for row, aliases in self.JHS_SUBJECT_ROWS:
+            subject = self._find_subject(subjects, aliases)
+            q1 = self._period_score(subject, "Q1")
+            q2 = self._period_score(subject, "Q2")
+            q3 = self._period_score(subject, "Q3")
+            q4 = self._period_score(subject, "Q4")
+            final_grade = subject.get("final_grade") if subject else None
+
+            ws_progress[f"D{row}"] = q1
+            ws_progress[f"E{row}"] = q2
+            ws_progress[f"F{row}"] = q3
+            ws_progress[f"G{row}"] = q4
+            ws_progress[f"H{row}"] = final_grade
+            ws_progress[f"I{row}"] = self._remarks(final_grade)
+
+        # General averages per quarter + final
+        quarter_columns = {"Q1": "D", "Q2": "E", "Q3": "F", "Q4": "G"}
+        for quarter_label, col in quarter_columns.items():
+            quarter_scores = []
+            for _row, aliases in self.JHS_SUBJECT_ROWS:
+                subject = self._find_subject(subjects, aliases)
+                score = self._period_score(subject, quarter_label)
+                if score is not None:
+                    quarter_scores.append(score)
+            ws_progress[f"{col}24"] = round(sum(quarter_scores) / len(quarter_scores), 2) if quarter_scores else None
+
+        ws_progress["H24"] = student.get("final_average")
+        ws_progress["I24"] = self._remarks(student.get("final_average"))
+
+        lrn = student_user.student_id if student_user and student_user.student_id else ""
+        ws_info["P24"] = f"Name: {student.get('student_name', '')}"
+        ws_info["P26"] = f"Learner's Reference Number: {lrn}"
+        ws_info["P30"] = f"Grade: {advisory_data.get('grade_level', '')} Section: {advisory_data.get('section_name', '')}"
+        ws_info["P32"] = f"School Year: {advisory_data.get('school_year', '')}"
+
+        out = BytesIO()
+        workbook.save(out)
+        out.seek(0)
+        return out.getvalue()
+
+    def _write_shs_sf9(
+        self,
+        *,
+        advisory_data: dict,
+        student: dict,
+        student_user: User | None,
+    ) -> bytes:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "SF9-SHS"
+
+        header_fill = PatternFill(start_color="1A3A6B", end_color="1A3A6B", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        title_font = Font(size=14, bold=True)
+
+        ws["A1"] = "LEARNER'S PROGRESS REPORT CARD (SF9 - SHS)"
+        ws["A1"].font = title_font
+        ws.merge_cells("A1:F1")
+
+        ws["A3"] = f"Name: {student.get('student_name', '')}"
+        ws["A4"] = f"Learner's Reference Number: {student_user.student_id if student_user and student_user.student_id else ''}"
+        ws["A5"] = f"Grade / Section: {advisory_data.get('grade_level', '')} - {advisory_data.get('section_name', '')}"
+        ws["D5"] = f"Track / Strand: {advisory_data.get('strand') or ''}"
+        ws["A6"] = f"School Year: {advisory_data.get('school_year', '')}"
+
+        def write_semester_block(
+            *,
+            title: str,
+            start_row: int,
+            quarter_labels: tuple[str, str],
+            subject_map: list[tuple[str, list[str]]],
+        ) -> float | None:
+            ws[f"A{start_row}"] = title
+            ws[f"A{start_row}"].font = Font(bold=True)
+            headers = ["Subject", quarter_labels[0], quarter_labels[1], "Semester Final", "Remarks"]
+            for idx, header in enumerate(headers, start=1):
+                cell = ws.cell(start_row + 1, idx, header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+
+            row = start_row + 2
+            semester_finals: list[float] = []
+            for subject_name, aliases in subject_map:
+                subject = self._find_subject(student.get("subjects", []), aliases)
+                q_a = self._period_score(subject, quarter_labels[0])
+                q_b = self._period_score(subject, quarter_labels[1])
+                sem_final = subject.get("final_grade") if subject else None
+                if sem_final is None and q_a is not None and q_b is not None:
+                    sem_final = round((q_a + q_b) / 2, 2)
+
+                ws.cell(row, 1, subject_name)
+                ws.cell(row, 2, q_a)
+                ws.cell(row, 3, q_b)
+                ws.cell(row, 4, sem_final)
+                ws.cell(row, 5, self._remarks(sem_final))
+                if sem_final is not None:
+                    semester_finals.append(sem_final)
+                row += 1
+
+            ws.cell(row, 1, "General Average for the Semester")
+            semester_avg = round(sum(semester_finals) / len(semester_finals), 2) if semester_finals else None
+            ws.cell(row, 4, semester_avg)
+            ws.cell(row, 5, self._remarks(semester_avg))
+            return semester_avg
+
+        write_semester_block(
+            title="First Semester",
+            start_row=8,
+            quarter_labels=("Q1", "Q2"),
+            subject_map=self.SHS_FIRST_SEM_SUBJECTS,
+        )
+        write_semester_block(
+            title="Second Semester",
+            start_row=24,
+            quarter_labels=("Q3", "Q4"),
+            subject_map=self.SHS_SECOND_SEM_SUBJECTS,
+        )
+
+        for column, width in {"A": 56, "B": 12, "C": 12, "D": 16, "E": 12, "F": 24}.items():
+            ws.column_dimensions[column].width = width
+
+        out = BytesIO()
+        wb.save(out)
+        out.seek(0)
+        return out.getvalue()
+
+    def _build_student_file(self, advisory_data: dict, student: dict, student_user: User | None) -> tuple[bytes, str]:
+        project_root = Path(__file__).resolve().parents[3]
+        grade_level = advisory_data.get("grade_level")
+        student_name = student.get("student_name", "Student")
+        base_name = self._safe_filename(f"SF9_{student_name}")
+
+        if grade_level in ["Grade 11", "Grade 12"]:
+            content = self._write_shs_sf9(advisory_data=advisory_data, student=student, student_user=student_user)
+            return content, f"{base_name}_SHS.xlsx"
+
+        template_path = project_root / "SF9 (Learners Progress Report Card) Template for JHS.xlsx"
+        if not template_path.exists():
+            raise FileNotFoundError("JHS SF9 template file not found.")
+        content = self._write_jhs_sf9(
+            template_path=template_path,
+            advisory_data=advisory_data,
+            student=student,
+            student_user=student_user,
+        )
+        return content, f"{base_name}_JHS.xlsx"
+
+    def get(self, request, section_id):
+        advisory_response = AdvisoryGradesView().get(request, section_id)
+        if advisory_response.status_code != status.HTTP_200_OK:
+            return advisory_response
+
+        advisory_data = advisory_response.data
+        students = advisory_data.get("students", [])
+        if not students:
+            return Response({"detail": "No students found in advisory section."}, status=status.HTTP_400_BAD_REQUEST)
+
+        target_student_id = request.query_params.get("student_id")
+        all_cleared = all(self._is_student_cleared(student) for student in students)
+        if not target_student_id and not all_cleared:
+            return Response(
+                {"detail": "Bulk SF9 export is only available when all students are cleared."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if target_student_id:
+            target_students = [s for s in students if str(s.get("student_id")) == str(target_student_id)]
+            if not target_students:
+                return Response({"detail": "Student not found in advisory section."}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            target_students = students
+
+        user_map = {
+            str(user.id): user
+            for user in User.objects.filter(id__in=[student.get("student_id") for student in target_students])
+        }
+
+        try:
+            generated_files: list[tuple[str, bytes]] = []
+            for student in target_students:
+                content, filename = self._build_student_file(
+                    advisory_data=advisory_data,
+                    student=student,
+                    student_user=user_map.get(str(student.get("student_id"))),
+                )
+                generated_files.append((filename, content))
+        except FileNotFoundError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as exc:  # pragma: no cover - defensive for template issues
+            logger.exception("sf9_generation_failed section_id=%s", section_id)
+            return Response({"detail": f"Failed to generate SF9: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if target_student_id:
+            filename, content = generated_files[0]
+            response = HttpResponse(
+                content,
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return response
+
+        zip_buffer = BytesIO()
+        section_name = advisory_data.get("section_name", "section")
+        with ZipFile(zip_buffer, mode="w", compression=ZIP_DEFLATED) as archive:
+            for filename, content in generated_files:
+                archive.writestr(filename, content)
+        zip_buffer.seek(0)
+
+        response = HttpResponse(zip_buffer.getvalue(), content_type="application/zip")
+        response["Content-Disposition"] = (
+            f'attachment; filename="{self._safe_filename(f"SF9_{section_name}_bulk")}.zip"'
+        )
+        return response
+
+
 class AdviserOverrideView(APIView):
     """Adviser directly overrides a grade entry."""
     permission_classes = [permissions.IsAuthenticated]
@@ -2284,6 +2602,7 @@ __all__ = [
     'GradeSubmissionSubmitView',
     'GradeSubmissionTakeBackView',
     'ReportCardPublishView',
+    'AdvisorySF9ExportView',
     'ReportCardUnpublishView',
     'AdviserOverrideView',
     'StudentReportCardView',
