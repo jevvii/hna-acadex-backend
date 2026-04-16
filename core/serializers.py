@@ -238,6 +238,20 @@ class CalendarEventSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "creator_id")
 
+    def validate_event_type(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            user
+            and getattr(user, "is_authenticated", False)
+            and user.role in {User.Role.STUDENT, User.Role.TEACHER}
+            and value == CalendarEvent.EventType.HOLIDAY
+        ):
+            raise serializers.ValidationError(
+                "Holiday events are system-managed and cannot be added manually."
+            )
+        return value
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     recipient_id = serializers.UUIDField(read_only=True)
@@ -560,6 +574,11 @@ class QuizQuestionBulkSerializer(serializers.Serializer):
 class QuizAnswerInputSerializer(serializers.Serializer):
     question_id = serializers.UUIDField()
     selected_choice_id = serializers.UUIDField(required=False, allow_null=True)
+    selected_choice_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+    )
     text_answer = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 

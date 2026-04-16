@@ -40,6 +40,20 @@ class ActivitySubmitView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
+    def _notify_teacher_submission(self, submission: Submission):
+        teacher = submission.activity.course_section.teacher
+        if not teacher:
+            return
+
+        Notification.objects.create(
+            recipient=teacher,
+            type=Notification.NotificationType.NEW_ACTIVITY,
+            title=f"Submission Received: {submission.activity.title}",
+            body=f"{submission.student.full_name} submitted attempt #{submission.attempt_number}.",
+            course_section=submission.activity.course_section,
+            activity=submission.activity,
+        )
+
     def post(self, request, pk):
         if request.user.role != User.Role.STUDENT:
             return Response({"detail": "Only students can submit activities."}, status=status.HTTP_403_FORBIDDEN)
@@ -113,6 +127,7 @@ class ActivitySubmitView(APIView):
             status=status_value,
         )
         _sync_student_activity_items(request.user)
+        self._notify_teacher_submission(submission)
         return Response(SubmissionSerializer(submission).data)
 
 

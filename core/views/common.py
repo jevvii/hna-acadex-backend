@@ -218,6 +218,9 @@ def _sync_daily_active_event_notifications(user: User):
         if cache.get(event_key):
             continue
         if event.activity_id:
+            if user.role == User.Role.TEACHER:
+                # Teachers should not receive activity/exam creation/deadline notifications.
+                continue
             notif_type = (
                 Notification.NotificationType.NEW_EXAM
                 if event.activity and event.activity.is_exam
@@ -276,6 +279,9 @@ def _sync_daily_active_event_notifications(user: User):
         .select_related("course_section")
         .distinct()
     )
+    if user.role == User.Role.TEACHER:
+        # Teachers should not receive quiz availability/deadline notifications.
+        quizzes_today = Quiz.objects.none()
 
     for quiz in quizzes_today:
         quiz_key = _daily_calendar_notification_key(

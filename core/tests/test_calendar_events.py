@@ -54,6 +54,23 @@ class CalendarEventApiTests(TestCase):
         self.assertEqual(notification.type, Notification.NotificationType.SYSTEM)
         self.assertEqual(notification.title, "Calendar: Study Group")
 
+    def test_students_and_teachers_cannot_create_holiday_events(self):
+        for actor in (self.student, self.teacher):
+            self.client.force_authenticate(actor)
+            response = self.client.post(
+                reverse("calendar-events-list"),
+                {
+                    "title": "Manual Holiday",
+                    "event_type": CalendarEvent.EventType.HOLIDAY,
+                    "start_at": (timezone.now() + timedelta(days=1)).isoformat(),
+                    "all_day": True,
+                    "is_personal": True,
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("event_type", response.json())
+
     def test_end_date_filter_includes_events_on_end_day(self):
         self.client.force_authenticate(self.student)
         event_dt = timezone.make_aware(datetime(2026, 3, 31, 15, 0, 0))

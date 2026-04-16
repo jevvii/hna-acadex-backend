@@ -1,7 +1,9 @@
 """
 Quiz-related views.
 """
-from django.db.models import Avg, Sum, Sum
+import json
+
+from django.db.models import Avg, Sum
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
@@ -34,6 +36,74 @@ from core.views.common import (
 )
 
 
+def _parse_multi_select_choice_ids(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in parsed:
+        choice_id = str(item)
+        if choice_id in seen:
+            continue
+        seen.add(choice_id)
+        result.append(choice_id)
+    return result
+
+
+def _notify_teacher_quiz_submission(attempt: QuizAttempt):
+    teacher = attempt.quiz.course_section.teacher
+    if not teacher:
+        return
+    Notification.objects.create(
+        recipient=teacher,
+        type=Notification.NotificationType.NEW_QUIZ,
+        title=f"Quiz Submission: {attempt.quiz.title}",
+        body=f"{attempt.student.full_name} submitted attempt #{attempt.attempt_number}.",
+        course_section=attempt.quiz.course_section,
+        quiz=attempt.quiz,
+    )
+
+
+def _send_quiz_grade_notification(attempt: QuizAttempt):
+    """Send push notification when quiz grading is complete."""
+    from core.push_notifications import send_push_notification_to_users
+
+    try:
+        quiz = attempt.quiz
+        student = attempt.student
+
+        Notification.objects.create(
+            recipient=student,
+            type=Notification.NotificationType.GRADE_RELEASED,
+            title=f"Quiz Graded: {quiz.title}",
+            body=f"Your quiz '{quiz.title}' has been graded. Score: {attempt.score}/{attempt.max_score}",
+            course_section=quiz.course_section,
+            quiz=quiz,
+        )
+
+        data = {
+            "type": "grade_released",
+            "quiz_id": str(quiz.id),
+            "course_section_id": str(quiz.course_section_id),
+        }
+
+        send_push_notification_to_users(
+            user_ids=[str(student.id)],
+            title=f"Quiz Graded: {quiz.title}",
+            body=f"Your quiz has been graded. Score: {attempt.score}/{attempt.max_score}",
+            data=data,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send quiz grade notification: {e}")
+
+
 class QuizTakeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -49,7 +119,10 @@ class QuizTakeView(APIView):
         if attempt.is_submitted:
             return attempt
 
-        questions = {str(q.id): q for q in QuizQuestion.objects.filter(quiz=attempt.quiz)}
+        questions = {
+            str(q.id): q
+            for q in QuizQuestion.objects.filter(quiz=attempt.quiz).prefetch_related("choices")
+        }
         answers_by_qid = {str(a.question_id): a for a in QuizAnswer.objects.filter(attempt=attempt)}
         max_score = sum(float(q.points) for q in questions.values())
         total_score = 0.0
@@ -92,14 +165,23 @@ class QuizTakeView(APIView):
                 ans.save(update_fields=["is_correct", "points_awarded", "needs_manual_grading", "graded_at"])
                 total_score += points_awarded
             elif question.question_type == QuizQuestion.QuestionType.MULTI_SELECT:
-                # NOTE: Multi-select requires storing multiple selected choices.
-                # QuizAnswer.selected_choice is a single FK, so we defer to manual grading.
-                # Future: Add QuizAnswerMultipleChoice model for many-to-many selection.
-                pending_manual = True
-                ans.needs_manual_grading = True
-                ans.is_correct = None
-                ans.points_awarded = None
-                ans.save(update_fields=["needs_manual_grading", "is_correct", "points_awarded"])
+                selected_ids = set(_parse_multi_select_choice_ids(ans.text_answer))
+                correct_ids = {
+                    str(choice.id)
+                    for choice in question.choices.all()
+                    if choice.is_correct
+                }
+                correct_selected = len(selected_ids & correct_ids)
+                union_ids = selected_ids | correct_ids
+                ratio = (correct_selected / len(union_ids)) if union_ids else 0.0
+                is_correct = bool(correct_ids) and selected_ids == correct_ids
+                points_awarded = float(question.points) * ratio
+                ans.is_correct = is_correct
+                ans.points_awarded = points_awarded
+                ans.needs_manual_grading = False
+                ans.graded_at = timezone.now()
+                ans.save(update_fields=["is_correct", "points_awarded", "needs_manual_grading", "graded_at"])
+                total_score += points_awarded
             else:  # ESSAY
                 pending_manual = True
                 ans.needs_manual_grading = True
@@ -114,6 +196,9 @@ class QuizTakeView(APIView):
         attempt.pending_manual_grading = pending_manual
         attempt.save(update_fields=["is_submitted", "submitted_at", "max_score", "score", "pending_manual_grading"])
         _sync_student_activity_items(attempt.student)
+        _notify_teacher_quiz_submission(attempt)
+        if not pending_manual:
+            _send_quiz_grade_notification(attempt)
         return attempt
 
     def get(self, request, pk):
@@ -127,6 +212,8 @@ class QuizTakeView(APIView):
         enrolled = Enrollment.objects.filter(course_section=quiz.course_section, student=request.user, is_active=True).exists()
         if not enrolled:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not quiz.is_published:
+            return Response({"detail": "Quiz is not available."}, status=status.HTTP_403_FORBIDDEN)
 
         submitted_count = QuizAttempt.objects.filter(quiz=quiz, student=request.user, is_submitted=True).count()
         if submitted_count >= quiz.attempt_limit:
@@ -153,15 +240,18 @@ class QuizTakeView(APIView):
             return Response({"detail": "Quiz time has ended and your attempt was auto-submitted."}, status=status.HTTP_400_BAD_REQUEST)
 
         questions = QuizQuestion.objects.filter(quiz=quiz).prefetch_related("choices").order_by("sort_order")
-        existing_answers = QuizAnswer.objects.filter(attempt=attempt)
+        existing_answers = QuizAnswer.objects.filter(attempt=attempt).select_related("question")
         answers_payload = []
         for a in existing_answers:
+            payload = {
+                "question_id": str(a.question_id),
+                "selected_choice_id": str(a.selected_choice_id) if a.selected_choice_id else None,
+                "text_answer": a.text_answer,
+            }
+            if a.question.question_type == QuizQuestion.QuestionType.MULTI_SELECT:
+                payload["selected_choice_ids"] = _parse_multi_select_choice_ids(a.text_answer)
             answers_payload.append(
-                {
-                    "question_id": str(a.question_id),
-                    "selected_choice_id": str(a.selected_choice_id) if a.selected_choice_id else None,
-                    "text_answer": a.text_answer,
-                }
+                payload
             )
         return Response(
             {
@@ -189,6 +279,8 @@ class QuizSubmitAttemptView(APIView):
         enrolled = Enrollment.objects.filter(course_section=quiz.course_section, student=request.user, is_active=True).exists()
         if not enrolled:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not quiz.is_published:
+            return Response({"detail": "Quiz is not available."}, status=status.HTTP_403_FORBIDDEN)
 
         submitted_attempts = QuizAttempt.objects.filter(quiz=quiz, student=request.user, is_submitted=True).count()
         if submitted_attempts >= quiz.attempt_limit:
@@ -246,6 +338,27 @@ class QuizSubmitAttemptView(APIView):
             question = questions.get(qid)
             if not question:
                 continue
+            if question.question_type == QuizQuestion.QuestionType.MULTI_SELECT:
+                selected_ids = item.get("selected_choice_ids") or []
+                if not selected_ids and item.get("selected_choice_id"):
+                    selected_ids = [item["selected_choice_id"]]
+                valid_ids = [
+                    str(choice_id)
+                    for choice_id in QuizChoice.objects.filter(
+                        id__in=selected_ids,
+                        question=question,
+                    ).values_list("id", flat=True)
+                ]
+                QuizAnswer.objects.update_or_create(
+                    attempt=attempt,
+                    question=question,
+                    defaults={
+                        "selected_choice": None,
+                        "text_answer": json.dumps(valid_ids),
+                    },
+                )
+                continue
+
             selected_choice = None
             if item.get("selected_choice_id"):
                 selected_choice = QuizChoice.objects.filter(id=item["selected_choice_id"], question=question).first()
@@ -284,6 +397,8 @@ class QuizSaveProgressView(APIView):
         enrolled = Enrollment.objects.filter(course_section=quiz.course_section, student=request.user, is_active=True).exists()
         if not enrolled:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not quiz.is_published:
+            return Response({"detail": "Quiz is not available."}, status=status.HTTP_403_FORBIDDEN)
 
         attempt_id = request.data.get("attempt_id")
         attempt = QuizAttempt.objects.filter(id=attempt_id, quiz=quiz, student=request.user, is_submitted=False).first() if attempt_id else None
@@ -313,6 +428,27 @@ class QuizSaveProgressView(APIView):
             question = questions.get(qid)
             if not question:
                 continue
+            if question.question_type == QuizQuestion.QuestionType.MULTI_SELECT:
+                selected_ids = item.get("selected_choice_ids") or []
+                if not selected_ids and item.get("selected_choice_id"):
+                    selected_ids = [item["selected_choice_id"]]
+                valid_ids = [
+                    str(choice_id)
+                    for choice_id in QuizChoice.objects.filter(
+                        id__in=selected_ids,
+                        question=question,
+                    ).values_list("id", flat=True)
+                ]
+                QuizAnswer.objects.update_or_create(
+                    attempt=attempt,
+                    question=question,
+                    defaults={
+                        "selected_choice": None,
+                        "text_answer": json.dumps(valid_ids),
+                    },
+                )
+                continue
+
             selected_choice = None
             if item.get("selected_choice_id"):
                 selected_choice = QuizChoice.objects.filter(id=item["selected_choice_id"], question=question).first()
@@ -430,8 +566,18 @@ class QuizGradingListView(APIView):
                 "submitted_at": a.submitted_at,
                 "answers": [],
             }
-            answers = QuizAnswer.objects.filter(attempt=a).select_related("question", "selected_choice")
+            answers = QuizAnswer.objects.filter(attempt=a).select_related("question", "selected_choice").prefetch_related("question__choices")
             for ans in answers:
+                selected_choice_ids = []
+                selected_choice_texts = []
+                if ans.question.question_type == QuizQuestion.QuestionType.MULTI_SELECT:
+                    selected_choice_ids = _parse_multi_select_choice_ids(ans.text_answer)
+                    selected_ids_set = set(selected_choice_ids)
+                    selected_choice_texts = [
+                        choice.choice_text
+                        for choice in ans.question.choices.all()
+                        if str(choice.id) in selected_ids_set
+                    ]
                 row["answers"].append(
                     {
                         "answer_id": str(ans.id),
@@ -440,7 +586,13 @@ class QuizGradingListView(APIView):
                         "question_type": ans.question.question_type,
                         "points": float(ans.question.points),
                         "selected_choice_id": str(ans.selected_choice_id) if ans.selected_choice_id else None,
-                        "selected_choice_text": ans.selected_choice.choice_text if ans.selected_choice else None,
+                        "selected_choice_ids": selected_choice_ids,
+                        "selected_choice_texts": selected_choice_texts,
+                        "selected_choice_text": (
+                            ", ".join(selected_choice_texts)
+                            if selected_choice_texts
+                            else (ans.selected_choice.choice_text if ans.selected_choice else None)
+                        ),
                         "text_answer": ans.text_answer,
                         "is_correct": ans.is_correct,
                         "points_awarded": float(ans.points_awarded) if ans.points_awarded is not None else None,
@@ -501,39 +653,7 @@ class QuizAnswerGradeView(APIView):
         )
 
     def _send_quiz_grade_notification(self, attempt: QuizAttempt):
-        """Send push notification when quiz grading is complete."""
-        from core.push_notifications import send_push_notification_to_users
-
-        try:
-            quiz = attempt.quiz
-            student = attempt.student
-
-            # Create in-app notification
-            Notification.objects.create(
-                recipient=student,
-                type=Notification.NotificationType.GRADE_RELEASED,
-                title=f"Quiz Graded: {quiz.title}",
-                body=f"Your quiz '{quiz.title}' has been graded. Score: {attempt.score}/{attempt.max_score}",
-                course_section=quiz.course_section,
-                quiz=quiz,
-            )
-
-            # Send push notification
-            data = {
-                "type": "grade_released",
-                "quiz_id": str(quiz.id),
-                "course_section_id": str(quiz.course_section_id),
-            }
-
-            send_push_notification_to_users(
-                user_ids=[str(student.id)],
-                title=f"Quiz Graded: {quiz.title}",
-                body=f"Your quiz has been graded. Score: {attempt.score}/{attempt.max_score}",
-                data=data,
-            )
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to send quiz grade notification: {e}")
+        _send_quiz_grade_notification(attempt)
 
 
 class QuizQuestionsView(APIView):
@@ -644,6 +764,19 @@ class QuizQuickCreateView(APIView):
             except (TypeError, ValueError):
                 return default
 
+        def to_bool(value, default):
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered in {"true", "1", "yes", "on"}:
+                    return True
+                if lowered in {"false", "0", "no", "off"}:
+                    return False
+            return bool(value)
+
         score_selection_policy = request.data.get("score_selection_policy", Quiz.ScorePolicy.HIGHEST)
         if score_selection_policy not in [Quiz.ScorePolicy.HIGHEST, Quiz.ScorePolicy.LATEST]:
             score_selection_policy = Quiz.ScorePolicy.HIGHEST
@@ -658,10 +791,10 @@ class QuizQuickCreateView(APIView):
             score_selection_policy=score_selection_policy,
             open_at=request.data.get("open_at") or None,
             close_at=request.data.get("close_at") or None,
-            is_published=request.data.get("is_published", True),
-            shuffle_questions=request.data.get("shuffle_questions", False),
-            shuffle_choices=request.data.get("shuffle_choices", False),
-            show_results=request.data.get("show_results", True),
+            is_published=to_bool(request.data.get("is_published"), False),
+            shuffle_questions=to_bool(request.data.get("shuffle_questions"), False),
+            shuffle_choices=to_bool(request.data.get("shuffle_choices"), False),
+            show_results=to_bool(request.data.get("show_results"), True),
         )
         if quiz.is_published:
             _notify_students_for_course_section(
