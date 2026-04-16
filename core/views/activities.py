@@ -69,6 +69,8 @@ class ActivitySubmitView(APIView):
         ).exists()
         if not enrolled:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not activity.is_published:
+            return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
 
         # Check attempt limit
         attempt_limit = activity.attempt_limit or 1
@@ -137,11 +139,22 @@ class ActivityMySubmissionView(APIView):
     def get(self, request, pk):
         if request.user.role != User.Role.STUDENT:
             return Response({"detail": "Only students can view own submission here."}, status=status.HTTP_403_FORBIDDEN)
+        activity = Activity.objects.select_related("course_section").filter(id=pk).first()
+        if not activity:
+            return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
+        enrolled = Enrollment.objects.filter(
+            course_section=activity.course_section,
+            student=request.user,
+            is_active=True,
+        ).exists()
+        if not enrolled:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not activity.is_published:
+            return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
         # Return the latest submission
         submission = Submission.objects.filter(activity_id=pk, student=request.user).order_by("-attempt_number").first()
         # Also return all submissions for the student's reference
         all_submissions = Submission.objects.filter(activity_id=pk, student=request.user).order_by("-attempt_number")
-        activity = Activity.objects.filter(id=pk).first()
         attempt_limit = activity.attempt_limit if activity else 1
         attempts_used = all_submissions.count()
         return Response({
@@ -502,6 +515,8 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
 
         # Check user access - student must be enrolled, teacher must teach the course
         if request.user.role == User.Role.STUDENT:
+            if not activity.is_published:
+                return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
             enrolled = Enrollment.objects.filter(
                 course_section=activity.course_section,
                 student=request.user,
@@ -592,6 +607,8 @@ class ActivityCommentsByActivityView(APIView):
         teacher_id = course_section.teacher_id if course_section else None
 
         if request.user.role == User.Role.STUDENT:
+            if not activity.is_published:
+                return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
             # Check enrollment
             enrolled = Enrollment.objects.filter(
                 course_section=activity.course_section,

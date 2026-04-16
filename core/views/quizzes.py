@@ -471,8 +471,17 @@ class QuizMyLatestAttemptView(APIView):
         if request.user.role != User.Role.STUDENT:
             return Response({"detail": "Only students can view this endpoint."}, status=status.HTTP_403_FORBIDDEN)
 
-        quiz = Quiz.objects.filter(id=pk).first()
+        quiz = Quiz.objects.select_related("course_section").filter(id=pk).first()
         if not quiz:
+            return Response({"detail": "Quiz not found."}, status=status.HTTP_404_NOT_FOUND)
+        enrolled = Enrollment.objects.filter(
+            course_section=quiz.course_section,
+            student=request.user,
+            is_active=True,
+        ).exists()
+        if not enrolled:
+            return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not quiz.is_published:
             return Response({"detail": "Quiz not found."}, status=status.HTTP_404_NOT_FOUND)
 
         attempts_used = QuizAttempt.objects.filter(quiz_id=pk, student=request.user, is_submitted=True).count()
@@ -666,6 +675,14 @@ class QuizQuestionsView(APIView):
             return None
         return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
+    def _ensure_quiz_editable(self, quiz: Quiz):
+        if quiz.is_published:
+            return Response(
+                {"detail": "Questions can only be edited while the quiz is unpublished."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
     def get(self, request, pk):
         quiz = Quiz.objects.select_related("course_section").filter(id=pk).first()
         if not quiz:
@@ -683,6 +700,9 @@ class QuizQuestionsView(APIView):
         denied = self._ensure_teacher_access(request, quiz)
         if denied:
             return denied
+        quiz_locked = self._ensure_quiz_editable(quiz)
+        if quiz_locked:
+            return quiz_locked
         payload = dict(request.data)
         payload["quiz_id"] = str(quiz.id)
         serializer = QuizQuestionWriteSerializer(data=payload)
@@ -704,6 +724,14 @@ class QuizQuestionDetailView(APIView):
             return None
         return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
+    def _ensure_question_editable(self, question: QuizQuestion):
+        if question.quiz.is_published:
+            return Response(
+                {"detail": "Questions can only be edited while the quiz is unpublished."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
     def patch(self, request, pk):
         question = self._resolve_question(pk)
         if not question:
@@ -711,6 +739,9 @@ class QuizQuestionDetailView(APIView):
         denied = self._ensure_teacher_access(request, question)
         if denied:
             return denied
+        question_locked = self._ensure_question_editable(question)
+        if question_locked:
+            return question_locked
         payload = dict(request.data)
         payload["quiz_id"] = str(question.quiz_id)
         serializer = QuizQuestionWriteSerializer(question, data=payload, partial=True)
@@ -725,6 +756,9 @@ class QuizQuestionDetailView(APIView):
         denied = self._ensure_teacher_access(request, question)
         if denied:
             return denied
+        question_locked = self._ensure_question_editable(question)
+        if question_locked:
+            return question_locked
         question.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -842,6 +876,14 @@ class QuizQuestionsBulkView(APIView):
             return None
         return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
+    def _ensure_quiz_editable(self, quiz: Quiz):
+        if quiz.is_published:
+            return Response(
+                {"detail": "Questions can only be edited while the quiz is unpublished."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
     def post(self, request, pk):
         """
         Bulk upsert questions for a quiz.
@@ -856,6 +898,9 @@ class QuizQuestionsBulkView(APIView):
         denied = self._ensure_teacher_access(request, quiz)
         if denied:
             return denied
+        quiz_locked = self._ensure_quiz_editable(quiz)
+        if quiz_locked:
+            return quiz_locked
 
         questions_data = request.data.get("questions", [])
         serializer = QuizQuestionBulkSerializer(data={"questions": questions_data})

@@ -258,6 +258,10 @@ class CourseSectionContentView(APIView):
         announcements = Announcement.objects.filter(course_section=course_section).order_by("-created_at")
         quizzes = Quiz.objects.filter(course_section=course_section).order_by("-created_at")
 
+        if request.user.role == User.Role.STUDENT:
+            activities = activities.filter(is_published=True)
+            quizzes = quizzes.filter(is_published=True)
+
         activities_data = ActivitySerializer(activities, many=True).data
         quizzes_data = QuizSerializer(quizzes, many=True).data
 
