@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -118,3 +119,36 @@ class CalendarEventApiTests(TestCase):
         item_ids = {item["id"] for item in self._response_items(response)}
         self.assertIn(str(visible_event.id), item_ids)
         self.assertNotIn(str(hidden_event.id), item_ids)
+
+    def test_calendar_event_notification_is_created_once_per_day(self):
+        event = CalendarEvent.objects.create(
+            creator=self.student,
+            title="Daily Unique Alert",
+            event_type=CalendarEvent.EventType.PERSONAL,
+            start_at=timezone.now(),
+            all_day=False,
+            is_personal=True,
+        )
+
+        self.client.force_authenticate(self.student)
+        first_response = self.client.get(reverse("notifications-list"))
+        self.assertEqual(first_response.status_code, 200)
+
+        created = Notification.objects.filter(
+            recipient=self.student,
+            title__startswith=f"Today in Calendar: {event.title}",
+        )
+        self.assertEqual(created.count(), 1)
+
+        # Simulate user deleting the notification; sync should still not recreate it today.
+        created.delete()
+        cache.delete(f"sync-daily-active-events:cooldown:{self.student.id}")
+
+        second_response = self.client.get(reverse("notifications-list"))
+        self.assertEqual(second_response.status_code, 200)
+
+        recreated = Notification.objects.filter(
+            recipient=self.student,
+            title__startswith=f"Today in Calendar: {event.title}",
+        )
+        self.assertEqual(recreated.count(), 0)

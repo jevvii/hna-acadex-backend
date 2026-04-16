@@ -161,6 +161,10 @@ def _format_event_time_label(event: CalendarEvent) -> str:
     return timezone.localtime(event.start_at).strftime("%I:%M %p").lstrip("0")
 
 
+def _daily_calendar_notification_key(*, user_id, day: date_cls, kind: str, object_id: str) -> str:
+    return f"daily-calendar-notif:{user_id}:{day.isoformat()}:{kind}:{object_id}"
+
+
 def _visible_course_section_ids_for_user(user: User) -> list[str]:
     if user.role == User.Role.STUDENT:
         return list(
@@ -205,6 +209,14 @@ def _sync_daily_active_event_notifications(user: User):
     )
 
     for event in active_events:
+        event_key = _daily_calendar_notification_key(
+            user_id=str(user.id),
+            day=today,
+            kind="event",
+            object_id=str(event.id),
+        )
+        if cache.get(event_key):
+            continue
         if event.activity_id:
             notif_type = (
                 Notification.NotificationType.NEW_EXAM
@@ -214,6 +226,7 @@ def _sync_daily_active_event_notifications(user: User):
             title = f"Today: {event.title}"
             signature = (notif_type, title, str(event.activity_id), None)
             if signature in existing_signatures:
+                cache.set(event_key, "1", timeout=60 * 60 * 30)
                 continue
             Notification.objects.create(
                 recipient=user,
@@ -224,11 +237,13 @@ def _sync_daily_active_event_notifications(user: User):
                 activity=event.activity,
             )
             existing_signatures.add(signature)
+            cache.set(event_key, "1", timeout=60 * 60 * 30)
             continue
 
         title = f"Today in Calendar: {event.title} ({_format_event_time_label(event)})"
         signature = (Notification.NotificationType.SYSTEM, title, None, None)
         if signature in existing_signatures:
+            cache.set(event_key, "1", timeout=60 * 60 * 30)
             continue
         body_parts = [f"{event.get_event_type_display()} • {_format_event_time_label(event)}"]
         if event.description:
@@ -241,6 +256,7 @@ def _sync_daily_active_event_notifications(user: User):
             course_section=event.course_section,
         )
         existing_signatures.add(signature)
+        cache.set(event_key, "1", timeout=60 * 60 * 30)
 
     if user.role == User.Role.STUDENT:
         quizzes_qs = Quiz.objects.filter(
@@ -262,6 +278,14 @@ def _sync_daily_active_event_notifications(user: User):
     )
 
     for quiz in quizzes_today:
+        quiz_key = _daily_calendar_notification_key(
+            user_id=str(user.id),
+            day=today,
+            kind="quiz",
+            object_id=str(quiz.id),
+        )
+        if cache.get(quiz_key):
+            continue
         if quiz.close_at and timezone.localtime(quiz.close_at).date() == today:
             title = f"Quiz deadline today: {quiz.title}"
             body = f"Due at {timezone.localtime(quiz.close_at).strftime('%I:%M %p').lstrip('0')}"
@@ -274,6 +298,7 @@ def _sync_daily_active_event_notifications(user: User):
 
         signature = (Notification.NotificationType.NEW_QUIZ, title, None, str(quiz.id))
         if signature in existing_signatures:
+            cache.set(quiz_key, "1", timeout=60 * 60 * 30)
             continue
         Notification.objects.create(
             recipient=user,
@@ -284,6 +309,7 @@ def _sync_daily_active_event_notifications(user: User):
             quiz=quiz,
         )
         existing_signatures.add(signature)
+        cache.set(quiz_key, "1", timeout=60 * 60 * 30)
 
 
 def _sync_daily_active_notifications_best_effort(
