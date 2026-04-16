@@ -2,6 +2,7 @@
 Quiz-related views.
 """
 import json
+from zoneinfo import ZoneInfo
 
 from django.db.models import Avg, Sum
 from django.utils import timezone
@@ -35,6 +36,8 @@ from core.views.common import (
     _notify_students_for_course_section,
 )
 
+PHT_TZ = ZoneInfo("Asia/Manila")
+
 
 def _parse_multi_select_choice_ids(raw_value: str | None) -> list[str]:
     if not raw_value:
@@ -54,6 +57,25 @@ def _parse_multi_select_choice_ids(raw_value: str | None) -> list[str]:
         seen.add(choice_id)
         result.append(choice_id)
     return result
+
+
+def _to_pht(dt):
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, PHT_TZ)
+    return timezone.localtime(dt, PHT_TZ)
+
+
+def _quiz_window_error(quiz: Quiz) -> str | None:
+    now = _to_pht(timezone.now())
+    open_at = _to_pht(quiz.open_at)
+    close_at = _to_pht(quiz.close_at)
+    if open_at and now < open_at:
+        return "Quiz is not yet open."
+    if close_at and now > close_at:
+        return "Quiz is already closed."
+    return None
 
 
 def _notify_teacher_quiz_submission(attempt: QuizAttempt):
@@ -152,10 +174,14 @@ class QuizTakeView(APIView):
             elif question.question_type == QuizQuestion.QuestionType.IDENTIFICATION:
                 # Compare text answer against correct_answer and alternate_answers
                 student_answer = (ans.text_answer or "").strip()
-                correct_answers = [question.correct_answer] + (question.alternate_answers or [])
+                correct_answers = [(question.correct_answer or "").strip()] + [
+                    str(answer).strip()
+                    for answer in (question.alternate_answers or [])
+                    if str(answer).strip()
+                ]
                 if not question.case_sensitive:
                     student_answer = student_answer.lower()
-                    correct_answers = [a.lower() for a in correct_answers if a]
+                    correct_answers = [a.lower() for a in correct_answers]
                 is_correct = student_answer in correct_answers
                 points_awarded = float(question.points) if is_correct else 0.0
                 ans.is_correct = is_correct
@@ -214,25 +240,28 @@ class QuizTakeView(APIView):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         if not quiz.is_published:
             return Response({"detail": "Quiz is not available."}, status=status.HTTP_403_FORBIDDEN)
+        window_error = _quiz_window_error(quiz)
+        if window_error:
+            return Response({"detail": window_error}, status=status.HTTP_403_FORBIDDEN)
+
+        # No-resume policy: any open attempt is auto-submitted when student re-enters.
+        open_attempts = list(
+            QuizAttempt.objects.filter(quiz=quiz, student=request.user, is_submitted=False)
+            .order_by("-attempt_number")
+        )
+        for open_attempt in open_attempts:
+            self._auto_finalize_attempt(open_attempt)
 
         submitted_count = QuizAttempt.objects.filter(quiz=quiz, student=request.user, is_submitted=True).count()
         if submitted_count >= quiz.attempt_limit:
             return Response({"detail": "Attempt limit reached."}, status=status.HTTP_400_BAD_REQUEST)
 
-        open_attempt = (
-            QuizAttempt.objects.filter(quiz=quiz, student=request.user, is_submitted=False)
-            .order_by("-attempt_number")
-            .first()
+        attempt = QuizAttempt.objects.create(
+            quiz=quiz,
+            student=request.user,
+            attempt_number=submitted_count + 1,
+            is_submitted=False,
         )
-        if open_attempt:
-            attempt = open_attempt
-        else:
-            attempt = QuizAttempt.objects.create(
-                quiz=quiz,
-                student=request.user,
-                attempt_number=submitted_count + 1,
-                is_submitted=False,
-            )
 
         remaining = self._get_time_remaining(attempt)
         if remaining is not None and remaining <= 0:
@@ -281,6 +310,9 @@ class QuizSubmitAttemptView(APIView):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         if not quiz.is_published:
             return Response({"detail": "Quiz is not available."}, status=status.HTTP_403_FORBIDDEN)
+        window_error = _quiz_window_error(quiz)
+        if window_error:
+            return Response({"detail": window_error}, status=status.HTTP_403_FORBIDDEN)
 
         submitted_attempts = QuizAttempt.objects.filter(quiz=quiz, student=request.user, is_submitted=True).count()
         if submitted_attempts >= quiz.attempt_limit:
@@ -399,6 +431,9 @@ class QuizSaveProgressView(APIView):
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
         if not quiz.is_published:
             return Response({"detail": "Quiz is not available."}, status=status.HTTP_403_FORBIDDEN)
+        window_error = _quiz_window_error(quiz)
+        if window_error:
+            return Response({"detail": window_error}, status=status.HTTP_403_FORBIDDEN)
 
         attempt_id = request.data.get("attempt_id")
         attempt = QuizAttempt.objects.filter(id=attempt_id, quiz=quiz, student=request.user, is_submitted=False).first() if attempt_id else None
@@ -841,13 +876,28 @@ class QuizQuickCreateView(APIView):
 
         created_questions = []
         for idx, q in enumerate(questions):
+            question_type = q.get("question_type", QuizQuestion.QuestionType.MULTIPLE_CHOICE)
+            is_identification = question_type == QuizQuestion.QuestionType.IDENTIFICATION
+
+            alternate_answers_raw = q.get("alternate_answers") or []
+            normalized_alternate_answers = []
+            if isinstance(alternate_answers_raw, list):
+                normalized_alternate_answers = [
+                    str(answer).strip()
+                    for answer in alternate_answers_raw
+                    if str(answer).strip()
+                ]
+
             q_payload = {
                 "quiz_id": str(quiz.id),
                 "question_text": q.get("question_text"),
-                "question_type": q.get("question_type", QuizQuestion.QuestionType.MULTIPLE_CHOICE),
+                "question_type": question_type,
                 "points": q.get("points", 1),
                 "sort_order": q.get("sort_order", idx),
                 "choices": q.get("choices", []),
+                "correct_answer": (q.get("correct_answer") or "").strip() if is_identification else "",
+                "alternate_answers": normalized_alternate_answers if is_identification else [],
+                "case_sensitive": bool(q.get("case_sensitive", False)) if is_identification else False,
             }
             s = QuizQuestionWriteSerializer(data=q_payload)
             s.is_valid(raise_exception=True)

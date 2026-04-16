@@ -728,6 +728,18 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
 
         # Add student attempt information for students
         if request.user.role == User.Role.STUDENT:
+            from .quizzes import QuizTakeView
+
+            # No-resume policy: finalize any open attempt before returning quiz details.
+            take_view = QuizTakeView()
+            open_attempts = QuizAttempt.objects.filter(
+                quiz=instance,
+                student=request.user,
+                is_submitted=False
+            ).order_by("-attempt_number")
+            for open_attempt in open_attempts:
+                take_view._auto_finalize_attempt(open_attempt)
+
             # Get all submitted attempts, ordered by attempt number
             all_attempts = QuizAttempt.objects.filter(
                 quiz=instance,
@@ -738,25 +750,8 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
             # Get latest submitted attempt
             latest_attempt = all_attempts.last() if all_attempts else None
 
-            # Get in-progress attempt
-            in_progress = (
-                QuizAttempt.objects.filter(
-                    quiz=instance,
-                    student=request.user,
-                    is_submitted=False
-                )
-                .order_by("-attempt_number")
-                .first()
-            )
-
             attempts_used = all_attempts.count()
             attempt_limit = instance.attempt_limit
-
-            # Calculate time remaining for in-progress attempt
-            time_remaining = None
-            if in_progress and instance.time_limit_minutes:
-                elapsed = (timezone.now() - in_progress.started_at).total_seconds()
-                time_remaining = max(int((instance.time_limit_minutes * 60) - elapsed), 0)
 
             if latest_attempt:
                 data["my_attempt"] = {
@@ -783,15 +778,7 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
                     "attempt_limit": attempt_limit,
                 }
 
-            data["my_in_progress_attempt"] = (
-                {
-                    "attempt_id": str(in_progress.id),
-                    "attempt_number": in_progress.attempt_number,
-                    "time_remaining_seconds": time_remaining,
-                }
-                if in_progress
-                else None
-            )
+            data["my_in_progress_attempt"] = None
 
             # Build attempts array for history display
             attempts_payload = []
@@ -804,17 +791,6 @@ class QuizViewSet(TeacherCourseSectionScopedModelViewSet):
                     "pending_manual_grading": a.pending_manual_grading,
                     "is_submitted": a.is_submitted,
                     "submitted_at": a.submitted_at,
-                })
-            # Add in-progress attempt to the list if exists
-            if in_progress:
-                attempts_payload.append({
-                    "id": str(in_progress.id),
-                    "attempt_number": in_progress.attempt_number,
-                    "score": None,
-                    "max_score": None,
-                    "pending_manual_grading": False,
-                    "is_submitted": False,
-                    "submitted_at": None,
                 })
             data["attempts"] = attempts_payload
 

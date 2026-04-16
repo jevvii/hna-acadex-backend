@@ -236,8 +236,6 @@ class CourseSectionContentView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, pk):
-        from django.utils import timezone
-
         course_section = CourseSection.objects.filter(id=pk).first()
         if not course_section:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -334,12 +332,21 @@ class CourseSectionContentView(APIView):
                     "average_score": (sum(scores) / len(scores)) if scores else None,
                 }
 
+            # No-resume policy: finalize any open attempts before building quiz cards.
+            # Students cannot continue an in-progress quiz after leaving.
+            from .quizzes import QuizTakeView
+
+            take_view = QuizTakeView()
+            open_attempts = QuizAttempt.objects.filter(
+                quiz__in=quizzes,
+                student=request.user,
+                is_submitted=False,
+            ).order_by("-attempt_number")
+            for open_attempt in open_attempts:
+                take_view._auto_finalize_attempt(open_attempt)
+
             quiz_attempts = (
                 QuizAttempt.objects.filter(quiz__in=quizzes, student=request.user, is_submitted=True)
-                .order_by("quiz_id", "-attempt_number")
-            )
-            in_progress_attempts = (
-                QuizAttempt.objects.filter(quiz__in=quizzes, student=request.user, is_submitted=False)
                 .order_by("quiz_id", "-attempt_number")
             )
             latest_by_quiz = {}
@@ -347,21 +354,11 @@ class CourseSectionContentView(APIView):
                 key = str(attempt.quiz_id)
                 if key not in latest_by_quiz:
                     latest_by_quiz[key] = attempt
-            in_progress_by_quiz = {}
-            for attempt in in_progress_attempts:
-                key = str(attempt.quiz_id)
-                if key not in in_progress_by_quiz:
-                    in_progress_by_quiz[key] = attempt
             for item in quizzes_data:
                 quiz_obj = next((q for q in quizzes if str(q.id) == item["id"]), None)
                 attempt = latest_by_quiz.get(item["id"])
-                in_progress = in_progress_by_quiz.get(item["id"])
                 attempts_used = QuizAttempt.objects.filter(quiz_id=item["id"], student=request.user, is_submitted=True).count()
                 attempt_limit = quiz_obj.attempt_limit if quiz_obj else 1
-                time_remaining = None
-                if in_progress and quiz_obj and quiz_obj.time_limit_minutes:
-                    elapsed = (timezone.now() - in_progress.started_at).total_seconds()
-                    time_remaining = max(int((quiz_obj.time_limit_minutes * 60) - elapsed), 0)
                 if attempt:
                     item["my_attempt"] = {
                         "id": str(attempt.id),
@@ -386,15 +383,7 @@ class CourseSectionContentView(APIView):
                         "attempts_remaining": max(attempt_limit - attempts_used, 0),
                         "attempt_limit": attempt_limit,
                     }
-                item["my_in_progress_attempt"] = (
-                    {
-                        "attempt_id": str(in_progress.id),
-                        "attempt_number": in_progress.attempt_number,
-                        "time_remaining_seconds": time_remaining,
-                    }
-                    if in_progress
-                    else None
-                )
+                item["my_in_progress_attempt"] = None
 
         return Response(
             {
