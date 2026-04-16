@@ -11,6 +11,7 @@ from django.core.cache import cache
 from rest_framework import permissions, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
+from datetime import date as date_cls
 import shutil
 import subprocess
 import os
@@ -50,6 +51,8 @@ from core.views.common import (
     _sync_course_section_students_activity_items,
     _sync_student_activity_items,
     _sync_student_items_best_effort,
+    _sync_daily_active_notifications_best_effort,
+    _ensure_philippine_holidays_for_years,
     _convert_office_upload_to_pdf_preview,
     _notify_students_for_course_section,
     OFFICE_CONVERTIBLE_EXTENSIONS,
@@ -103,6 +106,20 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        start = self.request.query_params.get("start")
+        end = self.request.query_params.get("end")
+        years = {timezone.localdate().year}
+        for raw in (start, end):
+            if not raw:
+                continue
+            try:
+                years.add(date_cls.fromisoformat(raw).year)
+            except ValueError:
+                continue
+        _ensure_philippine_holidays_for_years(years)
+
+        if user.role in {User.Role.STUDENT, User.Role.TEACHER}:
+            _sync_daily_active_notifications_best_effort(user)
         if user.role == User.Role.STUDENT:
             _sync_student_items_best_effort(user)
 
@@ -124,8 +141,6 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
                 shared_scope |= Q(is_personal=False, course_section_id__in=teaching_section_ids)
             qs = CalendarEvent.objects.filter(Q(creator=user) | shared_scope).distinct()
 
-        start = self.request.query_params.get("start")
-        end = self.request.query_params.get("end")
         if start:
             qs = qs.filter(start_at__date__gte=start)
         if end:

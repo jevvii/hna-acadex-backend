@@ -5,9 +5,10 @@ from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.models import Notification
+from core.models import Notification, User
 from core.serializers import NotificationSerializer
 from core.pagination import NotificationPagination
+from core.views.common import _sync_daily_active_notifications_best_effort
 
 
 class NotificationViewSet(
@@ -20,6 +21,8 @@ class NotificationViewSet(
     pagination_class = NotificationPagination
 
     def get_queryset(self):
+        if self.request.user.role in {User.Role.STUDENT, User.Role.TEACHER}:
+            _sync_daily_active_notifications_best_effort(self.request.user)
         return Notification.objects.filter(recipient=self.request.user).order_by("-created_at")
 
     @action(detail=True, methods=["post"])

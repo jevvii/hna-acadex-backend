@@ -12,12 +12,14 @@ from django.core.exceptions import ValidationError
 from django.core.files.base import File
 from django.core.files.storage import default_storage
 from django.db.models import Avg, Count, Q, Sum
+from django.db.utils import OperationalError
 from django.utils import timezone
-from datetime import timedelta
+from datetime import date as date_cls, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from core.models import (
     Activity,
+    CalendarEvent,
     Enrollment,
     MeetingSession,
     Notification,
@@ -26,6 +28,7 @@ from core.models import (
     QuizQuestion,
     Submission,
     CourseSection,
+    User,
 )
 from core.push_notifications import send_push_notification_to_users
 
@@ -57,6 +60,250 @@ LETTER_SCALE = [
     (Decimal("60"), "D"),
     (Decimal("0"), "F"),
 ]
+
+CALENDAR_EVENT_TYPE_COLORS = {
+    CalendarEvent.EventType.DEADLINE: "#F59E0B",
+    CalendarEvent.EventType.EXAM: "#EF4444",
+    CalendarEvent.EventType.PERSONAL: "#3B82F6",
+    CalendarEvent.EventType.HOLIDAY: "#10B981",
+    CalendarEvent.EventType.SCHOOL_EVENT: "#8B5CF6",
+}
+
+
+def _calendar_event_default_color(event_type: str) -> str:
+    return CALENDAR_EVENT_TYPE_COLORS.get(event_type, "#94A3B8")
+
+
+def _compute_easter_sunday(year: int) -> date_cls:
+    # Anonymous Gregorian algorithm
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date_cls(year, month, day)
+
+
+def _last_weekday_of_month(*, year: int, month: int, weekday: int) -> date_cls:
+    # weekday: Monday=0 ... Sunday=6
+    if month == 12:
+        cursor = date_cls(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        cursor = date_cls(year, month + 1, 1) - timedelta(days=1)
+    while cursor.weekday() != weekday:
+        cursor -= timedelta(days=1)
+    return cursor
+
+
+def _philippine_holidays_for_year(year: int) -> dict[date_cls, str]:
+    easter = _compute_easter_sunday(year)
+    holidays: dict[date_cls, str] = {
+        date_cls(year, 1, 1): "New Year's Day",
+        date_cls(year, 4, 9): "Araw ng Kagitingan",
+        date_cls(year, 5, 1): "Labor Day",
+        date_cls(year, 6, 12): "Independence Day",
+        _last_weekday_of_month(year=year, month=8, weekday=0): "National Heroes Day",
+        date_cls(year, 8, 21): "Ninoy Aquino Day",
+        date_cls(year, 11, 1): "All Saints' Day",
+        date_cls(year, 11, 30): "Bonifacio Day",
+        date_cls(year, 12, 8): "Feast of the Immaculate Conception",
+        date_cls(year, 12, 25): "Christmas Day",
+        date_cls(year, 12, 30): "Rizal Day",
+        date_cls(year, 12, 31): "New Year's Eve",
+        easter - timedelta(days=3): "Maundy Thursday",
+        easter - timedelta(days=2): "Good Friday",
+        easter - timedelta(days=1): "Black Saturday",
+    }
+    return holidays
+
+
+def _ensure_philippine_holidays_for_years(years: set[int]):
+    tz = timezone.get_current_timezone()
+    for year in years:
+        for holiday_date, title in _philippine_holidays_for_year(year).items():
+            exists = CalendarEvent.objects.filter(
+                event_type=CalendarEvent.EventType.HOLIDAY,
+                title=title,
+                start_at__date=holiday_date,
+                course_section__isnull=True,
+                activity__isnull=True,
+                is_personal=False,
+            ).exists()
+            if exists:
+                continue
+            CalendarEvent.objects.create(
+                creator=None,
+                course_section=None,
+                activity=None,
+                title=title,
+                description="Philippine holiday",
+                event_type=CalendarEvent.EventType.HOLIDAY,
+                start_at=timezone.make_aware(datetime.combine(holiday_date, time(hour=12)), tz),
+                end_at=None,
+                all_day=True,
+                color=_calendar_event_default_color(CalendarEvent.EventType.HOLIDAY),
+                is_personal=False,
+            )
+
+
+def _format_event_time_label(event: CalendarEvent) -> str:
+    if event.all_day:
+        return "All day"
+    return timezone.localtime(event.start_at).strftime("%I:%M %p").lstrip("0")
+
+
+def _visible_course_section_ids_for_user(user: User) -> list[str]:
+    if user.role == User.Role.STUDENT:
+        return list(
+            Enrollment.objects.filter(student=user, is_active=True).values_list(
+                "course_section_id", flat=True
+            )
+        )
+    if user.role == User.Role.TEACHER:
+        return list(
+            CourseSection.objects.filter(teacher=user, is_active=True).values_list(
+                "id", flat=True
+            )
+        )
+    return []
+
+
+def _sync_daily_active_event_notifications(user: User):
+    if user.role not in {User.Role.STUDENT, User.Role.TEACHER}:
+        return
+
+    today = timezone.localdate()
+    section_ids = _visible_course_section_ids_for_user(user)
+    shared_scope = Q(is_personal=False, course_section__isnull=True)
+    if section_ids:
+        shared_scope |= Q(is_personal=False, course_section_id__in=section_ids)
+
+    visible_events = (
+        CalendarEvent.objects.filter(Q(creator=user) | shared_scope)
+        .select_related("course_section", "activity")
+        .distinct()
+    )
+    active_events = visible_events.filter(
+        Q(start_at__date=today)
+        | Q(end_at__date=today)
+        | Q(start_at__date__lt=today, end_at__date__gt=today)
+    )
+
+    existing_signatures = set(
+        Notification.objects.filter(recipient=user, created_at__date=today).values_list(
+            "type", "title", "activity_id", "quiz_id"
+        )
+    )
+
+    for event in active_events:
+        if event.activity_id:
+            notif_type = (
+                Notification.NotificationType.NEW_EXAM
+                if event.activity and event.activity.is_exam
+                else Notification.NotificationType.NEW_ACTIVITY
+            )
+            title = f"Today: {event.title}"
+            signature = (notif_type, title, str(event.activity_id), None)
+            if signature in existing_signatures:
+                continue
+            Notification.objects.create(
+                recipient=user,
+                type=notif_type,
+                title=title,
+                body=f"{event.get_event_type_display()} • {_format_event_time_label(event)}",
+                course_section=event.course_section,
+                activity=event.activity,
+            )
+            existing_signatures.add(signature)
+            continue
+
+        title = f"Today in Calendar: {event.title} ({_format_event_time_label(event)})"
+        signature = (Notification.NotificationType.SYSTEM, title, None, None)
+        if signature in existing_signatures:
+            continue
+        body_parts = [f"{event.get_event_type_display()} • {_format_event_time_label(event)}"]
+        if event.description:
+            body_parts.append(event.description)
+        Notification.objects.create(
+            recipient=user,
+            type=Notification.NotificationType.SYSTEM,
+            title=title,
+            body="\n\n".join(body_parts),
+            course_section=event.course_section,
+        )
+        existing_signatures.add(signature)
+
+    if user.role == User.Role.STUDENT:
+        quizzes_qs = Quiz.objects.filter(
+            is_published=True,
+            course_section__enrollments__student=user,
+            course_section__enrollments__is_active=True,
+        )
+    else:
+        quizzes_qs = Quiz.objects.filter(
+            is_published=True,
+            course_section__teacher=user,
+            course_section__is_active=True,
+        )
+
+    quizzes_today = (
+        quizzes_qs.filter(Q(open_at__date=today) | Q(close_at__date=today))
+        .select_related("course_section")
+        .distinct()
+    )
+
+    for quiz in quizzes_today:
+        if quiz.close_at and timezone.localtime(quiz.close_at).date() == today:
+            title = f"Quiz deadline today: {quiz.title}"
+            body = f"Due at {timezone.localtime(quiz.close_at).strftime('%I:%M %p').lstrip('0')}"
+        else:
+            title = f"Quiz active today: {quiz.title}"
+            if quiz.open_at:
+                body = f"Available since {timezone.localtime(quiz.open_at).strftime('%I:%M %p').lstrip('0')}"
+            else:
+                body = "Available today"
+
+        signature = (Notification.NotificationType.NEW_QUIZ, title, None, str(quiz.id))
+        if signature in existing_signatures:
+            continue
+        Notification.objects.create(
+            recipient=user,
+            type=Notification.NotificationType.NEW_QUIZ,
+            title=title,
+            body=body,
+            course_section=quiz.course_section,
+            quiz=quiz,
+        )
+        existing_signatures.add(signature)
+
+
+def _sync_daily_active_notifications_best_effort(
+    user: User, *, min_interval_seconds: int = 300
+):
+    if user.role not in {User.Role.STUDENT, User.Role.TEACHER}:
+        return
+    cooldown_key = f"sync-daily-active-events:cooldown:{user.id}"
+    lock_key = f"sync-daily-active-events:lock:{user.id}"
+    if cache.get(cooldown_key):
+        return
+    if not cache.add(lock_key, "1", timeout=10):
+        return
+    try:
+        _sync_daily_active_event_notifications(user)
+        cache.set(cooldown_key, "1", timeout=max(30, int(min_interval_seconds)))
+    except OperationalError:
+        logger.warning("daily_event_sync_skipped_db_locked user_id=%s", user.id)
+    finally:
+        cache.delete(lock_key)
 
 
 def validate_file_upload(file, allowed_types=None):
@@ -1048,7 +1295,7 @@ def _sync_student_activity_items(student):
                 "end_at": activity.deadline or None,
                 "all_day": activity.deadline is None,
                 "is_personal": False,
-                "color": None,
+                "color": _calendar_event_default_color(CalendarEvent.EventType.DEADLINE),
             },
         )
 
