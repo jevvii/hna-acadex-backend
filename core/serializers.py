@@ -543,6 +543,21 @@ class QuizQuestionWriteSerializer(serializers.ModelSerializer):
             "correct_answer", "alternate_answers", "case_sensitive", "word_limit"
         )
 
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        question_type = attrs.get("question_type") or (instance.question_type if instance else None)
+
+        if question_type == QuizQuestion.QuestionType.IDENTIFICATION:
+            correct_answer = attrs.get("correct_answer")
+            if correct_answer is None and instance is not None:
+                correct_answer = instance.correct_answer
+            if not str(correct_answer or "").strip():
+                raise serializers.ValidationError(
+                    {"correct_answer": "Correct answer is required for identification questions."}
+                )
+
+        return attrs
+
     def create(self, validated_data):
         choices_data = validated_data.pop("choices", [])
         question = QuizQuestion.objects.create(**validated_data)
