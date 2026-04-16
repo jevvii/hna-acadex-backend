@@ -990,6 +990,7 @@ def _sync_student_activity_items(student):
     activities = list(
         Activity.objects.filter(
             is_published=True,
+            is_exam=False,
             course_section__enrollments__student=student,
             course_section__enrollments__is_active=True,
         )

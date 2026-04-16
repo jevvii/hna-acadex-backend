@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 from .models import (
     Activity,
@@ -126,12 +127,69 @@ class TodoItemSerializer(serializers.ModelSerializer):
     activity_id = serializers.UUIDField(read_only=True)
     quiz_id = serializers.UUIDField(read_only=True)
     course_section_id = serializers.SerializerMethodField()
+    source_type = serializers.SerializerMethodField()
+    is_generated = serializers.SerializerMethodField()
+    is_locked = serializers.SerializerMethodField()
+    is_available = serializers.SerializerMethodField()
+    target_path = serializers.SerializerMethodField()
 
     def get_course_section_id(self, obj: TodoItem):
         if obj.activity_id:
             return str(obj.activity.course_section_id) if obj.activity else None
         if obj.quiz_id:
             return str(obj.quiz.course_section_id) if obj.quiz else None
+        return None
+
+    def get_source_type(self, obj: TodoItem):
+        if obj.activity_id:
+            return "activity"
+        if obj.quiz_id:
+            return "quiz"
+        return "manual"
+
+    def get_is_generated(self, obj: TodoItem):
+        return bool(obj.activity_id or obj.quiz_id)
+
+    def _availability_state(self, obj: TodoItem) -> tuple[bool, bool]:
+        if obj.is_done:
+            return False, True
+
+        if obj.activity_id:
+            if not obj.activity:
+                return True, False
+            if (
+                obj.activity.deadline
+                and timezone.now() > obj.activity.deadline
+                and not obj.activity.allow_late_submissions
+            ):
+                return True, False
+            return False, True
+
+        if obj.quiz_id:
+            if not obj.quiz:
+                return True, False
+            now = timezone.now()
+            if obj.quiz.open_at and now < obj.quiz.open_at:
+                return True, False
+            if obj.quiz.close_at and now > obj.quiz.close_at:
+                return True, False
+            return False, True
+
+        return False, True
+
+    def get_is_locked(self, obj: TodoItem):
+        locked, _available = self._availability_state(obj)
+        return locked
+
+    def get_is_available(self, obj: TodoItem):
+        _locked, available = self._availability_state(obj)
+        return available
+
+    def get_target_path(self, obj: TodoItem):
+        if obj.activity_id:
+            return f"/activities/{obj.activity_id}"
+        if obj.quiz_id:
+            return f"/quizzes/{obj.quiz_id}"
         return None
 
     class Meta:
@@ -146,6 +204,11 @@ class TodoItemSerializer(serializers.ModelSerializer):
             "activity_id",
             "quiz_id",
             "course_section_id",
+            "source_type",
+            "is_generated",
+            "is_locked",
+            "is_available",
+            "target_path",
             "completed_at",
             "created_at",
         )

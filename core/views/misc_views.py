@@ -68,12 +68,33 @@ class TodoItemViewSet(viewsets.ModelViewSet):
             _sync_student_items_best_effort(self.request.user)
         return (
             TodoItem.objects.filter(user=self.request.user)
+            .exclude(activity__is_exam=True)
             .select_related("activity__course_section", "quiz__course_section")
             .order_by("-created_at")
         )
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        instance: TodoItem = serializer.instance
+        if instance.activity_id or instance.quiz_id:
+            raise permissions.PermissionDenied(
+                "Generated to-do items are managed automatically."
+            )
+        if "is_done" in serializer.validated_data:
+            is_done = serializer.validated_data.get("is_done")
+            serializer.save(completed_at=timezone.now() if is_done else None)
+            return
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        instance: TodoItem = self.get_object()
+        if instance.activity_id or instance.quiz_id:
+            raise permissions.PermissionDenied(
+                "Generated to-do items cannot be deleted."
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class CalendarEventViewSet(viewsets.ModelViewSet):
