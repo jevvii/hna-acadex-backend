@@ -382,6 +382,55 @@ class ActivitySerializer(serializers.ModelSerializer):
             is_active=True
         ).count()
 
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        course_section_id = attrs.get("course_section_id") or (str(instance.course_section_id) if instance else None)
+        weekly_module_id = attrs.get("weekly_module_id")
+        if weekly_module_id is None and instance is not None:
+            weekly_module_id = str(instance.weekly_module_id) if instance.weekly_module_id else None
+
+        if not weekly_module_id:
+            raise serializers.ValidationError({"weekly_module_id": "Week topic is required."})
+
+        if course_section_id and not WeeklyModule.objects.filter(
+            id=weekly_module_id,
+            course_section_id=course_section_id,
+        ).exists():
+            raise serializers.ValidationError(
+                {"weekly_module_id": "Selected week/topic does not belong to this course section."}
+            )
+
+        assignment_group_id = attrs.get("assignment_group_id")
+        if assignment_group_id is None and instance is not None:
+            assignment_group_id = str(instance.assignment_group_id) if instance.assignment_group_id else None
+        if assignment_group_id and course_section_id and not AssignmentGroup.objects.filter(
+            id=assignment_group_id,
+            course_section_id=course_section_id,
+        ).exists():
+            raise serializers.ValidationError(
+                {"assignment_group_id": "Selected assignment group does not belong to this course section."}
+            )
+
+        is_exam = attrs.get("is_exam")
+        if is_exam is None and instance is not None:
+            is_exam = bool(instance.is_exam)
+        exam_type = attrs.get("exam_type")
+        if exam_type is None and instance is not None:
+            exam_type = instance.exam_type
+        component_type = attrs.get("component_type")
+        if component_type is None and instance is not None:
+            component_type = instance.component_type
+
+        if is_exam:
+            if exam_type not in [Activity.ExamType.MONTHLY, Activity.ExamType.QUARTERLY]:
+                raise serializers.ValidationError({"exam_type": "Exam type is required for exam activities."})
+        elif component_type not in [Activity.ComponentType.WRITTEN_WORKS, Activity.ComponentType.PERFORMANCE_TASK]:
+            raise serializers.ValidationError(
+                {"component_type": "Component type must be Written Works or Performance Task for non-exam activities."}
+            )
+
+        return attrs
+
 
 class AssignmentGroupSerializer(serializers.ModelSerializer):
     course_section_id = serializers.UUIDField()
@@ -481,6 +530,26 @@ class QuizSerializer(serializers.ModelSerializer):
             course_section=obj.course_section,
             is_active=True
         ).count()
+
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+        course_section_id = attrs.get("course_section_id") or (str(instance.course_section_id) if instance else None)
+        weekly_module_id = attrs.get("weekly_module_id")
+        if weekly_module_id is None and instance is not None:
+            weekly_module_id = str(instance.weekly_module_id) if instance.weekly_module_id else None
+
+        if not weekly_module_id:
+            raise serializers.ValidationError({"weekly_module_id": "Week topic is required."})
+
+        if course_section_id and not WeeklyModule.objects.filter(
+            id=weekly_module_id,
+            course_section_id=course_section_id,
+        ).exists():
+            raise serializers.ValidationError(
+                {"weekly_module_id": "Selected week/topic does not belong to this course section."}
+            )
+
+        return attrs
 
 
 class SubmissionSerializer(serializers.ModelSerializer):
