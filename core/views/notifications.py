@@ -9,6 +9,7 @@ from core.models import Notification, User
 from core.serializers import NotificationSerializer
 from core.pagination import NotificationPagination
 from core.views.common import _sync_daily_active_notifications_best_effort
+from core.tasks import process_reminders_for_user
 
 
 class NotificationViewSet(
@@ -23,6 +24,7 @@ class NotificationViewSet(
     def get_queryset(self):
         if self.request.user.role in {User.Role.STUDENT, User.Role.TEACHER}:
             _sync_daily_active_notifications_best_effort(self.request.user)
+            process_reminders_for_user(self.request.user)
         return Notification.objects.filter(recipient=self.request.user).order_by("-created_at")
 
     @action(detail=True, methods=["post"])

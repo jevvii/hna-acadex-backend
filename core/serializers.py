@@ -654,6 +654,7 @@ class ActivityReminderSerializer(serializers.ModelSerializer):
         reminder_type = data.get('reminder_type')
         activity = data.get('activity')
         quiz = data.get('quiz')
+        reminder_datetime = data.get('reminder_datetime')
 
         if reminder_type == 'activity' and not activity:
             raise serializers.ValidationError(
@@ -662,6 +663,31 @@ class ActivityReminderSerializer(serializers.ModelSerializer):
         if reminder_type == 'quiz' and not quiz:
             raise serializers.ValidationError(
                 {"quiz_id": "Quiz reminder must have a quiz_id."}
+            )
+
+        deadline = None
+        if reminder_type == 'activity' and activity:
+            deadline = activity.deadline
+        if reminder_type == 'quiz' and quiz:
+            deadline = quiz.close_at
+
+        if not deadline:
+            raise serializers.ValidationError(
+                {"reminder_datetime": "A reminder requires a valid deadline."}
+            )
+
+        now = timezone.now()
+        if deadline <= now:
+            raise serializers.ValidationError(
+                {"reminder_datetime": "The deadline has already passed. Reminders are no longer available."}
+            )
+        if reminder_datetime and reminder_datetime < now:
+            raise serializers.ValidationError(
+                {"reminder_datetime": "Reminder time must be now or later."}
+            )
+        if reminder_datetime and reminder_datetime > deadline:
+            raise serializers.ValidationError(
+                {"reminder_datetime": "Reminder time must not be later than the deadline."}
             )
         return data
 

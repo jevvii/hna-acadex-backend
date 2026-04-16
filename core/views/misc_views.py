@@ -235,10 +235,18 @@ class ActivityReminderViewSet(viewsets.ModelViewSet):
     """Viewset for managing activity/quiz reminders."""
     serializer_class = ActivityReminderSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         from core.models import ActivityReminder
-        qs = ActivityReminder.objects.filter(user=self.request.user).select_related('activity', 'quiz')
+        from core.tasks import process_reminders_for_user
+
+        process_reminders_for_user(self.request.user)
+        qs = (
+            ActivityReminder.objects
+            .filter(user=self.request.user, reminder_datetime__gte=timezone.now())
+            .select_related('activity', 'quiz')
+        )
 
         # Filter by activity_id or quiz_id if provided
         activity_id = self.request.query_params.get('activity_id')
@@ -281,7 +289,14 @@ class ActivityReminderViewSet(viewsets.ModelViewSet):
             if not enrolled and self.request.user.role != User.Role.ADMIN:
                 raise permissions.PermissionDenied("You are not enrolled in this quiz's course section.")
 
-        serializer.save(user=self.request.user)
+        reminder_datetime = serializer.validated_data.get('reminder_datetime')
+        target_deadline = activity.deadline if reminder_type == 'activity' and activity else quiz.close_at if quiz else None
+        offset_minutes = 0
+        if reminder_datetime and target_deadline:
+            delta_seconds = (target_deadline - reminder_datetime).total_seconds()
+            offset_minutes = max(0, int(delta_seconds // 60))
+
+        serializer.save(user=self.request.user, offset_minutes=offset_minutes)
 
 
 class TeacherCourseSectionScopedModelViewSet(viewsets.ModelViewSet):

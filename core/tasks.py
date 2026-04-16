@@ -8,10 +8,111 @@ background operations.
 
 import logging
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
+
+
+def _process_pending_reminders(pending_reminders) -> tuple[int, int]:
+    """Process a queryset/list of due reminders and return (processed_count, error_count)."""
+    from .models import Notification
+    from .push_notifications import PushNotificationService
+
+    if not pending_reminders.exists():
+        logger.debug("No pending reminders to process")
+        return (0, 0)
+
+    processed_count = 0
+    error_count = 0
+
+    for reminder in pending_reminders:
+        try:
+            user = reminder.user
+
+            # Get activity/quiz details
+            activity_id = None
+            quiz_id = None
+            course_section_id = None
+            title = None
+            body = None
+
+            notification_type = Notification.NotificationType.SYSTEM
+            notification_kwargs = {}
+
+            if reminder.reminder_type == "activity" and reminder.activity:
+                activity_id = str(reminder.activity.id)
+                course_section_id = str(reminder.activity.course_section_id)
+                notification_type = Notification.NotificationType.NEW_ACTIVITY
+                notification_kwargs = {
+                    "course_section": reminder.activity.course_section,
+                    "activity": reminder.activity,
+                }
+                title = f"Assignment Reminder: {reminder.activity.title}"
+                body = f"Don't forget to complete '{reminder.activity.title}'!"
+            elif reminder.reminder_type == "quiz" and reminder.quiz:
+                quiz_id = str(reminder.quiz.id)
+                course_section_id = str(reminder.quiz.course_section_id)
+                notification_type = Notification.NotificationType.NEW_QUIZ
+                notification_kwargs = {
+                    "course_section": reminder.quiz.course_section,
+                    "quiz": reminder.quiz,
+                }
+                title = f"Quiz Reminder: {reminder.quiz.title}"
+                body = f"Don't forget to take '{reminder.quiz.title}'!"
+
+            with transaction.atomic():
+                Notification.objects.create(
+                    recipient=user,
+                    type=notification_type,
+                    title=title or "Reminder",
+                    body=body or "",
+                    **notification_kwargs,
+                )
+                reminder.notification_sent = True
+                reminder.save(update_fields=["notification_sent"])
+
+            # Send push notification (best effort; in-app notification was already created)
+            success = PushNotificationService.send_reminder_notification(
+                user=user,
+                reminder_type=reminder.reminder_type,
+                activity_id=activity_id,
+                quiz_id=quiz_id,
+                course_section_id=course_section_id,
+                title=title,
+                body=body,
+            )
+
+            processed_count += 1
+            if success:
+                logger.info(f"Processed reminder {reminder.id} for user {user.id}")
+            else:
+                logger.warning(f"No active push tokens for reminder {reminder.id}")
+
+        except Exception as e:
+            logger.error(f"Error processing reminder {reminder.id}: {e}")
+            error_count += 1
+
+    logger.info(f"Processed {processed_count} reminders, {error_count} errors")
+    return (processed_count, error_count)
+
+
+def process_reminders_for_user(user):
+    """
+    Process due reminders for one user synchronously.
+    Useful as a fallback path when periodic Celery execution is unavailable.
+    """
+    from .models import ActivityReminder
+
+    now = timezone.now()
+    pending_reminders = ActivityReminder.objects.filter(
+        user=user,
+        reminder_datetime__lte=now,
+        notification_sent=False,
+    ).select_related("user", "activity", "quiz")
+
+    return _process_pending_reminders(pending_reminders)
 
 
 @shared_task(name="core.tasks.process_reminders")
@@ -28,8 +129,7 @@ def process_reminders():
     - Send push notification to user's devices
     - Mark as sent
     """
-    from .models import ActivityReminder, PushToken
-    from .push_notifications import PushNotificationService
+    from .models import ActivityReminder
 
     now = timezone.now()
 
@@ -39,62 +139,7 @@ def process_reminders():
         notification_sent=False,
     ).select_related('user', 'activity', 'quiz')
 
-    if not pending_reminders.exists():
-        logger.debug("No pending reminders to process")
-        return
-
-    processed_count = 0
-    error_count = 0
-
-    for reminder in pending_reminders:
-        try:
-            user = reminder.user
-
-            # Get activity/quiz details
-            activity_id = None
-            quiz_id = None
-            course_section_id = None
-            title = None
-            body = None
-
-            if reminder.reminder_type == "activity" and reminder.activity:
-                activity_id = str(reminder.activity.id)
-                course_section_id = str(reminder.activity.course_section_id)
-                title = f"Assignment Reminder: {reminder.activity.title}"
-                body = f"Don't forget to complete '{reminder.activity.title}'!"
-            elif reminder.reminder_type == "quiz" and reminder.quiz:
-                quiz_id = str(reminder.quiz.id)
-                course_section_id = str(reminder.quiz.course_section_id)
-                title = f"Quiz Reminder: {reminder.quiz.title}"
-                body = f"Don't forget to take '{reminder.quiz.title}'!"
-
-            # Send notification
-            success = PushNotificationService.send_reminder_notification(
-                user=user,
-                reminder_type=reminder.reminder_type,
-                activity_id=activity_id,
-                quiz_id=quiz_id,
-                course_section_id=course_section_id,
-                title=title,
-                body=body,
-            )
-
-            if success:
-                reminder.notification_sent = True
-                reminder.save(update_fields=['notification_sent'])
-                processed_count += 1
-                logger.info(f"Processed reminder {reminder.id} for user {user.id}")
-            else:
-                # Mark as sent anyway to prevent retries
-                reminder.notification_sent = True
-                reminder.save(update_fields=['notification_sent'])
-                logger.warning(f"No active push tokens for reminder {reminder.id}")
-
-        except Exception as e:
-            logger.error(f"Error processing reminder {reminder.id}: {e}")
-            error_count += 1
-
-    logger.info(f"Processed {processed_count} reminders, {error_count} errors")
+    _process_pending_reminders(pending_reminders)
 
 
 @shared_task(name="core.tasks.cleanup_inactive_push_tokens")
