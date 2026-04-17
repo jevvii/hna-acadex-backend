@@ -775,8 +775,6 @@ class ActivityCommentsByActivityView(APIView):
                         student_id=student_id,
                     ).values_list("id", flat=True)
                 )
-                if not student_submission_ids:
-                    return Response([])
                 comments = self._query_thread(
                     activity=activity,
                     submission_ids=student_submission_ids,
