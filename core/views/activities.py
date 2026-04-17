@@ -1,9 +1,11 @@
 """
 Activity and submission views.
 """
+import json
 from decimal import Decimal, InvalidOperation
 
 from django.core.files.storage import default_storage
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from rest_framework import permissions, status, viewsets
@@ -19,6 +21,7 @@ from core.models import (
     Submission,
     User,
 )
+from core.comment_crypto import encrypt_comment_content
 from core.permissions import IsAdminRole
 from core.serializers import (
     ActivityCommentSerializer,
@@ -481,14 +484,32 @@ class ActivityStudentGradeView(APIView):
 class ActivityCommentViewSet(viewsets.ModelViewSet):
     """ViewSet for activity comments - allows students and teachers to comment on activities."""
 
-    queryset = ActivityComment.objects.all().select_related('author', 'activity').prefetch_related('replies')
+    queryset = ActivityComment.objects.all().select_related(
+        "author",
+        "activity",
+        "activity__course_section",
+        "submission",
+        "submission__student",
+    ).prefetch_related("replies__author")
     serializer_class = ActivityCommentSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
-        """Filter comments by activity_id, optionally filter by submission_id."""
+        """Role-scoped access with optional activity/submission filters."""
         qs = super().get_queryset()
+        user = self.request.user
+
+        if user.role == User.Role.STUDENT:
+            qs = qs.filter(
+                Q(author=user) | Q(submission__student=user),
+                activity__course_section__enrollments__student=user,
+                activity__course_section__enrollments__is_active=True,
+            ).distinct()
+        elif user.role == User.Role.TEACHER:
+            qs = qs.filter(activity__course_section__teacher=user)
+        elif user.role != User.Role.ADMIN:
+            return qs.none()
 
         activity_id = self.request.query_params.get('activity_id')
         submission_id = self.request.query_params.get('submission_id')
@@ -501,7 +522,29 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
         # Only return top-level comments (parent=None), replies are nested
         qs = qs.filter(parent=None)
 
-        return qs.order_by('-created_at')
+        return qs.order_by('created_at')
+
+    def _parse_file_urls(self, request):
+        raw = request.data.get("file_urls")
+        if hasattr(request.data, "getlist"):
+            values = [v for v in request.data.getlist("file_urls") if v not in (None, "")]
+            if len(values) > 1:
+                raw = values
+            elif len(values) == 1 and values[0] and values[0] != raw:
+                raw = values[0]
+
+        if raw in (None, "", []):
+            return []
+        if isinstance(raw, list):
+            return [str(item) for item in raw if item]
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [str(item) for item in parsed if item]
+            except json.JSONDecodeError:
+                return [raw]
+        return []
 
     def create(self, request, *args, **kwargs):
         """Create a new comment with optional file attachments."""
@@ -509,11 +552,21 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
         if not activity_id:
             return Response({"detail": "activity_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        activity = Activity.objects.filter(id=activity_id).first()
+        activity = Activity.objects.select_related("course_section").filter(id=activity_id).first()
         if not activity:
             return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Check user access - student must be enrolled, teacher must teach the course
+        submission_id = request.data.get("submission_id")
+        submission = None
+        if submission_id:
+            submission = Submission.objects.select_related("student").filter(
+                id=submission_id,
+                activity=activity,
+            ).first()
+            if not submission:
+                return Response({"detail": "Submission not found for this activity."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Check user access and enforce one-to-one conversation scope.
         if request.user.role == User.Role.STUDENT:
             if not activity.is_published:
                 return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -524,20 +577,18 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
             ).exists()
             if not enrolled:
                 return Response({"detail": "You are not enrolled in this activity's course section."}, status=status.HTTP_403_FORBIDDEN)
+            if submission and submission.student_id != request.user.id:
+                return Response({"detail": "You can only comment on your own submission."}, status=status.HTTP_403_FORBIDDEN)
         elif request.user.role == User.Role.TEACHER:
-            teaches = CourseSection.objects.filter(
-                id=activity.course_section_id,
-                teacher=request.user,
-            ).exists()
-            if not teaches:
+            if activity.course_section.teacher_id != request.user.id:
                 return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
+            if not submission:
+                return Response({"detail": "submission_id is required for teacher comments."}, status=status.HTTP_400_BAD_REQUEST)
         elif request.user.role != User.Role.ADMIN:
             return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
         # Handle file uploads
-        file_urls = request.data.get('file_urls') or []
-        if not isinstance(file_urls, list):
-            file_urls = []
+        file_urls = self._parse_file_urls(request)
 
         # Process uploaded files
         files = request.FILES.getlist('files')
@@ -550,23 +601,31 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
 
         content = request.data.get('content')
         parent_id = request.data.get('parent_id')
-        submission_id = request.data.get('submission_id')
+        if isinstance(content, str):
+            content = content.strip()
+
+        if not content and not file_urls:
+            return Response({"detail": "Comment content or attachment is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         parent_comment = None
         if parent_id:
-            parent_comment = ActivityComment.objects.filter(id=parent_id).first()
+            parent_comment = ActivityComment.objects.select_related("submission").filter(id=parent_id).first()
             if not parent_comment:
                 return Response({"detail": "Parent comment not found."}, status=status.HTTP_404_NOT_FOUND)
             # Parent must be for the same activity
             if str(parent_comment.activity_id) != str(activity_id):
                 return Response({"detail": "Parent comment must be for the same activity."}, status=status.HTTP_400_BAD_REQUEST)
+            parent_submission_id = str(parent_comment.submission_id) if parent_comment.submission_id else None
+            current_submission_id = str(submission.id) if submission else None
+            if parent_submission_id != current_submission_id:
+                return Response({"detail": "Parent comment must belong to the same submission thread."}, status=status.HTTP_400_BAD_REQUEST)
 
         comment = ActivityComment.objects.create(
             activity=activity,
-            submission_id=submission_id,
+            submission=submission,
             author=request.user,
             parent=parent_comment,
-            content=content,
+            content=encrypt_comment_content(content),
             file_urls=file_urls if file_urls else None,
         )
 
@@ -578,7 +637,21 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
         comment = self.get_object()
         if comment.author != request.user:
             return Response({"detail": "You can only edit your own comments."}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
+        partial = kwargs.pop("partial", False)
+        data = request.data.copy()
+        if "content" in data:
+            content = data.get("content")
+            if isinstance(content, str):
+                content = content.strip()
+            data["content"] = encrypt_comment_content(content)
+        serializer = self.get_serializer(comment, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(self.get_serializer(comment).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         """Delete a comment - only the author can delete."""
@@ -593,23 +666,50 @@ class ActivityCommentsByActivityView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, pk):
-        """Get comments for an activity based on user role and involvement."""
-        from django.db.models import Q
-        from core.models import CourseSection
+    def _attach_visible_replies(self, comments, submission_ids, participant_ids, include_unscoped=False):
+        normalized_submission_ids = {str(sid) for sid in submission_ids}
+        normalized_participants = {str(pid) for pid in participant_ids if pid}
+        filtered = []
+        for comment in comments:
+            visible_replies = [
+                reply for reply in comment.replies.all()
+                if str(reply.author_id) in normalized_participants
+                and (
+                    (reply.submission_id is None and include_unscoped)
+                    or (str(reply.submission_id) in normalized_submission_ids)
+                )
+            ]
+            comment._visible_replies = visible_replies
+            filtered.append(comment)
+        return filtered
 
-        activity = Activity.objects.filter(id=pk).first()
+    def _query_thread(self, activity, submission_ids, participant_ids, include_unscoped=False):
+        comments_qs = ActivityComment.objects.filter(
+            activity=activity,
+            parent=None,
+            author_id__in=participant_ids,
+        )
+        if include_unscoped:
+            comments_qs = comments_qs.filter(Q(submission_id__in=submission_ids) | Q(submission__isnull=True))
+        else:
+            comments_qs = comments_qs.filter(submission_id__in=submission_ids)
+
+        comments = comments_qs.select_related("author").prefetch_related("replies__author").order_by("created_at")
+        return self._attach_visible_replies(comments, submission_ids, participant_ids, include_unscoped=include_unscoped)
+
+    def get(self, request, pk):
+        """Get one-to-one comments for a specific activity thread."""
+        activity = Activity.objects.select_related("course_section").filter(id=pk).first()
         if not activity:
             return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Get the course section teacher for this activity
-        course_section = activity.course_section
-        teacher_id = course_section.teacher_id if course_section else None
+        teacher_id = activity.course_section.teacher_id if activity.course_section else None
+        submission_id = request.query_params.get("submission_id")
+        student_id = request.query_params.get("student_id")
 
         if request.user.role == User.Role.STUDENT:
             if not activity.is_published:
                 return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
-            # Check enrollment
             enrolled = Enrollment.objects.filter(
                 course_section=activity.course_section,
                 student=request.user,
@@ -618,150 +718,88 @@ class ActivityCommentsByActivityView(APIView):
             if not enrolled:
                 return Response({"detail": "You are not enrolled in this activity's course section."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Get the student's submission for this activity (if any)
-            student_submission = Submission.objects.filter(
-                activity=activity,
-                student=request.user,
-            ).order_by('-submitted_at').first()
-            student_submission_id = student_submission.id if student_submission else None
-
-            # Build filter for comments visible to this student:
-            # 1. Comments authored by this student
-            # 2. Comments authored by the course section teacher
-            # 3. Comments specifically on this student's submission (if they have one)
-            visible_filter = Q(author=request.user) | Q(author_id=teacher_id)
-
-            # If student has a submission, also include comments on that submission
-            if student_submission_id:
-                visible_filter = visible_filter | Q(submission_id=student_submission_id)
-
-            comments = ActivityComment.objects.filter(
-                activity=activity,
-                parent=None,
-            ).filter(visible_filter).select_related('author').prefetch_related('replies__author').order_by('created_at')
-
-            # Filter replies similarly - only include replies the student should see
-            filtered_comments = []
-            for comment in comments:
-                filtered_comment = self._filter_comment_replies(comment, request.user.id, teacher_id, student_submission_id)
-                if filtered_comment:
-                    filtered_comments.append(filtered_comment)
-
-            serializer = ActivityCommentSerializer(filtered_comments, many=True, context={'request': request})
+            if submission_id:
+                student_submission = Submission.objects.filter(
+                    id=submission_id,
+                    activity=activity,
+                    student=request.user,
+                ).first()
+                if not student_submission:
+                    return Response([])
+                comments = self._query_thread(
+                    activity=activity,
+                    submission_ids=[student_submission.id],
+                    participant_ids=[request.user.id, teacher_id],
+                    include_unscoped=False,
+                )
+            else:
+                student_submission_ids = list(
+                    Submission.objects.filter(
+                        activity=activity,
+                        student=request.user,
+                    ).values_list("id", flat=True)
+                )
+                comments = self._query_thread(
+                    activity=activity,
+                    submission_ids=student_submission_ids,
+                    participant_ids=[request.user.id, teacher_id],
+                    include_unscoped=True,
+                )
+            serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
             return Response(serializer.data)
 
-        elif request.user.role == User.Role.TEACHER:
-            # Check if teacher owns this course section
-            teaches = CourseSection.objects.filter(
-                id=activity.course_section_id,
-                teacher=request.user,
-            ).exists()
-            if not teaches:
+        if request.user.role == User.Role.TEACHER:
+            if activity.course_section.teacher_id != request.user.id:
                 return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
 
-            # Support filtering by submission_id (for submitted work) or student_id (for any student)
-            submission_id = request.query_params.get('submission_id')
-            student_id = request.query_params.get('student_id')
-
             if submission_id:
-                # Filter by specific submission (for students who have submitted)
-                # Verify the submission belongs to this activity
-                submission = Submission.objects.filter(id=submission_id, activity=activity).first()
-                if not submission:
+                target_submission = Submission.objects.filter(
+                    id=submission_id,
+                    activity=activity,
+                ).first()
+                if not target_submission:
                     return Response({"detail": "Submission not found for this activity."}, status=status.HTTP_404_NOT_FOUND)
-
-                # Return comments for this specific submission
-                comments = ActivityComment.objects.filter(
+                comments = self._query_thread(
                     activity=activity,
-                    submission_id=submission_id,
-                    parent=None,
-                ).select_related('author').prefetch_related('replies__author').order_by('created_at')
-
-            elif student_id:
-                # Filter by specific student (works even without submission)
-                # Show conversation between this student and the teacher
-                student_submissions = Submission.objects.filter(activity=activity, student_id=student_id)
-                submission_ids = [s.id for s in student_submissions]
-
-                # Build filter: comments by this student OR by teacher OR on student's submissions
-                student_filter = Q(author_id=student_id) | Q(author_id=request.user.id)
-                if submission_ids:
-                    student_filter = student_filter | Q(submission_id__in=submission_ids)
-
-                comments = ActivityComment.objects.filter(
-                    activity=activity,
-                    parent=None,
-                ).filter(student_filter).select_related('author').prefetch_related('replies__author').order_by('created_at')
-
-                # Also filter replies to only show student-teacher conversation
-                filtered_comments = []
-                for comment in comments:
-                    filtered_comment = self._filter_comment_replies_for_teacher(comment, student_id, request.user.id, submission_ids)
-                    if filtered_comment:
-                        filtered_comments.append(filtered_comment)
-
-                serializer = ActivityCommentSerializer(filtered_comments, many=True, context={'request': request})
+                    submission_ids=[target_submission.id],
+                    participant_ids=[request.user.id, target_submission.student_id],
+                    include_unscoped=True,
+                )
+                serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
                 return Response(serializer.data)
 
-            else:
-                # Teachers see all comments for their course sections
-                comments = ActivityComment.objects.filter(
+            if student_id:
+                student_submission_ids = list(
+                    Submission.objects.filter(
+                        activity=activity,
+                        student_id=student_id,
+                    ).values_list("id", flat=True)
+                )
+                if not student_submission_ids:
+                    return Response([])
+                comments = self._query_thread(
                     activity=activity,
-                    parent=None,
-                ).select_related('author').prefetch_related('replies__author').order_by('created_at')
+                    submission_ids=student_submission_ids,
+                    participant_ids=[request.user.id, student_id],
+                    include_unscoped=True,
+                )
+                serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
+                return Response(serializer.data)
 
-            serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
-            return Response(serializer.data)
+            return Response(
+                {"detail": "submission_id or student_id is required for teacher comment threads."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        elif request.user.role == User.Role.ADMIN:
-            # Admins see all comments
+        if request.user.role == User.Role.ADMIN:
             comments = ActivityComment.objects.filter(
                 activity=activity,
                 parent=None,
-            ).select_related('author').prefetch_related('replies__author').order_by('created_at')
-
-            serializer = ActivityCommentSerializer(comments, many=True, context={'request': request})
+            ).select_related("author").prefetch_related("replies__author").order_by("created_at")
+            serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
             return Response(serializer.data)
 
         return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
-
-    def _filter_comment_replies(self, comment, student_id, teacher_id, submission_id):
-        """Filter replies to only include those the student should see."""
-        visible_replies = []
-        for reply in comment.replies.all():
-            # Show reply if:
-            # 1. Reply is by the student
-            # 2. Reply is by the teacher
-            # 3. Reply is on the student's submission (if they have one)
-            is_by_student = str(reply.author_id) == str(student_id)
-            is_by_teacher = str(reply.author_id) == str(teacher_id)
-            is_on_student_submission = submission_id and str(reply.submission_id) == str(submission_id)
-
-            if is_by_student or is_by_teacher or is_on_student_submission:
-                visible_replies.append(reply)
-
-        # Set filtered replies
-        comment.replies._data = visible_replies
-        return comment
-
-    def _filter_comment_replies_for_teacher(self, comment, student_id, teacher_id, submission_ids):
-        """Filter replies to only show student-teacher conversation."""
-        visible_replies = []
-        for reply in comment.replies.all():
-            # Show reply if:
-            # 1. Reply is by the student
-            # 2. Reply is by the teacher
-            # 3. Reply is on one of the student's submissions
-            is_by_student = str(reply.author_id) == str(student_id)
-            is_by_teacher = str(reply.author_id) == str(teacher_id)
-            is_on_student_submission = submission_ids and str(reply.submission_id) in [str(sid) for sid in submission_ids]
-
-            if is_by_student or is_by_teacher or is_on_student_submission:
-                visible_replies.append(reply)
-
-        # Set filtered replies
-        comment.replies._data = visible_replies
-        return comment
 
 
 __all__ = [

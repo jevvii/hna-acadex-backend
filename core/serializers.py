@@ -1,5 +1,6 @@
 from django.utils import timezone
 from rest_framework import serializers
+from .comment_crypto import decrypt_comment_content
 from .models import (
     Activity,
     ActivityComment,
@@ -861,11 +862,16 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
         # Only include replies if we're not already in a nested context
         # to prevent infinite recursion
         if self.context.get('include_replies', True):
-            replies = obj.replies.all()
+            replies = getattr(obj, "_visible_replies", obj.replies.all())
             # Set include_replies to False for nested replies to prevent recursion
             context = {**self.context, 'include_replies': False}
             return ActivityCommentSerializer(replies, many=True, context=context).data
         return []
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["content"] = decrypt_comment_content(instance.content)
+        return data
 
 
 class GradingPeriodSerializer(serializers.ModelSerializer):
