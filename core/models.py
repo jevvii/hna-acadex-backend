@@ -839,6 +839,14 @@ class ActivityComment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="comments")
     submission = models.ForeignKey(Submission, null=True, blank=True, on_delete=models.CASCADE, related_name="comments")
+    thread_student = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="activity_comment_threads",
+        limit_choices_to={"role": User.Role.STUDENT},
+    )
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activity_comments")
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies")
     content = models.TextField(blank=True, null=True)

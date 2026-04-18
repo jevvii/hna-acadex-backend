@@ -823,6 +823,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(read_only=True)
     activity_id = serializers.UUIDField(read_only=True)
     submission_id = serializers.UUIDField(read_only=True, allow_null=True)
+    thread_student_id = serializers.UUIDField(read_only=True, allow_null=True)
     author_id = serializers.UUIDField(source='author.id', read_only=True)
     author_name = serializers.CharField(source='author.full_name', read_only=True)
     author_avatar = serializers.SerializerMethodField()
@@ -835,6 +836,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             "id",
             "activity_id",
             "submission_id",
+            "thread_student_id",
             "author_id",
             "author_name",
             "author_avatar",
@@ -845,7 +847,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             "updated_at",
             "replies",
         )
-        read_only_fields = ("id", "activity_id", "submission_id", "author_id", "author_name", "author_avatar", "created_at", "updated_at")
+        read_only_fields = ("id", "activity_id", "submission_id", "thread_student_id", "author_id", "author_name", "author_avatar", "created_at", "updated_at")
 
     def get_author_avatar(self, obj: ActivityComment):
         """Get the author's avatar URL."""

@@ -2,6 +2,7 @@
 Activity and submission views.
 """
 import json
+import logging
 from decimal import Decimal, InvalidOperation
 
 from django.core.files.storage import default_storage
@@ -37,6 +38,10 @@ from core.views.common import (
     validate_file_upload,
 )
 from core.decorators import rate_limit_file_upload
+
+logger = logging.getLogger(__name__)
+COMMENT_THREAD_META_PREFIX = "[thread_meta]"
+COMMENT_THREAD_META_SUFFIX = "[/thread_meta]"
 
 
 class ActivitySubmitView(APIView):
@@ -490,7 +495,8 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
         "activity__course_section",
         "submission",
         "submission__student",
-    ).prefetch_related("replies__author")
+        "thread_student",
+    ).prefetch_related("replies__author", "replies__thread_student")
     serializer_class = ActivityCommentSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -502,7 +508,7 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
 
         if user.role == User.Role.STUDENT:
             qs = qs.filter(
-                Q(author=user) | Q(submission__student=user),
+                Q(author=user) | Q(submission__student=user) | Q(thread_student=user),
                 activity__course_section__enrollments__student=user,
                 activity__course_section__enrollments__is_active=True,
             ).distinct()
@@ -546,6 +552,56 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
                 return [raw]
         return []
 
+    def _encode_thread_notification_body(self, message: str, thread_student_id):
+        meta = json.dumps(
+            {
+                "kind": "activity_comment",
+                "thread_student_id": str(thread_student_id),
+            },
+            separators=(",", ":"),
+        )
+        return f"{message}\n\n{COMMENT_THREAD_META_PREFIX}{meta}{COMMENT_THREAD_META_SUFFIX}"
+
+    def _notify_thread_participant(self, comment: ActivityComment):
+        activity = comment.activity
+        course_section = activity.course_section
+        if not course_section:
+            return
+
+        teacher = course_section.teacher
+        thread_student = comment.thread_student or (comment.submission.student if comment.submission_id else None)
+        if not thread_student:
+            return
+
+        recipient = None
+        body = None
+
+        if comment.author.role == User.Role.STUDENT:
+            recipient = teacher
+            if recipient:
+                body = self._encode_thread_notification_body(
+                    f"{comment.author.full_name} commented on the private activity thread.",
+                    thread_student.id,
+                )
+        elif comment.author.role == User.Role.TEACHER:
+            recipient = thread_student
+            body = self._encode_thread_notification_body(
+                f"{comment.author.full_name} replied on your private activity thread.",
+                thread_student.id,
+            )
+
+        if not recipient or recipient.id == comment.author_id or not body:
+            return
+
+        Notification.objects.create(
+            recipient=recipient,
+            type=Notification.NotificationType.SYSTEM,
+            title=f"New comment on {activity.title}",
+            body=body,
+            course_section=course_section,
+            activity=activity,
+        )
+
     def create(self, request, *args, **kwargs):
         """Create a new comment with optional file attachments."""
         activity_id = request.data.get('activity_id')
@@ -557,6 +613,7 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Activity not found."}, status=status.HTTP_404_NOT_FOUND)
 
         submission_id = request.data.get("submission_id")
+        student_id = request.data.get("student_id")
         submission = None
         if submission_id:
             submission = Submission.objects.select_related("student").filter(
@@ -579,11 +636,11 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "You are not enrolled in this activity's course section."}, status=status.HTTP_403_FORBIDDEN)
             if submission and submission.student_id != request.user.id:
                 return Response({"detail": "You can only comment on your own submission."}, status=status.HTTP_403_FORBIDDEN)
+            if student_id and str(student_id) != str(request.user.id):
+                return Response({"detail": "student_id must match your own account."}, status=status.HTTP_400_BAD_REQUEST)
         elif request.user.role == User.Role.TEACHER:
             if activity.course_section.teacher_id != request.user.id:
                 return Response({"detail": "You are not the teacher of this course section."}, status=status.HTTP_403_FORBIDDEN)
-            if not submission:
-                return Response({"detail": "submission_id is required for teacher comments."}, status=status.HTTP_400_BAD_REQUEST)
         elif request.user.role != User.Role.ADMIN:
             return Response({"detail": "Not authorized."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -609,7 +666,7 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
 
         parent_comment = None
         if parent_id:
-            parent_comment = ActivityComment.objects.select_related("submission").filter(id=parent_id).first()
+            parent_comment = ActivityComment.objects.select_related("submission", "thread_student", "author").filter(id=parent_id).first()
             if not parent_comment:
                 return Response({"detail": "Parent comment not found."}, status=status.HTTP_404_NOT_FOUND)
             # Parent must be for the same activity
@@ -620,14 +677,66 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
             if parent_submission_id != current_submission_id:
                 return Response({"detail": "Parent comment must belong to the same submission thread."}, status=status.HTTP_400_BAD_REQUEST)
 
+        thread_student = submission.student if submission else None
+        if request.user.role == User.Role.STUDENT:
+            thread_student = submission.student if submission else request.user
+        elif request.user.role == User.Role.TEACHER:
+            if not thread_student and parent_comment:
+                thread_student = (
+                    parent_comment.thread_student
+                    or (parent_comment.submission.student if parent_comment.submission_id else None)
+                    or (parent_comment.author if parent_comment.author.role == User.Role.STUDENT else None)
+                )
+            if not thread_student and student_id:
+                thread_student = User.objects.filter(
+                    id=student_id,
+                    role=User.Role.STUDENT,
+                    enrollments__course_section=activity.course_section,
+                    enrollments__is_active=True,
+                ).first()
+                if not thread_student:
+                    return Response(
+                        {"detail": "student_id must belong to an active student in this course section."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            if not thread_student:
+                return Response(
+                    {"detail": "student_id is required when submission_id is not provided for teacher comments."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if student_id and str(thread_student.id) != str(student_id):
+                return Response(
+                    {"detail": "student_id does not match the target thread."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        elif request.user.role == User.Role.ADMIN and not thread_student and student_id:
+            thread_student = User.objects.filter(id=student_id, role=User.Role.STUDENT).first()
+
+        if parent_comment:
+            parent_thread_student = (
+                parent_comment.thread_student
+                or (parent_comment.submission.student if parent_comment.submission_id else None)
+                or (parent_comment.author if parent_comment.author.role == User.Role.STUDENT else None)
+            )
+            if parent_thread_student and thread_student and parent_thread_student.id != thread_student.id:
+                return Response({"detail": "Parent comment must belong to the same student thread."}, status=status.HTTP_400_BAD_REQUEST)
+            if parent_thread_student and not thread_student:
+                thread_student = parent_thread_student
+
         comment = ActivityComment.objects.create(
             activity=activity,
             submission=submission,
+            thread_student=thread_student,
             author=request.user,
             parent=parent_comment,
             content=encrypt_comment_content(content),
             file_urls=file_urls if file_urls else None,
         )
+
+        try:
+            self._notify_thread_participant(comment)
+        except Exception as exc:
+            logger.warning("Failed to send activity comment notification: %s", exc)
 
         serializer = self.get_serializer(comment)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -666,7 +775,18 @@ class ActivityCommentsByActivityView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def _attach_visible_replies(self, comments, submission_ids, participant_ids, include_unscoped=False):
+    def _is_unscoped_visible(self, comment, thread_student_id=None):
+        if comment.submission_id is not None:
+            return False
+        if not thread_student_id:
+            return comment.thread_student_id is None
+        normalized_thread_student_id = str(thread_student_id)
+        return (
+            str(comment.thread_student_id) == normalized_thread_student_id
+            or (comment.thread_student_id is None and str(comment.author_id) == normalized_thread_student_id)
+        )
+
+    def _attach_visible_replies(self, comments, submission_ids, participant_ids, include_unscoped=False, thread_student_id=None):
         normalized_submission_ids = {str(sid) for sid in submission_ids}
         normalized_participants = {str(pid) for pid in participant_ids if pid}
         filtered = []
@@ -675,7 +795,7 @@ class ActivityCommentsByActivityView(APIView):
                 reply for reply in comment.replies.all()
                 if str(reply.author_id) in normalized_participants
                 and (
-                    (reply.submission_id is None and include_unscoped)
+                    (include_unscoped and self._is_unscoped_visible(reply, thread_student_id=thread_student_id))
                     or (str(reply.submission_id) in normalized_submission_ids)
                 )
             ]
@@ -683,19 +803,29 @@ class ActivityCommentsByActivityView(APIView):
             filtered.append(comment)
         return filtered
 
-    def _query_thread(self, activity, submission_ids, participant_ids, include_unscoped=False):
+    def _query_thread(self, activity, submission_ids, participant_ids, include_unscoped=False, thread_student_id=None):
         comments_qs = ActivityComment.objects.filter(
             activity=activity,
             parent=None,
             author_id__in=participant_ids,
         )
         if include_unscoped:
-            comments_qs = comments_qs.filter(Q(submission_id__in=submission_ids) | Q(submission__isnull=True))
+            unscoped_filter = (
+                Q(submission__isnull=True, thread_student_id=thread_student_id)
+                | Q(submission__isnull=True, thread_student__isnull=True, author_id=thread_student_id)
+            )
+            comments_qs = comments_qs.filter(Q(submission_id__in=submission_ids) | unscoped_filter)
         else:
             comments_qs = comments_qs.filter(submission_id__in=submission_ids)
 
-        comments = comments_qs.select_related("author").prefetch_related("replies__author").order_by("created_at")
-        return self._attach_visible_replies(comments, submission_ids, participant_ids, include_unscoped=include_unscoped)
+        comments = comments_qs.select_related("author").prefetch_related("replies__author", "replies__thread_student").order_by("created_at")
+        return self._attach_visible_replies(
+            comments,
+            submission_ids,
+            participant_ids,
+            include_unscoped=include_unscoped,
+            thread_student_id=thread_student_id,
+        )
 
     def get(self, request, pk):
         """Get one-to-one comments for a specific activity thread."""
@@ -731,6 +861,7 @@ class ActivityCommentsByActivityView(APIView):
                     submission_ids=[student_submission.id],
                     participant_ids=[request.user.id, teacher_id],
                     include_unscoped=False,
+                    thread_student_id=request.user.id,
                 )
             else:
                 student_submission_ids = list(
@@ -744,6 +875,7 @@ class ActivityCommentsByActivityView(APIView):
                     submission_ids=student_submission_ids,
                     participant_ids=[request.user.id, teacher_id],
                     include_unscoped=True,
+                    thread_student_id=request.user.id,
                 )
             serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
             return Response(serializer.data)
@@ -764,22 +896,32 @@ class ActivityCommentsByActivityView(APIView):
                     submission_ids=[target_submission.id],
                     participant_ids=[request.user.id, target_submission.student_id],
                     include_unscoped=True,
+                    thread_student_id=target_submission.student_id,
                 )
                 serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
                 return Response(serializer.data)
 
             if student_id:
+                target_student = User.objects.filter(
+                    id=student_id,
+                    role=User.Role.STUDENT,
+                    enrollments__course_section=activity.course_section,
+                    enrollments__is_active=True,
+                ).first()
+                if not target_student:
+                    return Response([])
                 student_submission_ids = list(
                     Submission.objects.filter(
                         activity=activity,
-                        student_id=student_id,
+                        student_id=target_student.id,
                     ).values_list("id", flat=True)
                 )
                 comments = self._query_thread(
                     activity=activity,
                     submission_ids=student_submission_ids,
-                    participant_ids=[request.user.id, student_id],
+                    participant_ids=[request.user.id, target_student.id],
                     include_unscoped=True,
+                    thread_student_id=target_student.id,
                 )
                 serializer = ActivityCommentSerializer(comments, many=True, context={"request": request})
                 return Response(serializer.data)
