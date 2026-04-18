@@ -8,6 +8,7 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
+SKIP_PRODUCTION_ENV_VALIDATION = os.getenv("SKIP_PRODUCTION_ENV_VALIDATION", "0") == "1"
 
 # Security key - must be set via environment variable
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
@@ -95,7 +96,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DEBUG and not DATABASE_URL:
+if not DEBUG and not SKIP_PRODUCTION_ENV_VALIDATION and not DATABASE_URL:
     raise ImproperlyConfigured("DATABASE_URL environment variable is required in production")
 
 DATABASES = {
@@ -189,7 +190,7 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # Production override: require explicit CORS configuration
-if not DEBUG and 'CORS_ALLOWED_ORIGINS' not in os.environ:
+if not DEBUG and not SKIP_PRODUCTION_ENV_VALIDATION and 'CORS_ALLOWED_ORIGINS' not in os.environ:
     raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS environment variable must be set in production")
 if CORS_ALLOW_ALL_ORIGINS:
     if CORS_ALLOW_CREDENTIALS:
