@@ -3,7 +3,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-echo "==> Runtime startup at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+echo "==> Starting at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+echo "==> Python version: $(python --version 2>&1)"
+
 echo "==> Running database migrations"
 python manage.py migrate --no-input --verbosity=1
 

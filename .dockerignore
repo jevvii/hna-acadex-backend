@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+db.sqlite3.backup-*
+*.sqlite3
+
+# Collected static (rebuilt at Docker build time)
+staticfiles/
+
+# Media uploads (served via Cloudinary in production)
+media/
+
+# Celery schedule files
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Firebase credentials (set via FIREBASE_CREDENTIALS_JSON env var)
+*firebase*.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Coverage and test artifacts
+htmlcov/
+.coverage
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+logs/
+
+# Docker files (avoid recursion)
+Dockerfile.celery
+docker-compose.dev.yml
+
+# Render/Fly config (not needed on Railway)
+render.yaml
+fly.toml
+koyeb-build.sh
+build.sh
+Aptfile
+runtime.txt
+
+# Claude config
+.claude/
+
+# Documentation
+*.md
