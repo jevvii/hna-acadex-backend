@@ -156,6 +156,12 @@ AUTH_USER_MODEL = "core.User"
 # Our API endpoints already use trailing slashes in URL patterns
 APPEND_SLASH = False
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
 # Rate limiting
 RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = "default"
