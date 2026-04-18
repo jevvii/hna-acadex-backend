@@ -314,6 +314,44 @@ hna-acadex-backend/
 
 ---
 
+## Deployment Options (Render Alternatives)
+
+If Render is blocked for billing reasons, these options keep your Django ORM setup intact:
+
+| Platform | App Hosting Cost | DB Option | CI/CD |
+| --- | --- | --- | --- |
+| **Koyeb** | Free instance available | Koyeb Postgres or external Postgres | GitHub auto-deploy + Actions |
+| **PythonAnywhere** | Free beginner account | MySQL (free) or external Postgres | Manual or API-assisted deploy |
+| **Railway** | Not fully free (trial + low monthly credit) | Built-in Postgres | GitHub deploy + Actions |
+
+### Recommended no-card stack
+
+**Koyeb (app) + Neon (Postgres) + GitHub Actions (CI)**.
+
+- Neon Free plan supports standard Postgres + `DATABASE_URL`, so no ORM code changes are needed.
+- Koyeb supports free instances, Git-based deployment, and scale-to-zero.
+
+### Koyeb deployment commands
+
+- **Build command:** `./koyeb-build.sh`
+- **Run command:** `./start.sh`
+- **Health check path:** `/healthz/`
+
+### Required environment variables
+
+```
+DATABASE_URL=postgresql://<user>:<password>@<host>/<db>?sslmode=require
+DJANGO_DEBUG=0
+DJANGO_SECRET_KEY=<strong-secret>
+DJANGO_ALLOWED_HOSTS=.koyeb.app,<your-custom-domain>
+CORS_ALLOW_ALL_ORIGINS=0
+CORS_ALLOWED_ORIGINS=https://your-frontend-domain
+CSRF_TRUSTED_ORIGINS=https://your-frontend-domain,https://your-backend.koyeb.app
+FRONTEND_URL=https://your-frontend-domain
+```
+
+---
+
 ## Security
 
 | Feature              | Implementation             |

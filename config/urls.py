@@ -1,6 +1,9 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from django.http import JsonResponse
+from django.db import connection
+from django.db.utils import OperationalError
 from django.shortcuts import render
 from core.admin_site import admin_site
 from core.teacher_portal.site import teacher_portal_site
@@ -22,8 +25,19 @@ def portal_landing(request):
     return render(request, 'portal_landing.html', context)
 
 
+def healthz(request):
+    """Basic health check endpoint for platform probes."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        return JsonResponse({"status": "ok", "database": "ok"}, status=200)
+    except OperationalError:
+        return JsonResponse({"status": "degraded", "database": "error"}, status=503)
+
+
 urlpatterns = [
     path("", portal_landing, name="portal_landing"),
+    path("healthz/", healthz, name="healthz"),
     path("admin/", admin_site.urls),
     path("teacher-portal/", teacher_portal_site.urls),
     path("api/", include("core.urls")),
