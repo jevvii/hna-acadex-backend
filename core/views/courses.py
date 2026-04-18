@@ -14,6 +14,7 @@ from core.models import (
     CourseFile,
     CourseSection,
     Enrollment,
+    GradeEntry,
     Quiz,
     Submission,
     User,
@@ -31,7 +32,42 @@ from core.views.common import (
     _batch_get_grade_summary_metadata,
     _letter_grade,
 )
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def _compute_current_grade_from_entries(enrollment: Enrollment, entries: list[GradeEntry]) -> Decimal | None:
+    """Compute the current displayed grade from available grade entries.
+
+    Grade 7-10: average all non-semestral quarters.
+    Grade 11-12: average quarters in the course section's semester group.
+    """
+    course_section = enrollment.course_section
+    grade_level = getattr(course_section.section, "grade_level", None) or getattr(course_section.course, "grade_level", None)
+    is_shs = grade_level in ["Grade 11", "Grade 12"]
+
+    semester_raw = (course_section.semester or "").strip().lower()
+    semester_group = 1 if semester_raw.startswith("1") else (2 if semester_raw.startswith("2") else None)
+
+    scores: list[Decimal] = []
+    for entry in entries:
+        if entry.score is None:
+            continue
+        period = entry.grading_period
+        if is_shs:
+            if semester_group is None:
+                if period.semester_group is None:
+                    continue
+            elif period.semester_group != semester_group:
+                continue
+        else:
+            if period.semester_group is not None:
+                continue
+        scores.append(Decimal(str(entry.score)))
+
+    if not scores:
+        return None
+    average = sum(scores, Decimal("0")) / Decimal(str(len(scores)))
+    return average.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class StudentCoursesView(APIView):
@@ -44,6 +80,19 @@ class StudentCoursesView(APIView):
             .order_by("course_section__course__title")
         )
 
+        enrollment_entries: dict[str, list[GradeEntry]] = defaultdict(list)
+        if enrollments:
+            enrollment_ids = [e.id for e in enrollments]
+            for entry in (
+                GradeEntry.objects.filter(
+                    enrollment_id__in=enrollment_ids
+                ).filter(
+                    Q(override_score__isnull=False) | Q(computed_score__isnull=False)
+                )
+                .select_related("grading_period")
+            ):
+                enrollment_entries[str(entry.enrollment_id)].append(entry)
+
         # Get grade summary metadata for badge display
         grade_summaries = _batch_get_grade_summary_metadata(enrollments)
 
@@ -54,6 +103,8 @@ class StudentCoursesView(APIView):
             sec = cs.section
             course_tag = f"{course.code}@{sec.strand}-{sec.name}" if sec.strand and sec.strand != "NONE" else f"{course.code}@{sec.name}"
             final_grade = float(e.final_grade) if e.final_grade is not None else None
+            current_grade_decimal = _compute_current_grade_from_entries(e, enrollment_entries.get(str(e.id), []))
+            current_grade = float(current_grade_decimal) if current_grade_decimal is not None else None
 
             # Get grade metadata for badge display (from batch-computed results)
             grade_metadata = grade_summaries.get(str(e.id), {})
@@ -73,6 +124,8 @@ class StudentCoursesView(APIView):
                     "grade_level": sec.grade_level,
                     "final_grade": final_grade,
                     "final_grade_letter": _letter_grade(Decimal(str(final_grade))) if final_grade is not None else None,
+                    "current_computed_grade": current_grade,
+                    "current_computed_grade_letter": _letter_grade(current_grade_decimal) if current_grade_decimal is not None else None,
                     "grade_overridden": e.manual_final_grade is not None,
                     "teacher_name": cs.teacher.full_name if cs.teacher else None,
                     "course_tag": course_tag,
