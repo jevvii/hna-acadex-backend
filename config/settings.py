@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sys
 import ssl
 from datetime import timedelta
 import dj_database_url
@@ -8,7 +9,17 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
-SKIP_PRODUCTION_ENV_VALIDATION = os.getenv("SKIP_PRODUCTION_ENV_VALIDATION", "0") == "1"
+
+BUILD_TIME_MANAGEMENT_COMMANDS = {"collectstatic", "migrate", "createsu"}
+RUNNING_BUILD_MANAGEMENT_COMMAND = (
+    len(sys.argv) > 1
+    and Path(sys.argv[0]).name == "manage.py"
+    and sys.argv[1] in BUILD_TIME_MANAGEMENT_COMMANDS
+)
+SKIP_PRODUCTION_ENV_VALIDATION = (
+    os.getenv("SKIP_PRODUCTION_ENV_VALIDATION", "0") == "1"
+    or RUNNING_BUILD_MANAGEMENT_COMMAND
+)
 
 # Security key - must be set via environment variable
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
