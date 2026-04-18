@@ -1,6 +1,5 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     ActivityCommentViewSet,
@@ -21,6 +20,7 @@ from .views import (
     AssignmentGroupViewSet,
     AuthLoginView,
     AuthLogoutView,
+    AuthRefreshView,
     AvatarUploadView,
     CalendarEventViewSet,
     ChangePasswordView,
@@ -94,7 +94,7 @@ urlpatterns = [
     path("auth/login/", AuthLoginView.as_view(), name="auth-login"),
     path("auth/logout/", AuthLogoutView.as_view(), name="auth-logout"),
     path("auth/me/", MeView.as_view(), name="auth-me"),
-    path("auth/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
+    path("auth/refresh/", AuthRefreshView.as_view(), name="token-refresh"),
     path("auth/change-password/", ChangePasswordView.as_view(), name="auth-change-password"),
     path("auth/forgot-password/", ForgotPasswordRequestView.as_view(), name="auth-forgot-password"),
     path("profiles/me/avatar/", AvatarUploadView.as_view(), name="profile-avatar-upload"),

@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any
+
 from django.utils import timezone
 from rest_framework import serializers
 from .comment_crypto import decrypt_comment_content
@@ -67,7 +70,7 @@ class UserSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "created_at", "updated_at", "avatar_url", "requires_setup", "full_name", "advisory_section_id", "advisory_section_name")
 
-    def get_avatar_url(self, obj: User):
+    def get_avatar_url(self, obj: User) -> str | None:
         request = self.context.get("request")
         if obj.avatar_url:
             return obj.avatar_url
@@ -76,14 +79,14 @@ class UserSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(url) if request else url
         return None
 
-    def get_advisory_section_id(self, obj: User):
+    def get_advisory_section_id(self, obj: User) -> str | None:
         from .models import TeacherAdvisory
         advisory = TeacherAdvisory.objects.filter(
             teacher=obj, is_active=True
         ).select_related('section').first()
         return str(advisory.section.id) if advisory else None
 
-    def get_advisory_section_name(self, obj: User):
+    def get_advisory_section_name(self, obj: User) -> str | None:
         from .models import TeacherAdvisory
         advisory = TeacherAdvisory.objects.filter(
             teacher=obj, is_active=True
@@ -134,21 +137,21 @@ class TodoItemSerializer(serializers.ModelSerializer):
     is_available = serializers.SerializerMethodField()
     target_path = serializers.SerializerMethodField()
 
-    def get_course_section_id(self, obj: TodoItem):
+    def get_course_section_id(self, obj: TodoItem) -> str | None:
         if obj.activity_id:
             return str(obj.activity.course_section_id) if obj.activity else None
         if obj.quiz_id:
             return str(obj.quiz.course_section_id) if obj.quiz else None
         return None
 
-    def get_source_type(self, obj: TodoItem):
+    def get_source_type(self, obj: TodoItem) -> str:
         if obj.activity_id:
             return "activity"
         if obj.quiz_id:
             return "quiz"
         return "manual"
 
-    def get_is_generated(self, obj: TodoItem):
+    def get_is_generated(self, obj: TodoItem) -> bool:
         return bool(obj.activity_id or obj.quiz_id)
 
     def _availability_state(self, obj: TodoItem) -> tuple[bool, bool]:
@@ -178,15 +181,15 @@ class TodoItemSerializer(serializers.ModelSerializer):
 
         return False, True
 
-    def get_is_locked(self, obj: TodoItem):
+    def get_is_locked(self, obj: TodoItem) -> bool:
         locked, _available = self._availability_state(obj)
         return locked
 
-    def get_is_available(self, obj: TodoItem):
+    def get_is_available(self, obj: TodoItem) -> bool:
         _locked, available = self._availability_state(obj)
         return available
 
-    def get_target_path(self, obj: TodoItem):
+    def get_target_path(self, obj: TodoItem) -> str | None:
         if obj.activity_id:
             return f"/activities/{obj.activity_id}"
         if obj.quiz_id:
@@ -376,7 +379,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             "student_count",
         )
 
-    def get_student_count(self, obj):
+    def get_student_count(self, obj: Activity) -> int:
         """Return the count of active student enrollments in this activity's course section."""
         return Enrollment.objects.filter(
             course_section=obj.course_section,
@@ -517,15 +520,15 @@ class QuizSerializer(serializers.ModelSerializer):
             "student_count",
         )
 
-    def get_question_count(self, obj):
+    def get_question_count(self, obj: Quiz) -> int:
         return obj.questions.count()
 
-    def get_points(self, obj):
+    def get_points(self, obj: Quiz) -> int | float:
         from django.db.models import Sum
         result = obj.questions.aggregate(total=Sum('points'))
         return result['total'] if result['total'] is not None else 0
 
-    def get_student_count(self, obj):
+    def get_student_count(self, obj: Quiz) -> int:
         """Return the count of active student enrollments in this quiz's course section."""
         return Enrollment.objects.filter(
             course_section=obj.course_section,
@@ -795,21 +798,21 @@ class ActivityReminderSerializer(serializers.ModelSerializer):
             )
         return data
 
-    def get_course_section_id(self, obj: ActivityReminder):
+    def get_course_section_id(self, obj: ActivityReminder) -> str | None:
         if obj.activity_id:
             return str(obj.activity.course_section_id) if obj.activity else None
         if obj.quiz_id:
             return str(obj.quiz.course_section_id) if obj.quiz else None
         return None
 
-    def get_activity_title(self, obj: ActivityReminder):
+    def get_activity_title(self, obj: ActivityReminder) -> str | None:
         if obj.reminder_type == "activity" and obj.activity:
             return obj.activity.title
         if obj.reminder_type == "quiz" and obj.quiz:
             return obj.quiz.title
         return None
 
-    def get_activity_deadline(self, obj: ActivityReminder):
+    def get_activity_deadline(self, obj: ActivityReminder) -> datetime | None:
         if obj.reminder_type == "activity" and obj.activity:
             return obj.activity.deadline
         if obj.reminder_type == "quiz" and obj.quiz:
@@ -849,7 +852,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "activity_id", "submission_id", "thread_student_id", "author_id", "author_name", "author_avatar", "created_at", "updated_at")
 
-    def get_author_avatar(self, obj: ActivityComment):
+    def get_author_avatar(self, obj: ActivityComment) -> str | None:
         """Get the author's avatar URL."""
         request = self.context.get("request")
         if obj.author.avatar_url:
@@ -859,7 +862,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(url) if request else url
         return None
 
-    def get_replies(self, obj: ActivityComment):
+    def get_replies(self, obj: ActivityComment) -> list[dict[str, Any]]:
         """Get nested replies for this comment."""
         # Only include replies if we're not already in a nested context
         # to prevent infinite recursion

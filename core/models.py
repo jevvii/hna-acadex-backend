@@ -105,13 +105,13 @@ class User(AbstractUser):
         ]
 
     @property
-    def full_name(self):
+    def full_name(self) -> str:
         """Return the full name in 'LAST, FIRST, MIDDLE' format for backward compatibility."""
         if self.middle_name:
             return f"{self.last_name}, {self.first_name}, {self.middle_name}"
         return f"{self.last_name}, {self.first_name}"
 
-    def get_full_name(self):
+    def get_full_name(self) -> str:
         """Return the full name in display format 'First Middle Last'."""
         parts = [self.first_name]
         if self.middle_name:

@@ -4,6 +4,7 @@
 from .auth import (
     AuthLoginView,
     AuthLogoutView,
+    AuthRefreshView,
     MeView,
     ChangePasswordView,
     ForgotPasswordRequestView,
@@ -103,6 +104,7 @@ __all__ = [
     # Auth views
     'AuthLoginView',
     'AuthLogoutView',
+    'AuthRefreshView',
     'MeView',
     'ChangePasswordView',
     'ForgotPasswordRequestView',

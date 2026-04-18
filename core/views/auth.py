@@ -11,6 +11,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
 from core.models import PasswordResetRequest, User
 from core.permissions import IsAdminRole
@@ -38,29 +39,31 @@ def set_auth_cookies(response, access_token, refresh_token=None):
     cookie_httponly = jwt_settings.get('AUTH_COOKIE_HTTP_ONLY', True)
     cookie_samesite = jwt_settings.get('AUTH_COOKIE_SAMESITE', 'Lax')
     cookie_path = jwt_settings.get('AUTH_COOKIE_PATH', '/')
+    cookie_use_session = jwt_settings.get('AUTH_COOKIE_USE_SESSION', False)
     access_max_age = jwt_settings.get('ACCESS_TOKEN_LIFETIME').total_seconds() if hasattr(jwt_settings.get('ACCESS_TOKEN_LIFETIME'), 'total_seconds') else 300
     refresh_max_age = jwt_settings.get('REFRESH_TOKEN_LIFETIME').total_seconds() if hasattr(jwt_settings.get('REFRESH_TOKEN_LIFETIME'), 'total_seconds') else 86400
 
-    response.set_cookie(
-        cookie_name,
-        access_token,
-        max_age=int(access_max_age),
-        path=cookie_path,
-        secure=cookie_secure,
-        httponly=cookie_httponly,
-        samesite=cookie_samesite,
-    )
+    access_cookie_kwargs = {
+        "path": cookie_path,
+        "secure": cookie_secure,
+        "httponly": cookie_httponly,
+        "samesite": cookie_samesite,
+    }
+    if not cookie_use_session:
+        access_cookie_kwargs["max_age"] = int(access_max_age)
+
+    response.set_cookie(cookie_name, access_token, **access_cookie_kwargs)
 
     if refresh_token:
-        response.set_cookie(
-            refresh_cookie_name,
-            refresh_token,
-            max_age=int(refresh_max_age),
-            path=cookie_path,
-            secure=cookie_secure,
-            httponly=cookie_httponly,
-            samesite=cookie_samesite,
-        )
+        refresh_cookie_kwargs = {
+            "path": cookie_path,
+            "secure": cookie_secure,
+            "httponly": cookie_httponly,
+            "samesite": cookie_samesite,
+        }
+        if not cookie_use_session:
+            refresh_cookie_kwargs["max_age"] = int(refresh_max_age)
+        response.set_cookie(refresh_cookie_name, refresh_token, **refresh_cookie_kwargs)
 
 
 def clear_auth_cookies(response):
@@ -163,6 +166,30 @@ class AuthLogoutView(APIView):
     def post(self, request):
         response = Response({"detail": "Successfully logged out."})
         clear_auth_cookies(response)
+        return response
+
+
+class AuthRefreshView(APIView):
+    """
+    Refresh access token using either request body refresh token or HttpOnly refresh cookie.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        jwt_settings = get_jwt_settings()
+        refresh_cookie_name = jwt_settings.get("AUTH_COOKIE_REFRESH", "refresh_token")
+        refresh_value = request.data.get("refresh") or request.COOKIES.get(refresh_cookie_name)
+        if not refresh_value:
+            return Response({"detail": "Refresh token not provided."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_value})
+        serializer.is_valid(raise_exception=True)
+        token_data = serializer.validated_data
+
+        access_token = token_data.get("access")
+        rotated_refresh = token_data.get("refresh")
+        response = Response(token_data)
+        set_auth_cookies(response, access_token, rotated_refresh)
         return response
 
 
@@ -312,6 +339,7 @@ class AvatarUploadView(APIView):
 __all__ = [
     'AuthLoginView',
     'AuthLogoutView',
+    'AuthRefreshView',
     'MeView',
     'ChangePasswordView',
     'ForgotPasswordRequestView',

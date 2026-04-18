@@ -812,8 +812,6 @@ class QuizQuickCreateView(APIView):
         weekly_module_id = request.data.get("weekly_module_id")
         if not course_section_id or not title:
             return Response({"detail": "course_section_id and title are required."}, status=status.HTTP_400_BAD_REQUEST)
-        if not weekly_module_id:
-            return Response({"detail": "weekly_module_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         course_section = CourseSection.objects.filter(id=course_section_id).first()
         if not course_section:
@@ -821,9 +819,11 @@ class QuizQuickCreateView(APIView):
         if user.role == User.Role.TEACHER and course_section.teacher_id != user.id:
             return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
 
-        weekly_module = WeeklyModule.objects.filter(id=weekly_module_id, course_section=course_section).first()
-        if not weekly_module:
-            return Response({"detail": "Selected week/topic is invalid for this course section."}, status=status.HTTP_400_BAD_REQUEST)
+        weekly_module = None
+        if weekly_module_id:
+            weekly_module = WeeklyModule.objects.filter(id=weekly_module_id, course_section=course_section).first()
+            if not weekly_module:
+                return Response({"detail": "Selected week/topic is invalid for this course section."}, status=status.HTTP_400_BAD_REQUEST)
 
         def to_int(value, default):
             if value in [None, ""]:

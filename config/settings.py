@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import ssl
 from datetime import timedelta
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -14,18 +15,22 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     raise ImproperlyConfigured("DJANGO_SECRET_KEY environment variable is required")
 
-if SECRET_KEY in ["dev-secret-key-change-this", "secret", "test"]:
+if SECRET_KEY in ["dev-secret-key-change-this", "secret", "test", "your-secret-key-here-change-in-production"]:
     if not DEBUG:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY must be changed from default in production")
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 
 # Security settings for production
 if not DEBUG:
+    # Render and other reverse proxies terminate TLS before forwarding to Django.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
     SECURE_SSL_REDIRECT = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
@@ -89,9 +94,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DEBUG and not DATABASE_URL:
+    raise ImproperlyConfigured("DATABASE_URL environment variable is required in production")
+
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default=DATABASE_URL or f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
         conn_max_age=600,
         conn_health_checks=True,
     )
@@ -182,6 +191,16 @@ CORS_ALLOW_CREDENTIALS = True
 # Production override: require explicit CORS configuration
 if not DEBUG and 'CORS_ALLOWED_ORIGINS' not in os.environ:
     raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS environment variable must be set in production")
+if CORS_ALLOW_ALL_ORIGINS:
+    if CORS_ALLOW_CREDENTIALS:
+        raise ImproperlyConfigured("CORS_ALLOW_ALL_ORIGINS cannot be enabled when CORS_ALLOW_CREDENTIALS is True")
+    if not DEBUG:
+        raise ImproperlyConfigured("CORS_ALLOW_ALL_ORIGINS must be disabled in production")
+
+# Ensure CSRF trusted origins stays aligned with browser origins used by web clients.
+for origin in CORS_ALLOWED_ORIGINS:
+    if origin.startswith(("http://", "https://")) and origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(origin)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -195,10 +214,15 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
+# Auth lifetime tuning for persistent mobile sessions and session-scoped web cookies.
+JWT_ACCESS_TOKEN_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_MINUTES", "15"))
+JWT_REFRESH_TOKEN_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_DAYS", "180"))
+AUTH_COOKIE_USE_SESSION = os.getenv("AUTH_COOKIE_USE_SESSION", "1") == "1"
+
 # JWT Configuration for HttpOnly cookie-based authentication
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=JWT_ACCESS_TOKEN_MINUTES),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=JWT_REFRESH_TOKEN_DAYS),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM": "HS256",
@@ -211,6 +235,7 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_SAMESITE": "Lax",
     "AUTH_COOKIE_PATH": "/",
+    "AUTH_COOKIE_USE_SESSION": AUTH_COOKIE_USE_SESSION,
 }
 
 # Celery Configuration
@@ -223,10 +248,10 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
 # SSL settings for Upstash Redis (rediss://)
-CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "ssl_cert_reqs": None,  # Required for Upstash SSL connections
-}
-CELERY_REDIS_BACKEND_USE_SSL = True
+if CELERY_BROKER_URL.startswith("rediss://"):
+    CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": ssl.CERT_NONE}
+if CELERY_RESULT_BACKEND.startswith("rediss://"):
+    CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": ssl.CERT_NONE}
 
 # Celery Beat Configuration
 CELERY_BEAT_SCHEDULE = {
@@ -248,6 +273,9 @@ FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", None)
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", None)
 
 # Logging Configuration
+DJANGO_LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO")
+CORE_LOG_LEVEL = os.getenv("CORE_LOG_LEVEL", "DEBUG" if DEBUG else "INFO")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -266,11 +294,11 @@ LOGGING = {
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": DJANGO_LOG_LEVEL,
         },
         "core": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": CORE_LOG_LEVEL,
             "propagate": True,
         },
     },
