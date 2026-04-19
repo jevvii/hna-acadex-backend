@@ -490,6 +490,10 @@ class CourseFileSerializer(serializers.ModelSerializer):
         if not match:
             return original_url
 
+        delivery_type = match.group("delivery_type")
+        if delivery_type == "upload":
+            return original_url
+
         if not all([
             getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
             getattr(settings, "CLOUDINARY_API_KEY", None),
@@ -503,7 +507,6 @@ class CourseFileSerializer(serializers.ModelSerializer):
             return original_url
 
         resource_type = match.group("resource_type")
-        delivery_type = match.group("delivery_type")
         public_id = match.group("public_id")
         version = int(match.group("version"))
 

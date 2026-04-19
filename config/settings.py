@@ -153,6 +153,17 @@ CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", None)
 # Cloudinary Configuration for media storage
 # Set CLOUDINARY_URL env var in format: cloudinary://api_key:api_secret@cloud_name
 CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", None)
+
+# Parse CLOUDINARY_URL into individual vars when they aren't set explicitly
+if CLOUDINARY_URL and not (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET):
+    try:
+        _parsed = urlparse(CLOUDINARY_URL)
+        CLOUDINARY_CLOUD_NAME = CLOUDINARY_CLOUD_NAME or _parsed.hostname
+        CLOUDINARY_API_KEY = CLOUDINARY_API_KEY or _parsed.username
+        CLOUDINARY_API_SECRET = CLOUDINARY_API_SECRET or _parsed.password
+    except Exception:
+        pass
+
 USE_CLOUDINARY_STORAGE = bool(
     CLOUDINARY_URL or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
 )
