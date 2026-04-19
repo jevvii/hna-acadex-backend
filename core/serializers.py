@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 import re
 from typing import Any
@@ -473,6 +474,8 @@ class CourseFileSerializer(serializers.ModelSerializer):
             "created_at",
         )
 
+    logger = logging.getLogger(__name__)
+
     _CLOUDINARY_URL_PATTERN = re.compile(
         r"^/[^/]+/(?P<resource_type>image|raw|video)/(?P<delivery_type>upload|private|authenticated)"
         r"/v(?P<version>\d+)/(?P<public_id>.+)$"
@@ -490,15 +493,12 @@ class CourseFileSerializer(serializers.ModelSerializer):
         if not match:
             return original_url
 
-        delivery_type = match.group("delivery_type")
-        if delivery_type == "upload":
-            return original_url
-
         if not all([
             getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
             getattr(settings, "CLOUDINARY_API_KEY", None),
             getattr(settings, "CLOUDINARY_API_SECRET", None),
         ]):
+            logger.warning("cloudinary_sign_skip: missing credentials, returning unsigned url")
             return original_url
 
         try:
@@ -507,6 +507,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
             return original_url
 
         resource_type = match.group("resource_type")
+        delivery_type = match.group("delivery_type")
         public_id = match.group("public_id")
         version = int(match.group("version"))
 
@@ -519,8 +520,13 @@ class CourseFileSerializer(serializers.ModelSerializer):
                 sign_url=True,
                 version=version,
             )
+            logger.debug(
+                "cloudinary_sign: original=%s signed=%s public_id=%s type=%s version=%s",
+                original_url, signed_url, public_id, delivery_type, version,
+            )
             return signed_url
         except Exception:
+            logger.exception("cloudinary_sign_error: failed to sign url=%s", original_url)
             return original_url
 
     def to_representation(self, instance):
