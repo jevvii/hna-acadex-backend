@@ -48,12 +48,15 @@ class StorjS3Storage(_S3StorageBase or FileSystemStorage):
         content.seek(0)
         body = content.read()
 
-        self.connection.meta.client.put_object(
-            Bucket=self.bucket_name,
-            Key=name,
-            Body=body,
+        put_kwargs = {
+            "Bucket": self.bucket_name,
+            "Key": name,
+            "Body": body,
             **params,
-        )
+        }
+        put_kwargs.setdefault("ContentLength", len(body))
+
+        self.connection.meta.client.put_object(**put_kwargs)
         return name
 
 
