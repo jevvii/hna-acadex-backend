@@ -73,6 +73,8 @@ class UserSerializer(serializers.ModelSerializer):
     def get_avatar_url(self, obj: User) -> str | None:
         request = self.context.get("request")
         if obj.avatar_url:
+            if request and obj.avatar_url.startswith("/"):
+                return request.build_absolute_uri(obj.avatar_url)
             return obj.avatar_url
         if obj.avatar:
             url = obj.avatar.url

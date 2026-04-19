@@ -132,33 +132,57 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+USE_CLOUDINARY_STORAGE = False
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Cloudinary Configuration (for media storage in production)
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", None)
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", None)
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", None)
 
-if CLOUDINARY_CLOUD_NAME:
-    # Use Cloudinary for media storage in production
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+# Cloudinary Configuration for media storage
+# Set CLOUDINARY_URL env var in format: cloudinary://api_key:api_secret@cloud_name
+CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", None)
+USE_CLOUDINARY_STORAGE = bool(
+    CLOUDINARY_URL or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+)
+
+if USE_CLOUDINARY_STORAGE:
+    if "cloudinary" not in INSTALLED_APPS:
+        INSTALLED_APPS.append("cloudinary")
+    if "cloudinary_storage" not in INSTALLED_APPS:
+        INSTALLED_APPS.append("cloudinary_storage")
+
+    import cloudinary
+    if CLOUDINARY_URL:
+        cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
+    else:
+        cloudinary.config(
+            cloud_name=CLOUDINARY_CLOUD_NAME,
+            api_key=CLOUDINARY_API_KEY,
+            api_secret=CLOUDINARY_API_SECRET,
+            secure=True,
+        )
+
     CLOUDINARY_STORAGE = {
         "CLOUD_NAME": CLOUDINARY_CLOUD_NAME,
         "API_KEY": CLOUDINARY_API_KEY,
         "API_SECRET": CLOUDINARY_API_SECRET,
     }
 
-# Cloudinary Configuration for media storage
-# Set CLOUDINARY_URL env var in format: cloudinary://api_key:api_secret@cloud_name
-CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", None)
-if CLOUDINARY_URL:
-    import cloudinary
-    import cloudinary.uploader
-    import cloudinary.api
-    cloudinary.config()
-    DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+    STORAGES["default"] = {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"}
+    # Backward-compatible alias for packages that still read this setting.
+    DEFAULT_FILE_STORAGE = STORAGES["default"]["BACKEND"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
