@@ -503,6 +503,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
             return original_url
 
         resource_type = match.group("resource_type")
+        delivery_type = match.group("delivery_type")
         public_id = match.group("public_id")
         version = int(match.group("version"))
 
@@ -510,7 +511,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
             signed_url, _ = cloudinary_url(
                 public_id,
                 resource_type=resource_type,
-                type="authenticated",
+                type=delivery_type,
                 secure=True,
                 sign_url=True,
                 version=version,
