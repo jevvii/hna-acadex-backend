@@ -493,6 +493,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
 
         match = self._CLOUDINARY_URL_PATTERN.match(parsed.path)
         if not match:
+            self.logger.warning("cloudinary_url_no_match: url=%s", original_url)
             return original_url
 
         resource_type = match.group("resource_type")
@@ -500,19 +501,6 @@ class CourseFileSerializer(serializers.ModelSerializer):
         public_id = match.group("public_id")
         version_str = match.group("version")
         version = int(version_str) if version_str else None
-
-        # Upload-type resources are publicly accessible — signing them produces
-        # URLs that 404 on Cloudinary.  Return a clean unsigned HTTPS URL.
-        if delivery_type == "upload":
-            from cloudinary.utils import cloudinary_url
-            clean_url, _ = cloudinary_url(
-                public_id,
-                resource_type=resource_type,
-                type=delivery_type,
-                secure=True,
-                **({"version": version} if version is not None else {}),
-            )
-            return clean_url
 
         if not all([
             getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
@@ -537,9 +525,9 @@ class CourseFileSerializer(serializers.ModelSerializer):
             if version is not None:
                 sign_kwargs["version"] = version
             signed_url, _ = cloudinary_url(public_id, **sign_kwargs)
-            self.logger.debug(
-                "cloudinary_sign: original=%s signed=%s public_id=%s type=%s version=%s",
-                original_url, signed_url, public_id, delivery_type, version,
+            self.logger.info(
+                "cloudinary_sign: original=%s signed=%s public_id=%s resource_type=%s delivery_type=%s version=%s",
+                original_url, signed_url, public_id, resource_type, delivery_type, version,
             )
             return signed_url
         except Exception:
