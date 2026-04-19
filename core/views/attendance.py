@@ -111,7 +111,8 @@ class AttendanceOverviewView(APIView):
             if student.avatar_url:
                 avatar_url = student.avatar_url
             elif student.avatar:
-                avatar_url = request.build_absolute_uri(student.avatar.url)
+                url = student.avatar.url
+                avatar_url = url if url.startswith(("http://", "https://")) else request.build_absolute_uri(url)
 
             student_rows.append(
                 {

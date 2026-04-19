@@ -1,10 +1,7 @@
 import logging
 from datetime import datetime
-import re
 from typing import Any
-from urllib.parse import urlparse
 
-from django.conf import settings
 from django.utils import timezone
 from rest_framework import serializers
 from .comment_crypto import decrypt_comment_content
@@ -82,7 +79,9 @@ class UserSerializer(serializers.ModelSerializer):
             return obj.avatar_url
         if obj.avatar:
             url = obj.avatar.url
-            return request.build_absolute_uri(url) if request else url
+            if not request or url.startswith(("http://", "https://")):
+                return url
+            return request.build_absolute_uri(url)
         return None
 
     def get_advisory_section_id(self, obj: User) -> str | None:
@@ -474,77 +473,6 @@ class CourseFileSerializer(serializers.ModelSerializer):
             "created_at",
         )
 
-    logger = logging.getLogger(__name__)
-
-    _CLOUDINARY_URL_PATTERN = re.compile(
-        r"^/[^/]+/(?P<resource_type>image|raw|video)/(?P<delivery_type>upload|private|authenticated)"
-        r"(?:/s--[^/]+--)?"  # optional signature component
-        r"(?:/v(?P<version>\d+))?"
-        r"/(?P<public_id>.+)$"
-    )
-
-    def _build_cloudinary_delivery_url(self, original_url: str | None) -> str | None:
-        if not original_url:
-            return original_url
-
-        parsed = urlparse(original_url)
-        if parsed.netloc.lower() != "res.cloudinary.com":
-            return original_url
-
-        match = self._CLOUDINARY_URL_PATTERN.match(parsed.path)
-        if not match:
-            self.logger.warning("cloudinary_url_no_match: url=%s", original_url)
-            return original_url
-
-        resource_type = match.group("resource_type")
-        delivery_type = match.group("delivery_type")
-        public_id = match.group("public_id")
-        version_str = match.group("version")
-        version = int(version_str) if version_str else None
-
-        if not all([
-            getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
-            getattr(settings, "CLOUDINARY_API_KEY", None),
-            getattr(settings, "CLOUDINARY_API_SECRET", None),
-        ]):
-            self.logger.warning("cloudinary_sign_skip: missing credentials, returning unsigned url")
-            return original_url
-
-        try:
-            from cloudinary.utils import cloudinary_url
-        except Exception:
-            return original_url
-
-        try:
-            auth_token_key = getattr(settings, "CLOUDINARY_AUTH_TOKEN_KEY", None)
-            sign_kwargs = dict(
-                resource_type=resource_type,
-                type=delivery_type,
-                secure=True,
-                sign_url=True,
-            )
-            if version is not None:
-                sign_kwargs["version"] = version
-            if auth_token_key:
-                sign_kwargs["auth_token"] = {"key": auth_token_key, "duration": 3600}
-            signed_url, _ = cloudinary_url(public_id, **sign_kwargs)
-            import cloudinary as _cloudinary
-            self.logger.info(
-                "cloudinary_sign: original=%s signed=%s public_id=%s resource_type=%s delivery_type=%s version=%s auth_token=%s cloud_name=%s",
-                original_url, signed_url, public_id, resource_type, delivery_type, version,
-                bool(auth_token_key),
-                getattr(_cloudinary.config(), "cloud_name", "?"),
-            )
-            return signed_url
-        except Exception:
-            self.logger.exception("cloudinary_sign_error: failed to sign url=%s", original_url)
-            return original_url
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data["file_url"] = self._build_cloudinary_delivery_url(data.get("file_url"))
-        data["preview_file_url"] = self._build_cloudinary_delivery_url(data.get("preview_file_url"))
-        return data
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
@@ -937,7 +865,9 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             return obj.author.avatar_url
         if obj.author.avatar:
             url = obj.author.avatar.url
-            return request.build_absolute_uri(url) if request else url
+            if not request or url.startswith(("http://", "https://")):
+                return url
+            return request.build_absolute_uri(url)
         return None
 
     def get_replies(self, obj: ActivityComment) -> list[dict[str, Any]]:

@@ -58,12 +58,12 @@ services:
         sync: false  # Set in Render Dashboard
       - key: DEFAULT_FROM_EMAIL
         value: "noreply@hnaacadex.org"
-      # Cloudinary for media storage (avatars)
-      - key: CLOUDINARY_CLOUD_NAME
+      # Storj S3-compatible storage for media files
+      - key: STORJ_S3_ACCESS_KEY_ID
         sync: false  # Set in Render Dashboard
-      - key: CLOUDINARY_API_KEY
+      - key: STORJ_S3_SECRET_ACCESS_KEY
         sync: false  # Set in Render Dashboard
-      - key: CLOUDINARY_API_SECRET
+      - key: STORJ_S3_BUCKET_NAME
         sync: false  # Set in Render Dashboard
       # Firebase
       - key: FIREBASE_CREDENTIALS_JSON

@@ -134,8 +134,6 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-USE_CLOUDINARY_STORAGE = False
-
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -145,56 +143,21 @@ STORAGES = {
     },
 }
 
-# Cloudinary Configuration (for media storage in production)
-CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", None)
-CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", None)
-CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", None)
-# Auth token key for restricted delivery (found in Cloudinary Dashboard > Settings > Security)
-CLOUDINARY_AUTH_TOKEN_KEY = os.getenv("CLOUDINARY_AUTH_TOKEN_KEY", None)
+# Storj S3-Compatible Storage Configuration
+STORJ_S3_ENDPOINT_URL = os.getenv("STORJ_S3_ENDPOINT_URL", "https://gateway.storjshare.io")
+STORJ_S3_ACCESS_KEY_ID = os.getenv("STORJ_S3_ACCESS_KEY_ID", None)
+STORJ_S3_SECRET_ACCESS_KEY = os.getenv("STORJ_S3_SECRET_ACCESS_KEY", None)
+STORJ_S3_BUCKET_NAME = os.getenv("STORJ_S3_BUCKET_NAME", None)
 
-# Cloudinary Configuration for media storage
-# Set CLOUDINARY_URL env var in format: cloudinary://api_key:api_secret@cloud_name
-CLOUDINARY_URL = os.getenv("CLOUDINARY_URL", None)
-
-# Parse CLOUDINARY_URL into individual vars when they aren't set explicitly
-if CLOUDINARY_URL and not (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET):
-    try:
-        _parsed = urlparse(CLOUDINARY_URL)
-        CLOUDINARY_CLOUD_NAME = CLOUDINARY_CLOUD_NAME or _parsed.hostname
-        CLOUDINARY_API_KEY = CLOUDINARY_API_KEY or _parsed.username
-        CLOUDINARY_API_SECRET = CLOUDINARY_API_SECRET or _parsed.password
-    except Exception:
-        pass
-
-USE_CLOUDINARY_STORAGE = bool(
-    CLOUDINARY_URL or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+USE_STORJ_STORAGE = bool(
+    STORJ_S3_ACCESS_KEY_ID and STORJ_S3_SECRET_ACCESS_KEY and STORJ_S3_BUCKET_NAME
 )
 
-if USE_CLOUDINARY_STORAGE:
-    if "cloudinary" not in INSTALLED_APPS:
-        INSTALLED_APPS.append("cloudinary")
-    if "cloudinary_storage" not in INSTALLED_APPS:
-        INSTALLED_APPS.append("cloudinary_storage")
+if USE_STORJ_STORAGE:
+    if "storages" not in INSTALLED_APPS:
+        INSTALLED_APPS.append("storages")
 
-    import cloudinary
-    if CLOUDINARY_URL:
-        cloudinary.config(cloudinary_url=CLOUDINARY_URL, secure=True)
-    else:
-        cloudinary.config(
-            cloud_name=CLOUDINARY_CLOUD_NAME,
-            api_key=CLOUDINARY_API_KEY,
-            api_secret=CLOUDINARY_API_SECRET,
-            secure=True,
-        )
-
-    CLOUDINARY_STORAGE = {
-        "CLOUD_NAME": CLOUDINARY_CLOUD_NAME,
-        "API_KEY": CLOUDINARY_API_KEY,
-        "API_SECRET": CLOUDINARY_API_SECRET,
-    }
-
-    STORAGES["default"] = {"BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"}
-    # Backward-compatible alias for packages that still read this setting.
+    STORAGES["default"] = {"BACKEND": "core.storage.StorjS3Storage"}
     DEFAULT_FILE_STORAGE = STORAGES["default"]["BACKEND"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

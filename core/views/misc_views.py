@@ -57,6 +57,7 @@ from core.views.common import (
     _notify_students_for_course_section,
     OFFICE_CONVERTIBLE_EXTENSIONS,
 )
+from core.storage import get_storage_url as _get_storage_url
 from core.decorators import rate_limit_file_upload
 
 logger = logging.getLogger(__name__)
@@ -538,7 +539,7 @@ class CourseFileViewSet(TeacherCourseSectionScopedModelViewSet):
             f"course_files/{request.user.id}/{timezone.now().timestamp()}_{file_obj.name}",
             file_obj,
         )
-        file_url = request.build_absolute_uri(default_storage.url(path))
+        file_url = _get_storage_url(path)
         payload["file_url"] = file_url
         payload["file_name"] = payload.get("file_name") or file_obj.name
         payload["file_size_bytes"] = file_obj.size

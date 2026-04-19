@@ -7,6 +7,7 @@ import magic
 import os
 import shutil
 import subprocess
+import tempfile
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.files.base import File
@@ -30,6 +31,7 @@ from core.models import (
     CourseSection,
     User,
 )
+from core.storage import get_storage_url as _get_storage_url
 from core.push_notifications import send_push_notification_to_users
 
 # File upload validation constants
@@ -1384,22 +1386,10 @@ def _sync_student_items_best_effort(student, *, min_interval_seconds: int = 12):
         cache.delete(lock_key)
 
 
-def _build_storage_abs_path(path: str) -> str | None:
-    if hasattr(default_storage, "path"):
-        try:
-            return default_storage.path(path)
-        except Exception:
-            return None
-    return None
-
 
 def _convert_office_upload_to_pdf_preview(*, request, source_storage_path: str, original_name: str) -> str | None:
     ext = (os.path.splitext(original_name)[1] or "").lower().replace(".", "")
     if ext not in OFFICE_CONVERTIBLE_EXTENSIONS:
-        return None
-
-    source_abs = _build_storage_abs_path(source_storage_path)
-    if not source_abs or not os.path.exists(source_abs):
         return None
 
     libreoffice_bin = shutil.which("libreoffice")
@@ -1407,32 +1397,38 @@ def _convert_office_upload_to_pdf_preview(*, request, source_storage_path: str, 
         logger.warning("preview_conversion_skipped_no_libreoffice source=%s", source_storage_path)
         return None
 
-    output_dir = os.path.join(os.path.dirname(source_abs), "__previews__")
-    os.makedirs(output_dir, exist_ok=True)
-
+    source_tmp = None
+    output_dir = None
     try:
+        source_tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+        source_tmp.write(default_storage.open(source_storage_path).read())
+        source_tmp.flush()
+        source_tmp.close()
+
+        output_dir = tempfile.mkdtemp()
         subprocess.run(
-            [libreoffice_bin, "--headless", "--convert-to", "pdf", "--outdir", output_dir, source_abs],
+            [libreoffice_bin, "--headless", "--convert-to", "pdf", "--outdir", output_dir, source_tmp.name],
             check=False,
             timeout=90,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+
+        generated_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(source_tmp.name))[0]}.pdf")
+        if not os.path.exists(generated_pdf):
+            logger.warning("preview_conversion_no_output source=%s", source_storage_path)
+            return None
+
+        base_name = os.path.splitext(os.path.basename(original_name))[0].replace(" ", "_")
+        preview_rel = f"course_files/previews/{request.user.id}/{timezone.now().timestamp()}_{base_name}.pdf"
+        with open(generated_pdf, "rb") as fp:
+            saved_preview = default_storage.save(preview_rel, File(fp))
+        return _get_storage_url(saved_preview)
     except Exception:
         logger.exception("preview_conversion_failed source=%s", source_storage_path)
         return None
-
-    generated_pdf_abs = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(source_abs))[0]}.pdf")
-    if not os.path.exists(generated_pdf_abs):
-        logger.warning("preview_conversion_no_output source=%s", source_storage_path)
-        return None
-
-    base_name = os.path.splitext(os.path.basename(original_name))[0].replace(" ", "_")
-    preview_rel = f"course_files/previews/{request.user.id}/{timezone.now().timestamp()}_{base_name}.pdf"
-    try:
-        with open(generated_pdf_abs, "rb") as fp:
-            saved_preview = default_storage.save(preview_rel, File(fp))
-        return request.build_absolute_uri(default_storage.url(saved_preview))
-    except Exception:
-        logger.exception("preview_storage_failed source=%s", source_storage_path)
-        return None
+    finally:
+        if source_tmp and os.path.exists(source_tmp.name):
+            os.unlink(source_tmp.name)
+        if output_dir and os.path.isdir(output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)

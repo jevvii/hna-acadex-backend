@@ -37,6 +37,7 @@ from core.views.common import (
     _notify_students_for_course_section,
     validate_file_upload,
 )
+from core.storage import get_storage_url as _get_storage_url
 from core.decorators import rate_limit_file_upload
 
 logger = logging.getLogger(__name__)
@@ -654,7 +655,7 @@ class ActivityCommentViewSet(viewsets.ModelViewSet):
                 f"comments/{request.user.id}/{timezone.now().timestamp()}_{file_obj.name}",
                 file_obj,
             )
-            file_urls.append(request.build_absolute_uri(default_storage.url(path)))
+            file_urls.append(_get_storage_url(path))
 
         content = request.data.get('content')
         parent_id = request.data.get('parent_id')

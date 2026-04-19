@@ -46,5 +46,5 @@ urlpatterns = [
     path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 ]
 
-if settings.DEBUG or not getattr(settings, "USE_CLOUDINARY_STORAGE", False):
+if settings.DEBUG or not getattr(settings, "USE_STORJ_STORAGE", False):
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,0 +1,37 @@
+from storages.backends.s3boto3 import S3Storage
+
+
+class StorjS3Storage(S3Storage):
+    def __init__(self, **kwargs):
+        from django.conf import settings
+
+        kwargs.setdefault("endpoint_url", settings.STORJ_S3_ENDPOINT_URL)
+        kwargs.setdefault("access_key", settings.STORJ_S3_ACCESS_KEY_ID)
+        kwargs.setdefault("secret_key", settings.STORJ_S3_SECRET_ACCESS_KEY)
+        kwargs.setdefault("bucket_name", settings.STORJ_S3_BUCKET_NAME)
+        kwargs.setdefault("addressing_style", "path")
+        kwargs.setdefault("querystring_expire", 3600)
+        kwargs.setdefault("custom_domain", None)
+        super().__init__(**kwargs)
+
+    def path(self, name):
+        raise NotImplementedError(
+            "StorjS3Storage does not support local filesystem paths. "
+            "Use default_storage.open(name) to read the file content."
+        )
+
+
+def get_storage_url(path: str) -> str:
+    """Return a URL for a stored file.
+
+    For S3 backends, ``default_storage.url()`` already returns an absolute
+    pre-signed URL — calling ``build_absolute_uri`` on it would corrupt it by
+    prepending the Django host.  For local filesystem storage the URL is
+    relative and can be resolved via the request if needed.
+    """
+    from django.core.files.storage import default_storage
+
+    url = default_storage.url(path)
+    if url.startswith(("http://", "https://")):
+        return url
+    return url
