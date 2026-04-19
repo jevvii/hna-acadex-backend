@@ -25,9 +25,12 @@ class StorjS3Storage(_S3StorageBase or FileSystemStorage):
         kwargs.setdefault("access_key", settings.STORJ_S3_ACCESS_KEY_ID)
         kwargs.setdefault("secret_key", settings.STORJ_S3_SECRET_ACCESS_KEY)
         kwargs.setdefault("bucket_name", settings.STORJ_S3_BUCKET_NAME)
+        kwargs.setdefault("region_name", getattr(settings, "STORJ_S3_REGION_NAME", "us1"))
+        kwargs.setdefault("custom_domain", getattr(settings, "STORJ_S3_CUSTOM_DOMAIN", None))
+        kwargs.setdefault("object_parameters", getattr(settings, "AWS_S3_OBJECT_PARAMETERS", {}))
+        kwargs.setdefault("signature_version", getattr(settings, "AWS_S3_SIGNATURE_VERSION", "s3v4"))
         kwargs.setdefault("addressing_style", "path")
         kwargs.setdefault("querystring_expire", 3600)
-        kwargs.setdefault("custom_domain", None)
         super().__init__(**kwargs)
 
     def path(self, name):

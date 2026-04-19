@@ -148,6 +148,8 @@ STORJ_S3_ENDPOINT_URL = os.getenv("STORJ_S3_ENDPOINT_URL", "https://gateway.stor
 STORJ_S3_ACCESS_KEY_ID = os.getenv("STORJ_S3_ACCESS_KEY_ID", None)
 STORJ_S3_SECRET_ACCESS_KEY = os.getenv("STORJ_S3_SECRET_ACCESS_KEY", None)
 STORJ_S3_BUCKET_NAME = os.getenv("STORJ_S3_BUCKET_NAME", None)
+STORJ_S3_REGION_NAME = os.getenv("STORJ_S3_REGION_NAME", "us1") # us1 is the default for most Storj users
+STORJ_S3_CUSTOM_DOMAIN = os.getenv("STORJ_S3_CUSTOM_DOMAIN", None)
 
 USE_STORJ_STORAGE = bool(
     STORJ_S3_ACCESS_KEY_ID and STORJ_S3_SECRET_ACCESS_KEY and STORJ_S3_BUCKET_NAME
@@ -156,6 +158,13 @@ USE_STORJ_STORAGE = bool(
 if USE_STORJ_STORAGE:
     if "storages" not in INSTALLED_APPS:
         INSTALLED_APPS.append("storages")
+
+    # AWS_S3_OBJECT_PARAMETERS for production-grade uploads (e.g., Cache-Control)
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": "max-age=86400",
+    }
+    # Ensure boto3 uses the correct signature version for Storj
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
 
     STORAGES["default"] = {"BACKEND": "core.storage.StorjS3Storage"}
     DEFAULT_FILE_STORAGE = STORAGES["default"]["BACKEND"]
