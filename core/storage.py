@@ -36,38 +36,6 @@ class StorjS3Storage(_S3StorageBase or FileSystemStorage):
             "Use default_storage.open(name) to read the file content."
         )
 
-    def _save(self, name, content):
-        # Storj's S3 gateway requires Content-Length, which the parent
-        # _save's upload_fileobj doesn't always provide. Use put_object
-        # instead, which sets Content-Length automatically.
-        from storages.utils import clean_name
-
-        name = self._normalize_name(clean_name(name))
-        params = self._get_write_parameters(name, content)
-
-        content.seek(0)
-        body = content.read()
-
-        put_kwargs = {
-            "Bucket": self.bucket_name,
-            "Key": name,
-            "Body": body,
-            **params,
-        }
-        # Normalize any lower-case/None content-length from upstream params.
-        if "content_length" in put_kwargs and "ContentLength" not in put_kwargs:
-            put_kwargs["ContentLength"] = put_kwargs.pop("content_length")
-
-        if put_kwargs.get("ContentLength") is None:
-            file_size = getattr(content, "size", None)
-            put_kwargs["ContentLength"] = int(file_size) if file_size is not None else len(body)
-        else:
-            put_kwargs["ContentLength"] = int(put_kwargs["ContentLength"])
-
-        self.connection.meta.client.put_object(**put_kwargs)
-        return name
-
-
 def get_storage_url(path: str) -> str:
     """Return a URL for a stored file.
 
