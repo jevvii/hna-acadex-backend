@@ -52,15 +52,17 @@ def get_email_backend_type():
 
 
 def get_brevo_client():
-    """Get Brevo client with configured API key."""
+    """Get Brevo Transactional Emails API client with configured API key."""
     try:
-        from brevo import Brevo
+        from brevo_python import ApiClient, Configuration, TransactionalEmailsApi
         api_key = getattr(settings, 'BREVO_API_KEY', None)
         if not api_key:
             raise ValueError("BREVO_API_KEY not configured in settings")
-        return Brevo(api_key=api_key)
+        configuration = Configuration()
+        configuration.api_key['api-key'] = api_key
+        return TransactionalEmailsApi(ApiClient(configuration))
     except ImportError:
-        raise ImportError("brevo package not installed. Run: pip install brevo-python")
+        raise ImportError("brevo-python package not installed. Run: pip install brevo-python")
 
 
 def send_email_via_brevo(to_email, subject, html_content, plain_content=None):
@@ -71,19 +73,21 @@ def send_email_via_brevo(to_email, subject, html_content, plain_content=None):
     Used for production environments.
     """
     try:
-        from brevo.transactional_emails import SendTransacEmailRequestSender, SendTransacEmailRequestToItem
+        from brevo_python import SendSmtpEmail, SendSmtpEmailSender, SendSmtpEmailTo
         client = get_brevo_client()
         sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'hnaacadexadmin@gmail.com')
 
-        response = client.transactional_emails.send_transac_email(
-            html_content=html_content,
-            text_content=plain_content or html_content,
-            sender=SendTransacEmailRequestSender(
-                email=sender_email,
-                name="HNA Acadex",
-            ),
-            subject=subject,
-            to=[SendTransacEmailRequestToItem(email=to_email)],
+        response = client.send_transac_email(
+            SendSmtpEmail(
+                html_content=html_content,
+                text_content=plain_content or html_content,
+                sender=SendSmtpEmailSender(
+                    email=sender_email,
+                    name="HNA Acadex",
+                ),
+                subject=subject,
+                to=[SendSmtpEmailTo(email=to_email)],
+            )
         )
 
         logger.info(f"Email sent via Brevo to {to_email}: {response}")
