@@ -454,6 +454,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
     uploader_id = serializers.UUIDField(read_only=True)
     weekly_module_id = serializers.UUIDField(allow_null=True, required=False)
     file_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    preview_file_url = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = CourseFile
