@@ -1,9 +1,25 @@
-from storages.backends.s3boto3 import S3Storage
+from django.core.exceptions import ImproperlyConfigured
+from django.core.files.storage import FileSystemStorage
+
+try:
+    # django-storages >= 1.14
+    from storages.backends.s3 import S3Storage as _S3StorageBase
+except ImportError:  # pragma: no cover - compatibility fallback
+    try:
+        # django-storages < 1.14
+        from storages.backends.s3boto3 import S3Boto3Storage as _S3StorageBase
+    except ImportError:  # pragma: no cover - local/dev without django-storages installed
+        _S3StorageBase = None
 
 
-class StorjS3Storage(S3Storage):
+class StorjS3Storage(_S3StorageBase or FileSystemStorage):
     def __init__(self, **kwargs):
         from django.conf import settings
+        if _S3StorageBase is None:
+            raise ImproperlyConfigured(
+                "django-storages is required for Storj storage. "
+                "Install dependencies from requirements.txt."
+            )
 
         kwargs.setdefault("endpoint_url", settings.STORJ_S3_ENDPOINT_URL)
         kwargs.setdefault("access_key", settings.STORJ_S3_ACCESS_KEY_ID)
