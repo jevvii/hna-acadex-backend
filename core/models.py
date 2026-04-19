@@ -72,7 +72,7 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     avatar = models.FileField(upload_to="avatars/", blank=True, null=True)
-    avatar_url = models.URLField(blank=True, null=True)
+    avatar_url = models.TextField(blank=True, null=True)
     grade_level = models.CharField(max_length=20, choices=GradeLevel.choices, blank=True, null=True)
     strand = models.CharField(max_length=10, choices=Strand.choices, default=Strand.NONE)
     section = models.CharField(max_length=100, blank=True, null=True)
@@ -215,7 +215,7 @@ class Course(models.Model):
         help_text="Full name of the course (e.g., 'Introduction to Programming')"
     )
     description = models.TextField(blank=True, null=True)
-    cover_image_url = models.URLField(blank=True, null=True)
+    cover_image_url = models.TextField(blank=True, null=True)
     color_overlay = models.CharField(max_length=20, blank=True, null=True)
     grade_level = models.CharField(max_length=20, choices=User.GradeLevel.choices, blank=True, null=True)
     strand = models.CharField(max_length=10, choices=User.Strand.choices, blank=True, null=True)
@@ -384,7 +384,7 @@ class Activity(models.Model):
     deadline = models.DateTimeField(blank=True, null=True)
     allow_late_submissions = models.BooleanField(default=True)
     allowed_file_types = models.JSONField(blank=True, null=True)
-    support_file_url = models.URLField(blank=True, null=True)
+    support_file_url = models.TextField(blank=True, null=True)
     attempt_limit = models.PositiveIntegerField(default=1)
     score_selection_policy = models.CharField(
         max_length=20,
