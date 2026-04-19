@@ -478,7 +478,9 @@ class CourseFileSerializer(serializers.ModelSerializer):
 
     _CLOUDINARY_URL_PATTERN = re.compile(
         r"^/[^/]+/(?P<resource_type>image|raw|video)/(?P<delivery_type>upload|private|authenticated)"
-        r"/v(?P<version>\d+)/(?P<public_id>.+)$"
+        r"(?:/s--[^/]+--)?"  # optional signature component
+        r"(?:/v(?P<version>\d+))?"
+        r"/(?P<public_id>.+)$"
     )
 
     def _build_cloudinary_delivery_url(self, original_url: str | None) -> str | None:
@@ -493,6 +495,25 @@ class CourseFileSerializer(serializers.ModelSerializer):
         if not match:
             return original_url
 
+        resource_type = match.group("resource_type")
+        delivery_type = match.group("delivery_type")
+        public_id = match.group("public_id")
+        version_str = match.group("version")
+        version = int(version_str) if version_str else None
+
+        # Upload-type resources are publicly accessible — signing them produces
+        # URLs that 404 on Cloudinary.  Return a clean unsigned HTTPS URL.
+        if delivery_type == "upload":
+            from cloudinary.utils import cloudinary_url
+            clean_url, _ = cloudinary_url(
+                public_id,
+                resource_type=resource_type,
+                type=delivery_type,
+                secure=True,
+                **({"version": version} if version is not None else {}),
+            )
+            return clean_url
+
         if not all([
             getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
             getattr(settings, "CLOUDINARY_API_KEY", None),
@@ -506,20 +527,16 @@ class CourseFileSerializer(serializers.ModelSerializer):
         except Exception:
             return original_url
 
-        resource_type = match.group("resource_type")
-        delivery_type = match.group("delivery_type")
-        public_id = match.group("public_id")
-        version = int(match.group("version"))
-
         try:
-            signed_url, _ = cloudinary_url(
-                public_id,
+            sign_kwargs = dict(
                 resource_type=resource_type,
                 type=delivery_type,
                 secure=True,
                 sign_url=True,
-                version=version,
             )
+            if version is not None:
+                sign_kwargs["version"] = version
+            signed_url, _ = cloudinary_url(public_id, **sign_kwargs)
             self.logger.debug(
                 "cloudinary_sign: original=%s signed=%s public_id=%s type=%s version=%s",
                 original_url, signed_url, public_id, delivery_type, version,
