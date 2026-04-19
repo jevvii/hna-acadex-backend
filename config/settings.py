@@ -149,6 +149,8 @@ STORAGES = {
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", None)
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", None)
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", None)
+# Auth token key for restricted delivery (found in Cloudinary Dashboard > Settings > Security)
+CLOUDINARY_AUTH_TOKEN_KEY = os.getenv("CLOUDINARY_AUTH_TOKEN_KEY", None)
 
 # Cloudinary Configuration for media storage
 # Set CLOUDINARY_URL env var in format: cloudinary://api_key:api_secret@cloud_name

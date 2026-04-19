@@ -516,6 +516,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
             return original_url
 
         try:
+            auth_token_key = getattr(settings, "CLOUDINARY_AUTH_TOKEN_KEY", None)
             sign_kwargs = dict(
                 resource_type=resource_type,
                 type=delivery_type,
@@ -524,14 +525,15 @@ class CourseFileSerializer(serializers.ModelSerializer):
             )
             if version is not None:
                 sign_kwargs["version"] = version
+            if auth_token_key:
+                sign_kwargs["auth_token"] = {"key": auth_token_key, "duration": 3600}
             signed_url, _ = cloudinary_url(public_id, **sign_kwargs)
             import cloudinary as _cloudinary
             self.logger.info(
-                "cloudinary_sign: original=%s signed=%s public_id=%s resource_type=%s delivery_type=%s version=%s cloud_name=%s api_key_set=%s api_secret_set=%s",
+                "cloudinary_sign: original=%s signed=%s public_id=%s resource_type=%s delivery_type=%s version=%s auth_token=%s cloud_name=%s",
                 original_url, signed_url, public_id, resource_type, delivery_type, version,
+                bool(auth_token_key),
                 getattr(_cloudinary.config(), "cloud_name", "?"),
-                bool(getattr(_cloudinary.config(), "api_key", None)),
-                bool(getattr(_cloudinary.config(), "api_secret", None)),
             )
             return signed_url
         except Exception:
