@@ -54,7 +54,15 @@ class StorjS3Storage(_S3StorageBase or FileSystemStorage):
             "Body": body,
             **params,
         }
-        put_kwargs.setdefault("ContentLength", len(body))
+        # Normalize any lower-case/None content-length from upstream params.
+        if "content_length" in put_kwargs and "ContentLength" not in put_kwargs:
+            put_kwargs["ContentLength"] = put_kwargs.pop("content_length")
+
+        if put_kwargs.get("ContentLength") is None:
+            file_size = getattr(content, "size", None)
+            put_kwargs["ContentLength"] = int(file_size) if file_size is not None else len(body)
+        else:
+            put_kwargs["ContentLength"] = int(put_kwargs["ContentLength"])
 
         self.connection.meta.client.put_object(**put_kwargs)
         return name
