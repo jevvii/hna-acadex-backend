@@ -357,6 +357,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     weekly_module_id = serializers.UUIDField(allow_null=True, required=False)
     assignment_group_id = serializers.UUIDField(allow_null=True, required=False)
     student_count = serializers.SerializerMethodField()
+    support_file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Activity
@@ -383,6 +384,17 @@ class ActivitySerializer(serializers.ModelSerializer):
             "created_at",
             "student_count",
         )
+
+    def get_support_file_url(self, obj: Activity) -> str | None:
+        """Ensure support_file_url is absolute."""
+        if not obj.support_file_url:
+            return None
+        if obj.support_file_url.startswith(("http://", "https://")):
+            return obj.support_file_url
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.support_file_url)
+        return obj.support_file_url
 
     def get_student_count(self, obj: Activity) -> int:
         """Return the count of active student enrollments in this activity's course section."""
@@ -566,6 +578,7 @@ class QuizSerializer(serializers.ModelSerializer):
 class SubmissionSerializer(serializers.ModelSerializer):
     activity_id = serializers.UUIDField(read_only=True)
     student_id = serializers.UUIDField(read_only=True)
+    file_urls = serializers.SerializerMethodField()
 
     class Meta:
         model = Submission
@@ -584,6 +597,24 @@ class SubmissionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def get_file_urls(self, obj: Submission) -> list[str]:
+        """Ensure all file URLs are absolute."""
+        if not obj.file_urls:
+            return []
+        
+        request = self.context.get("request")
+        urls = []
+        for url in obj.file_urls:
+            if not url:
+                continue
+            if url.startswith(("http://", "https://")):
+                urls.append(url)
+            elif request:
+                urls.append(request.build_absolute_uri(url))
+            else:
+                urls.append(url)
+        return urls
 
 
 class SubmissionGradeSerializer(serializers.ModelSerializer):

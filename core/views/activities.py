@@ -117,7 +117,7 @@ class ActivitySubmitView(APIView):
             if (is_image and not allow_image) or (is_pdf and not allow_pdf) or (not is_image and not is_pdf and not allow_all):
                 return Response({"detail": f"File type not allowed: {file_obj.name}"}, status=status.HTTP_400_BAD_REQUEST)
             path = default_storage.save(f"submissions/{request.user.id}/{timezone.now().timestamp()}_{file_obj.name}", file_obj)
-            uploaded_urls.append(default_storage.url(path))
+            uploaded_urls.append(_get_storage_url(path))
 
         now = timezone.now()
         status_value = Submission.SubmissionStatus.SUBMITTED
