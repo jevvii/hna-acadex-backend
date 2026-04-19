@@ -498,7 +498,7 @@ class CourseFileSerializer(serializers.ModelSerializer):
             getattr(settings, "CLOUDINARY_API_KEY", None),
             getattr(settings, "CLOUDINARY_API_SECRET", None),
         ]):
-            logger.warning("cloudinary_sign_skip: missing credentials, returning unsigned url")
+            self.logger.warning("cloudinary_sign_skip: missing credentials, returning unsigned url")
             return original_url
 
         try:
@@ -520,13 +520,13 @@ class CourseFileSerializer(serializers.ModelSerializer):
                 sign_url=True,
                 version=version,
             )
-            logger.debug(
+            self.logger.debug(
                 "cloudinary_sign: original=%s signed=%s public_id=%s type=%s version=%s",
                 original_url, signed_url, public_id, delivery_type, version,
             )
             return signed_url
         except Exception:
-            logger.exception("cloudinary_sign_error: failed to sign url=%s", original_url)
+            self.logger.exception("cloudinary_sign_error: failed to sign url=%s", original_url)
             return original_url
 
     def to_representation(self, instance):
