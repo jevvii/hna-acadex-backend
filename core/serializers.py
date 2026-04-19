@@ -1,6 +1,9 @@
 from datetime import datetime
+import re
 from typing import Any
+from urllib.parse import urlparse
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import serializers
 from .comment_crypto import decrypt_comment_content
@@ -469,6 +472,58 @@ class CourseFileSerializer(serializers.ModelSerializer):
             "is_visible",
             "created_at",
         )
+
+    _CLOUDINARY_URL_PATTERN = re.compile(
+        r"^/[^/]+/(?P<resource_type>image|raw|video)/(?P<delivery_type>upload|private|authenticated)"
+        r"/v(?P<version>\d+)/(?P<public_id>.+)$"
+    )
+
+    def _build_cloudinary_delivery_url(self, original_url: str | None) -> str | None:
+        if not original_url:
+            return original_url
+
+        parsed = urlparse(original_url)
+        if parsed.netloc.lower() != "res.cloudinary.com":
+            return original_url
+
+        match = self._CLOUDINARY_URL_PATTERN.match(parsed.path)
+        if not match:
+            return original_url
+
+        if not all([
+            getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
+            getattr(settings, "CLOUDINARY_API_KEY", None),
+            getattr(settings, "CLOUDINARY_API_SECRET", None),
+        ]):
+            return original_url
+
+        try:
+            from cloudinary.utils import cloudinary_url
+        except Exception:
+            return original_url
+
+        resource_type = match.group("resource_type")
+        public_id = match.group("public_id")
+        version = int(match.group("version"))
+
+        try:
+            signed_url, _ = cloudinary_url(
+                public_id,
+                resource_type=resource_type,
+                type="authenticated",
+                secure=True,
+                sign_url=True,
+                version=version,
+            )
+            return signed_url
+        except Exception:
+            return original_url
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["file_url"] = self._build_cloudinary_delivery_url(data.get("file_url"))
+        data["preview_file_url"] = self._build_cloudinary_delivery_url(data.get("preview_file_url"))
+        return data
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):
