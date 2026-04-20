@@ -36,6 +36,17 @@ class HnaAcadexAdminSite(AdminSite):
         'teacheradvisory',
     }
 
+    # Models that belong to the "Grading and Configuration" category (lowercase object_name)
+    GRADING_MODELS = {
+        'gradingperiod',
+        'gradeentry',
+        'gradeweightconfig',
+        'assignmentweight',
+        'gradesubmission',
+        'sectionreportcard',
+        'adviseroverridelog',
+    }
+
     def get_urls(self):
         """Add SIS Import URLs to the admin site."""
         from django.urls import include
@@ -81,6 +92,7 @@ class HnaAcadexAdminSite(AdminSite):
         # Split Core models into users, enrollment, and other categories
         users_models = []
         enrollment_models = []
+        grading_models = []
         other_models = []
 
         for model in core_app.get('models', []):
@@ -89,6 +101,8 @@ class HnaAcadexAdminSite(AdminSite):
                 users_models.append(model)
             elif model_name in self.ENROLLMENT_MODELS:
                 enrollment_models.append(model)
+            elif model_name in self.GRADING_MODELS:
+                grading_models.append(model)
             else:
                 other_models.append(model)
 
@@ -122,7 +136,16 @@ class HnaAcadexAdminSite(AdminSite):
             'models': enrollment_models,
         }
 
-        # Reorder: Users first, then SIS Import, then Enrollment, then Core (and other apps)
+        # Create virtual Grading and Configuration app
+        grading_app = {
+            'name': 'Grading and Configuration',
+            'app_label': 'grading_and_configuration',
+            'app_url': '/admin/',
+            'has_module_perms': True,
+            'models': grading_models,
+        }
+
+        # Reorder: Users first, then SIS Import, then Enrollment, then Grading, then Core (and other apps)
         new_app_list = []
 
         # Add Users first if it has models
@@ -136,7 +159,11 @@ class HnaAcadexAdminSite(AdminSite):
         if enrollment_models:
             new_app_list.append(enrollment_app)
 
-        # Add remaining apps (Core will be after Enrollment now)
+        # Add Grading next if it has models
+        if grading_models:
+            new_app_list.append(grading_app)
+
+        # Add remaining apps (Core will be after Grading now)
         for app in app_list:
             if app.get('app_label') == 'core':
                 # Only add Core if it still has models
