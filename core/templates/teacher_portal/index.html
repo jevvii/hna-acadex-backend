@@ -7,112 +7,162 @@
 {% block content %}
 {% if teacher_advisory %}
 
-<div class="tp-stat-grid">
-  <div class="tp-stat-card">
-    <div class="tp-stat-number">{{ total_enrollments }}</div>
-    <div class="tp-stat-label">Total Enrollments</div>
-  </div>
-  <div class="tp-stat-card">
-    <div class="tp-stat-number">{{ total_students }}</div>
-    <div class="tp-stat-label">Total Students</div>
-  </div>
-  <div class="tp-stat-card">
-    <div class="tp-stat-number">{{ irregular_students }}</div>
-    <div class="tp-stat-label">Irregular Students</div>
-  </div>
-  <div class="tp-stat-card">
-    <div class="tp-stat-number">{{ active_enrollments }}</div>
-    <div class="tp-stat-label">Active Enrollments</div>
-  </div>
+<div class="mb-6 flex flex-col md:flex-row items-start md:items-center justify-between bg-blue-50 border border-blue-100 rounded-bento p-6">
+    <div>
+        <h2 class="text-lg font-semibold text-blue-900">Welcome to your Adviser Portal</h2>
+        <p class="text-sm text-blue-700 mt-1">Manage enrollments, subjects, and student accounts for {{ teacher_advisory.section.name }}.</p>
+    </div>
+    <div class="mt-4 md:mt-0 flex gap-3">
+        <a href="{% url 'teacher_portal:core_user_add' %}" class="bg-blue-600 text-white px-4 py-2 rounded-xl font-medium hover:bg-blue-700 transition flex items-center gap-2 min-h-[44px]">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            New Student
+        </a>
+        <a href="{% url 'teacher_portal:core_enrollment_add' %}" class="bg-white text-blue-700 border border-blue-200 px-4 py-2 rounded-xl font-medium hover:bg-blue-50 transition flex items-center gap-2 min-h-[44px]">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+            Enroll Student
+        </a>
+    </div>
 </div>
 
-<div class="tp-actions">
-  <a href="{% url 'teacher_portal:core_user_add' %}" class="button">+ Add Student</a>
-  <a href="{% url 'teacher_portal:core_course_add' %}" class="button">+ Add Course</a>
-  <a href="{% url 'teacher_portal:core_enrollment_add' %}" class="button" style="background:var(--tp-ghost)!important;color:var(--tp-royal)!important;border-color:var(--tp-mist)!important">+ Enroll Student</a>
-</div>
+<div class="grid grid-cols-12 gap-6 mb-6">
+    <!-- Primary Area: 40-30-20 Space Rule application -->
+    
+    <div class="col-span-12 lg:col-span-8 space-y-6">
+        <!-- Search & Filter Toolbar -->
+        <form method="get" class="tp-toolbar bg-white p-4 rounded-bento border border-gray-200 shadow-sm flex-wrap">
+            <div class="tp-search-wrap">
+                <span class="tp-search-icon">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </span>
+                <input type="text" name="q" value="{{ search_query|default:'' }}" placeholder="Search by name, email, or ID" class="w-full">
+            </div>
+            <select name="course">
+                <option value="">All Subjects</option>
+                {% for code in available_courses %}
+                <option value="{{ code }}" {% if current_filters.course == code %}selected{% endif %}>{{ code }}</option>
+                {% endfor %}
+            </select>
+            <select name="active">
+                <option value="">All Status</option>
+                <option value="true" {% if current_filters.active == 'true' %}selected{% endif %}>Active</option>
+                <option value="false" {% if current_filters.active == 'false' %}selected{% endif %}>Inactive</option>
+            </select>
+            <select name="irregular">
+                <option value="">All Students</option>
+                <option value="false" {% if current_filters.irregular == 'false' %}selected{% endif %}>Regular</option>
+                <option value="true" {% if current_filters.irregular == 'true' %}selected{% endif %}>Irregular</option>
+            </select>
+            <button type="submit" class="button">Apply Filters</button>
+        </form>
 
-<form method="get" class="tp-toolbar">
-  <div class="tp-search-wrap">
-    <span class="tp-search-icon">&#9906;</span>
-    <input type="text" name="q" value="{{ search_query|default:'' }}" placeholder="Search by name, email, or ID">
-  </div>
-  <select name="course">
-    <option value="">All Courses</option>
-    {% for code in available_courses %}
-    <option value="{{ code }}" {% if current_filters.course == code %}selected{% endif %}>{{ code }}</option>
-    {% endfor %}
-  </select>
-  <select name="active">
-    <option value="">All Status</option>
-    <option value="true" {% if current_filters.active == 'true' %}selected{% endif %}>Active</option>
-    <option value="false" {% if current_filters.active == 'false' %}selected{% endif %}>Inactive</option>
-  </select>
-  <select name="irregular">
-    <option value="">All Students</option>
-    <option value="false" {% if current_filters.irregular == 'false' %}selected{% endif %}>Regular</option>
-    <option value="true" {% if current_filters.irregular == 'true' %}selected{% endif %}>Irregular</option>
-  </select>
-  <input type="submit" value="Search" class="button">
-</form>
+        <!-- Main Enrollment Table -->
+        <div class="module">
+            <h2>Student Roster</h2>
+            <div class="overflow-x-auto">
+                <table class="tp-table">
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Class Offering</th>
+                            <th>Final Grade</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for enrollment in enrollments %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'teacher_portal:core_enrollment_change' enrollment.pk %}" class="font-medium">
+                                    {{ enrollment.student.last_name }}, {{ enrollment.student.first_name }}
+                                </a>
+                                {% if enrollment.student.is_irregular %}
+                                <span class="tp-badge-irr">IRR</span>
+                                {% endif %}
+                                <div class="text-xs text-gray-500 mt-1">Enrolled: {{ enrollment.enrolled_at|date:'M j, Y' }}</div>
+                            </td>
+                            <td class="text-blue-600">{{ enrollment.course_section }}</td>
+                            <td class="font-semibold text-blue-900">
+                                {% if enrollment.manual_final_grade %}{{ enrollment.manual_final_grade|floatformat:2 }}% <small class="text-gray-400 font-normal">(Manual)</small>
+                                {% elif enrollment.final_grade %}{{ enrollment.final_grade|floatformat:2 }}%
+                                {% else %}&mdash;{% endif %}
+                            </td>
+                            <td>
+                                {% if enrollment.is_active %}
+                                <span class="tp-pill-active">Active</span>
+                                {% else %}
+                                <span class="tp-pill-inactive">Inactive</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center py-8 text-gray-500">
+                                No enrollments found.
+                                {% if search_query or current_filters.course or current_filters.active or current_filters.irregular %}
+                                <a href="{% url 'teacher_portal:index' %}" class="ml-2 text-blue-600 hover:underline">Clear filters</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="tp-table-footer">
+                Showing {{ enrollments|length }} of {{ total_enrollments }} Enrollment{{ total_enrollments|pluralize }}
+            </div>
+        </div>
+    </div>
 
-<div class="module">
-  <table class="tp-table">
-    <thead>
-      <tr>
-        <th>Student</th>
-        <th>Class Offering</th>
-        <th>Final Grade</th>
-        <th>Status</th>
-        <th>Enrolled At</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for enrollment in enrollments %}
-      <tr>
-        <td>
-          <a href="{% url 'teacher_portal:core_enrollment_change' enrollment.pk %}">
-            {{ enrollment.student.last_name }}, {{ enrollment.student.first_name }}
-          </a>
-          {% if enrollment.student.is_irregular %}
-          <span class="tp-badge-irr">IRR</span>
-          {% endif %}
-        </td>
-        <td style="color:var(--tp-sky)">{{ enrollment.course_section }}</td>
-        <td style="font-weight:600;color:var(--tp-navy)">
-          {% if enrollment.manual_final_grade %}{{ enrollment.manual_final_grade|floatformat:2 }}% <small style='color:var(--tp-sky);font-weight:400'>(Manual)</small>
-          {% elif enrollment.final_grade %}{{ enrollment.final_grade|floatformat:2 }}%
-          {% else %}—{% endif %}
-        </td>
-        <td>
-          {% if enrollment.is_active %}
-          <span class="tp-pill-active">Active</span>
-          {% else %}
-          <span class="tp-pill-inactive">Inactive</span>
-          {% endif %}
-        </td>
-        <td style="color:var(--tp-sky);font-size:12px">{{ enrollment.enrolled_at|date:'N j, Y, g:i a' }}</td>
-      </tr>
-    {% empty %}
-      <tr>
-        <td colspan="5" style="text-align:center;padding:32px;color:var(--tp-sky)">
-          No enrollments found.
-          {% if search_query or current_filters.course or current_filters.active or current_filters.irregular %}
-          <a href="{% url 'teacher_portal:index' %}" style="margin-left:8px">Clear filters</a>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <div class="tp-table-footer">{{ total_enrollments }} Student Enrollment{{ total_enrollments|pluralize }}</div>
+    <!-- Secondary Area: 20-10 Trends and Stats -->
+    <div class="col-span-12 lg:col-span-4 space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
+            <div class="tp-stat-card">
+                <div class="tp-stat-number">{{ total_students }}</div>
+                <div class="tp-stat-label">Total Students</div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-600 rounded-full" style="width: 100%;"></div>
+                </div>
+            </div>
+            
+            <div class="tp-stat-card">
+                <div class="tp-stat-number">{{ active_enrollments }}</div>
+                <div class="tp-stat-label">Active Enrollments</div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-green-500 rounded-full" style="width: {% widthratio active_enrollments total_enrollments 100 %}%;"></div>
+                </div>
+            </div>
+
+            <div class="tp-stat-card">
+                <div class="tp-stat-number">{{ irregular_students }}</div>
+                <div class="tp-stat-label">Irregular Students</div>
+                <div class="mt-4 h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full bg-yellow-400 rounded-full" style="width: {% widthratio irregular_students total_students 100 %}%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-bento p-6 shadow-sm">
+            <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Quick Links</h3>
+            <div class="flex flex-col gap-2">
+                <a href="{% url 'teacher_portal:core_course_add' %}" class="flex items-center gap-3 p-3 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded-xl transition font-medium">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    Create New Subject
+                </a>
+                <a href="{% url 'teacher_portal:tp_sis_import_index' %}" class="flex items-center gap-3 p-3 bg-gray-50 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded-xl transition font-medium">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Bulk Import Students
+                </a>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% else %}
-<div class="module">
-  <div style="padding:32px;text-align:center">
-    <p style="font-size:15px;color:var(--tp-sky);margin-bottom:10px">No advisory section assigned.</p>
-    <p style="font-size:13px;color:var(--tp-sky)">Contact your administrator to be assigned an advisory section.</p>
+<div class="flex items-center justify-center min-h-[400px] bg-white border border-gray-200 rounded-bento shadow-sm">
+  <div class="text-center p-8 max-w-md">
+    <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">No Advisory Assigned</h3>
+    <p class="text-sm text-gray-500">Contact your administrator to be assigned an advisory section before managing students.</p>
   </div>
 </div>
 {% endif %}
