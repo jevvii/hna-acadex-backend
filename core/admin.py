@@ -176,6 +176,7 @@ class CustomUserChangeForm(UserChangeForm):
 
 
 from unfold.admin import ModelAdmin as UnfoldModelAdmin
+from unfold.widgets import UnfoldAdminSelect2Widget
 
 class UserAdmin(UnfoldModelAdmin, DjangoUserAdmin):
     form = CustomUserChangeForm
@@ -734,14 +735,17 @@ class CourseSectionAdminForm(forms.ModelForm):
             ("1st Semester", "1st Semester"),
             ("2nd Semester", "2nd Semester"),
         ),
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select semester"}),
         help_text="Select the semester instead of typing manually.",
     )
     school_year = forms.ChoiceField(
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select school year"}),
         help_text="Select the school year instead of typing manually.",
     )
     teacher = forms.ModelChoiceField(
         queryset=User.objects.filter(role=User.Role.TEACHER, status=User.Status.ACTIVE).order_by("first_name", "last_name"),
         required=False,
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select teacher"}),
         help_text="Select the assigned teacher.",
     )
 
