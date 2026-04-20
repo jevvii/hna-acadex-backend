@@ -42,7 +42,7 @@ class TeacherPortalAdminSite(AdminSite):
             request.user.role == 'teacher'
         )
 
-    def get_app_list(self, request):
+    def get_app_list(self, request, app_label=None):
         """
         Build a 4-group sidebar for the teacher's advisory.
 
@@ -82,7 +82,10 @@ class TeacherPortalAdminSite(AdminSite):
         request.teacher_advisory = advisory
 
         # Get base app list from super()
-        base_list = super().get_app_list(request)
+        base_list = super().get_app_list(request, app_label)
+
+        if app_label:
+            return base_list
 
         # Build custom app list with 4 groups
         app_list = []

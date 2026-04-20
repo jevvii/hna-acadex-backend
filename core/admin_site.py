@@ -72,12 +72,17 @@ class HnaAcadexAdminSite(AdminSite):
         # Return SIS Import URLs first, then default URLs
         return sis_import_urls + urls
 
-    def get_app_list(self, request):
+    def get_app_list(self, request, app_label=None):
         """
         Override to create virtual 'Users', 'SIS Import', and 'Enrollment' app groups
         and reorder apps for better organization.
         """
-        app_list = super().get_app_list(request)
+        app_list = super().get_app_list(request, app_label)
+
+        # If an app_label is provided (e.g., viewing an app index), return the standard list
+        # or handle it without breaking the virtual groups.
+        if app_label:
+            return app_list
 
         # Find the Core app
         core_app = None
