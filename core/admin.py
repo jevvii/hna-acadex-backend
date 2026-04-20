@@ -691,57 +691,11 @@ class SectionAdmin(UnfoldModelAdmin):
         return super().get_queryset(request).prefetch_related('course_sections')
 
 
-COURSE_OVERLAY_CHOICES = (
-    ("navy_emerald", "Navy -> Emerald"),
-    ("navy_cobalt", "Navy -> Cobalt"),
-    ("navy_violet", "Navy -> Violet"),
-    ("navy_crimson", "Navy -> Crimson"),
-    ("navy_amber", "Navy -> Amber"),
-    ("navy_teal", "Navy -> Teal"),
-    ("navy_rose", "Navy -> Rose"),
-    ("slate_navy", "Slate -> Navy"),
-)
-
 
 class CourseAdminForm(forms.ModelForm):
-    color_overlay = forms.ChoiceField(
-        required=False,
-        choices=[],
-        help_text="Pick one unique overlay. Already-used overlays are hidden for new subjects.",
-    )
-
     class Meta:
         model = Course
         fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        used_overlays_qs = Course.objects.exclude(color_overlay__isnull=True).exclude(color_overlay__exact="")
-        if self.instance.pk:
-            used_overlays_qs = used_overlays_qs.exclude(pk=self.instance.pk)
-        used_overlays = set(used_overlays_qs.values_list("color_overlay", flat=True))
-
-        available_choices = [(value, label) for value, label in COURSE_OVERLAY_CHOICES if value not in used_overlays]
-        current_value = self.instance.color_overlay if self.instance and self.instance.color_overlay else None
-        if current_value and current_value not in dict(available_choices):
-            matching_label = next((label for value, label in COURSE_OVERLAY_CHOICES if value == current_value), current_value)
-            available_choices.append((current_value, matching_label))
-
-        self.fields["color_overlay"].choices = [("", "---------"), *available_choices]
-
-    def clean_color_overlay(self):
-        color_overlay = (self.cleaned_data.get("color_overlay") or "").strip()
-        if not color_overlay:
-            return None
-
-        if self.instance.pk and color_overlay == (self.instance.color_overlay or "").strip():
-            return color_overlay
-
-        duplicate_exists = Course.objects.exclude(pk=self.instance.pk).filter(color_overlay=color_overlay).exists()
-        if duplicate_exists:
-            raise forms.ValidationError("This overlay is already assigned to another subject. Please choose a different one.")
-
-        return color_overlay
 
 
 class CourseAdmin(UnfoldModelAdmin):
@@ -760,7 +714,7 @@ class CourseAdmin(UnfoldModelAdmin):
             "fields": ("grade_level", "strand", "category")
         }),
         ("Display Settings", {
-            "fields": ("cover_image_url", "color_overlay"),
+            "fields": ("cover_image_url",),
             "classes": ("collapse",)
         }),
         ("Status", {

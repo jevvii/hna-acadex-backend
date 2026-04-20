@@ -193,6 +193,18 @@ class Section(models.Model):
         return f"{self.name} ({self.school_year})"
 
 
+COURSE_OVERLAY_CHOICES = (
+    ("navy_emerald", "Navy -> Emerald"),
+    ("navy_cobalt", "Navy -> Cobalt"),
+    ("navy_violet", "Navy -> Violet"),
+    ("navy_crimson", "Navy -> Crimson"),
+    ("navy_amber", "Navy -> Amber"),
+    ("navy_teal", "Navy -> Teal"),
+    ("navy_rose", "Navy -> Rose"),
+    ("slate_navy", "Slate -> Navy"),
+)
+
+
 class Course(models.Model):
     class SubjectCategory(models.TextChoices):
         LANGUAGES_AP_ESP = "languages_ap_esp", "Languages, AP, ESP"
@@ -240,6 +252,20 @@ class Course(models.Model):
 
     def __str__(self):
         return f"{self.code} - {self.title}"
+
+    def save(self, *args, **kwargs):
+        if not self.color_overlay:
+            used_overlays = set(
+                Course.objects.exclude(pk=self.pk)
+                .exclude(color_overlay__isnull=True)
+                .exclude(color_overlay__exact="")
+                .values_list("color_overlay", flat=True)
+            )
+            for value, _ in COURSE_OVERLAY_CHOICES:
+                if value not in used_overlays:
+                    self.color_overlay = value
+                    break
+        super().save(*args, **kwargs)
 
 
 class CourseSection(models.Model):

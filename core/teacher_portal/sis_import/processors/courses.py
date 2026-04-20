@@ -77,4 +77,6 @@ class TeacherScopedCourseCSVProcessor(CourseCSVProcessor):
             '1st Semester',      # semester
             '18',                # num_weeks
             'true',              # is_active
+            'shs_specialized',   # category
+            'https://example.com/cover.jpg',  # cover_image_url
         ]

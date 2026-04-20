@@ -4,7 +4,7 @@ Processor for importing courses from CSV files.
 
 CSV Headers:
   Required: code, title, school_year
-  Optional: description, grade_level, strand, semester, num_weeks, is_active
+  Optional: description, grade_level, strand, semester, num_weeks, is_active, category, cover_image_url
 """
 
 from dataclasses import dataclass
@@ -29,7 +29,7 @@ class CourseCSVProcessor(BaseCSVProcessor):
 
     @property
     def optional_headers(self) -> list[str]:
-        return ['description', 'grade_level', 'strand', 'semester', 'num_weeks', 'is_active']
+        return ['description', 'grade_level', 'strand', 'semester', 'num_weeks', 'is_active', 'category', 'cover_image_url']
 
     def validate_row(self, row_number: int, row_data: dict[str, str]) -> RowResult:
         """Validate a single course row."""
@@ -64,6 +64,13 @@ class CourseCSVProcessor(BaseCSVProcessor):
             valid_strands = [choice[0] for choice in User.Strand.choices]
             if strand not in valid_strands:
                 errors.append(f"Invalid strand '{strand}'. Valid options: {', '.join(valid_strands)}")
+
+        # Validate category
+        category = row_data.get('category', '').strip()
+        if category:
+            valid_categories = [choice[0] for choice in Course.SubjectCategory.choices]
+            if category not in valid_categories:
+                errors.append(f"Invalid category '{category}'. Valid options: {', '.join(valid_categories)}")
 
         # Validate num_weeks
         num_weeks_str = row_data.get('num_weeks', '').strip()
@@ -110,6 +117,8 @@ class CourseCSVProcessor(BaseCSVProcessor):
         grade_level = row_data.get('grade_level', '').strip() or None
         strand = row_data.get('strand', '').strip() or None
         semester = row_data.get('semester', '').strip() or None
+        category = row_data.get('category', '').strip() or None
+        cover_image_url = row_data.get('cover_image_url', '').strip() or None
 
         # Parse num_weeks
         num_weeks_str = row_data.get('num_weeks', '').strip()
@@ -131,6 +140,8 @@ class CourseCSVProcessor(BaseCSVProcessor):
                 'semester': semester,
                 'num_weeks': num_weeks,
                 'is_active': is_active,
+                'category': category,
+                'cover_image_url': cover_image_url,
             }
         )
 
@@ -156,6 +167,8 @@ class CourseCSVProcessor(BaseCSVProcessor):
             '1st Semester',      # semester
             '18',                # num_weeks
             'true',              # is_active
+            'science_math',      # category
+            'https://example.com/cover.jpg',  # cover_image_url
         ]
 
     def execute_import(self, file_obj, **options) -> 'ImportResult':
