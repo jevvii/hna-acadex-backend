@@ -7,6 +7,7 @@ from django import forms
 from django.contrib import messages
 from django.utils.html import format_html
 from django.db import models
+from datetime import date
 from .models import (
     Activity,
     ActivityComment,
@@ -723,12 +724,65 @@ class CourseAdmin(UnfoldModelAdmin):
     )
 
 
+class CourseSectionAdminForm(forms.ModelForm):
+    """Admin form with constrained choices for class offering fields."""
+
+    semester = forms.ChoiceField(
+        required=False,
+        choices=(
+            ("", "---------"),
+            ("1st Semester", "1st Semester"),
+            ("2nd Semester", "2nd Semester"),
+        ),
+        help_text="Select the semester instead of typing manually.",
+    )
+    school_year = forms.ChoiceField(
+        help_text="Select the school year instead of typing manually.",
+    )
+    teacher = forms.ModelChoiceField(
+        queryset=User.objects.filter(role=User.Role.TEACHER, status=User.Status.ACTIVE).order_by("first_name", "last_name"),
+        required=False,
+        help_text="Select the assigned teacher.",
+    )
+
+    class Meta:
+        model = CourseSection
+        fields = "__all__"
+
+    @staticmethod
+    def build_school_year_choices(start_year=None, years_ahead=10):
+        if start_year is None:
+            start_year = date.today().year
+        return [
+            (f"{year}-{year + 1}", f"{year}-{year + 1}")
+            for year in range(start_year, start_year + years_ahead)
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        school_year_choices = self.build_school_year_choices()
+        current_school_year = (
+            self.instance.school_year
+            if self.instance and self.instance.pk
+            else self.initial.get("school_year")
+        )
+        if current_school_year and current_school_year not in {value for value, _ in school_year_choices}:
+            school_year_choices.insert(0, (current_school_year, current_school_year))
+        self.fields["school_year"].choices = school_year_choices
+
+        teacher_queryset = User.objects.filter(role=User.Role.TEACHER).order_by("first_name", "last_name")
+        if not (self.instance and self.instance.pk):
+            teacher_queryset = teacher_queryset.filter(status=User.Status.ACTIVE)
+        self.fields["teacher"].queryset = teacher_queryset
+
+
 class CourseSectionAdmin(UnfoldModelAdmin):
+    form = CourseSectionAdminForm
     list_display = ("course", "section", "teacher", "school_year", "semester", "enrollment_count", "is_active")
     list_filter = ("school_year", "semester", "is_active", "course__code")
     search_fields = ("course__code", "course__title", "section__name", "teacher__first_name", "teacher__last_name")
-    autocomplete_fields = ("course", "section", "teacher")
-    raw_id_fields = ("teacher",)
+    autocomplete_fields = ("course", "section")
 
     fieldsets = (
         ("Class Offering", {
