@@ -347,10 +347,7 @@ from django.urls import reverse_lazy
 UNFOLD = {
     "SITE_TITLE": "HNA Acadex",
     "SITE_HEADER": "HNA Acadex Admin",
-    "SITE_ICON": {
-        "light": lambda request: "/static/icon.png",
-        "dark": lambda request: "/static/icon.png",
-    },
+    "SITE_SYMBOL": "school",
     "COLORS": {
         "primary": {
             "50": "239 246 255",
@@ -366,6 +363,8 @@ UNFOLD = {
             "950": "23 37 84",
         },
     },
+    "SHOW_BACK_BUTTON": True,
+
     "SIDEBAR": {
         "show_search": True,
         "show_all_applications": True,
