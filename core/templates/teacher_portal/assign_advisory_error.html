@@ -1,21 +1,35 @@
-{% extends "teacher_portal/base_site.html" %}
-{% load i18n %}
+{% extends "admin/base.html" %}
+{% load i18n unfold %}
+
+{% block title %}Advisory Setup Required | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
 
 {% block breadcrumbs %}
-<div class="breadcrumbs">
-<a href="{% url 'teacher_portal:index' %}">{% trans 'Home' %}</a>
-&rsaquo; {% trans 'Advisory Setup' %}
-</div>
+    <div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800">
+        <a href="{% url 'teacher_portal:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{% trans 'Advisory Setup' %}</span>
+    </div>
 {% endblock %}
 
 {% block content %}
-<h1>Advisory Setup Required</h1>
-<div class="module">
-  <div style="padding:32px;text-align:center">
-    <div style="font-size:40px;margin-bottom:16px;opacity:.3">&#128274;</div>
-    <p style="font-size:15px;color:var(--tp-slate);font-weight:500;margin-bottom:8px">No advisory section assigned</p>
-    <p style="font-size:13px;color:var(--tp-sky);margin-bottom:24px">Please contact your school administrator to have an advisory section assigned to your account.</p>
-    <a href="/" class="button" style="background:var(--tp-ghost)!important;color:var(--tp-royal)!important;border-color:var(--tp-mist)!important">← Back to Portal Home</a>
-  </div>
-</div>
+    <div class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="inline-flex items-center justify-center w-24 h-24 rounded-full bg-red-50 text-red-500 mb-6 dark:bg-red-900/20 dark:text-red-400">
+            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">No Advisory Section Assigned</h1>
+        <p class="text-gray-500 dark:text-gray-400 max-w-md mb-8">
+            Your account is registered as a teacher, but you have not been assigned to an advisory section yet. Please contact your school administrator to complete your setup.
+        </p>
+        
+        {% component "unfold/components/button.html" with href="/" variant="secondary" class="shadow-sm" %}
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Back to Portal Home
+        {% endcomponent %}
+    </div>
 {% endblock %}
