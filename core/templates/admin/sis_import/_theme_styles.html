@@ -1,0 +1,123 @@
+<style>
+    .sis-import-theme {
+        --sis-bg: var(--body-bg);
+        --sis-bg-muted: color-mix(in srgb, var(--body-bg) 92%, var(--body-fg) 8%);
+        --sis-border: var(--hairline-color);
+        --sis-text: var(--body-fg);
+        --sis-muted: var(--body-quiet-color);
+        --sis-link: var(--link-fg);
+    }
+
+    .sis-import-theme,
+    .sis-import-theme h1,
+    .sis-import-theme h2,
+    .sis-import-theme h3,
+    .sis-import-theme h4,
+    .sis-import-theme strong,
+    .sis-import-theme b {
+        color: var(--sis-text);
+    }
+
+    .sis-import-theme [class*="text-gray-900"],
+    .sis-import-theme [class*="text-gray-800"],
+    .sis-import-theme [class*="text-gray-700"],
+    .sis-import-theme [class*="text-gray-300"],
+    .sis-import-theme [class*="text-gray-200"],
+    .sis-import-theme [class*="text-gray-100"] {
+        color: var(--sis-text) !important;
+    }
+
+    .sis-import-theme [class*="text-gray-600"],
+    .sis-import-theme [class*="text-gray-500"],
+    .sis-import-theme [class*="text-gray-400"] {
+        color: var(--sis-muted) !important;
+    }
+
+    .sis-import-theme [class*="bg-white"],
+    .sis-import-theme [class*="bg-gray-900"],
+    .sis-import-theme [class*="bg-gray-800"],
+    .sis-import-theme [class*="bg-gray-700"] {
+        background-color: var(--sis-bg) !important;
+    }
+
+    .sis-import-theme [class*="bg-gray-50"],
+    .sis-import-theme [class*="bg-gray-100"],
+    .sis-import-theme [class*="bg-gray-200"],
+    .sis-import-theme [class*="bg-gray-300"],
+    .sis-import-theme [class*="bg-gray-400"],
+    .sis-import-theme [class*="bg-gray-500"],
+    .sis-import-theme [class*="bg-gray-600"],
+    .sis-import-theme [class*="bg-gray-800/50"],
+    .sis-import-theme [class*="bg-gray-900/50"] {
+        background-color: var(--sis-bg-muted) !important;
+    }
+
+    .sis-import-theme [class*="border-gray-"] {
+        border-color: var(--sis-border) !important;
+    }
+
+    .sis-import-theme [class*="divide-gray-"] > :not([hidden]) ~ :not([hidden]) {
+        border-color: var(--sis-border) !important;
+    }
+
+    .sis-import-theme [class*="text-blue-"] {
+        color: var(--sis-link) !important;
+    }
+
+    .sis-import-theme [class*="bg-blue-50"],
+    .sis-import-theme [class*="bg-blue-100"],
+    .sis-import-theme [class*="bg-blue-900/20"],
+    .sis-import-theme [class*="bg-blue-900/40"] {
+        background-color: color-mix(in srgb, var(--sis-link) 12%, transparent) !important;
+    }
+
+    .sis-import-theme [class*="border-blue-"] {
+        border-color: color-mix(in srgb, var(--sis-link) 45%, var(--sis-border)) !important;
+    }
+
+    .sis-import-theme [class*="hover:border-blue-"]:hover {
+        border-color: var(--sis-link) !important;
+    }
+
+    .sis-import-theme [class*="bg-blue-600"],
+    .sis-import-theme [class*="bg-blue-700"],
+    .sis-import-theme [class*="bg-blue-500"] {
+        background-color: var(--sis-link) !important;
+        border-color: var(--sis-link) !important;
+    }
+
+    .sis-import-theme [class*="hover:bg-blue-"]:hover {
+        filter: brightness(0.94);
+    }
+
+    .sis-import-theme [class*="text-white"] {
+        color: #fff !important;
+    }
+
+    .sis-import-theme a {
+        color: var(--sis-link);
+    }
+
+    .sis-import-theme a:hover {
+        filter: brightness(1.08);
+    }
+
+    .sis-import-theme input[type="file"],
+    .sis-import-theme input[type="text"],
+    .sis-import-theme input[type="email"],
+    .sis-import-theme input[type="number"],
+    .sis-import-theme select,
+    .sis-import-theme textarea {
+        color: var(--sis-text);
+        background-color: var(--sis-bg);
+        border: 1px solid var(--sis-border);
+        border-radius: 0.5rem;
+    }
+
+    .sis-import-theme code,
+    .sis-import-theme kbd {
+        color: var(--sis-text);
+        background-color: var(--sis-bg-muted);
+        border-color: var(--sis-border);
+    }
+</style>

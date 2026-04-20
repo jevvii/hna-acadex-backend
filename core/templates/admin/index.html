@@ -7,33 +7,68 @@
     {% include "unfold/helpers/site_branding.html" %}
 {% endblock %}
 
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        .admin-quickstart-card {
+            background: var(--body-bg);
+            border: 1px solid var(--hairline-color);
+            color: var(--body-fg);
+        }
+
+        .admin-quickstart-card .quickstart-heading,
+        .admin-quickstart-card .quickstart-step-title {
+            color: var(--body-fg);
+        }
+
+        .admin-quickstart-card .material-symbols-outlined {
+            color: var(--link-fg);
+        }
+
+        .admin-quickstart-card .quickstart-grid {
+            color: var(--body-quiet-color);
+        }
+
+        .admin-quickstart-card .quickstart-note {
+            border-top: 1px solid var(--hairline-color);
+            color: var(--body-quiet-color);
+        }
+
+        .admin-quickstart-card .quickstart-note a {
+            color: var(--link-fg);
+            text-decoration: underline;
+            font-weight: 600;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
     <!-- Admin Tutorial / Hints Banner -->
-    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-8 shadow-sm">
-        <h2 class="text-lg font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2 mb-2">
+    <div class="admin-quickstart-card rounded-lg p-6 mb-8 shadow-sm">
+        <h2 class="quickstart-heading text-lg font-semibold flex items-center gap-2 mb-2">
             <span class="material-symbols-outlined">lightbulb</span> 
             Admin Quick Start Guide
         </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-4 text-sm text-blue-800 dark:text-blue-300">
+        <div class="quickstart-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mt-4 text-sm">
             <div>
-                <strong class="text-blue-900 dark:text-blue-200 block mb-1">1. Build Foundation</strong>
+                <strong class="quickstart-step-title block mb-1">1. Build Foundation</strong>
                 <p>Add <b>Class Sections</b> (e.g., Grade 10 - Rizal) and core <b>Subjects</b>. Combine them into active <b>Class Offerings</b> with assigned teachers.</p>
             </div>
             <div>
-                <strong class="text-blue-900 dark:text-blue-200 block mb-1">2. Assign Roles</strong>
+                <strong class="quickstart-step-title block mb-1">2. Assign Roles</strong>
                 <p>Create <b>Student Accounts</b>. Assign teachers to <b>Teacher Advisories</b> to grant them full access to their Adviser Portal.</p>
             </div>
             <div>
-                <strong class="text-blue-900 dark:text-blue-200 block mb-1">3. Manage Enrollments</strong>
+                <strong class="quickstart-step-title block mb-1">3. Manage Enrollments</strong>
                 <p>Enroll students individually or group class offerings into <b>Enrollment Groups</b> so advisers can bulk enroll their students instantly.</p>
             </div>
             <div>
-                <strong class="text-blue-900 dark:text-blue-200 block mb-1">4. Initialize Grading</strong>
+                <strong class="quickstart-step-title block mb-1">4. Initialize Grading</strong>
                 <p>Create active <b>Grading Periods</b> (e.g., Q1) and set DepEd <b>Grade Weight Configs</b> (WW/PT/QA) so teachers can start grading.</p>
             </div>
-            <div class="xl:col-span-4 mt-2 border-t border-blue-200/50 dark:border-blue-800/50 pt-4">
+            <div class="quickstart-note xl:col-span-4 mt-2 pt-4">
                 <span class="material-symbols-outlined text-[16px] align-text-bottom mr-1">info</span>
-                <b>Pro Tip:</b> Save time by using the <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="underline font-medium hover:text-blue-900">SIS Import Tools</a> to bulk upload users, subjects, and enrollments from CSV files.
+                <b>Pro Tip:</b> Save time by using the <a href="{% url 'hna_acadex_admin:sis_import_index' %}">SIS Import Tools</a> to bulk upload users, subjects, and enrollments from CSV files.
             </div>
         </div>
     </div>

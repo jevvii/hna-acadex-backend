@@ -1,10 +1,13 @@
 {% extends "admin/base.html" %}
 {% load i18n admin_urls static unfold %}
 
-{% block extrastyle %}{{ block.super }}{% endblock %}
+{% block extrastyle %}
+{{ block.super }}
+{% include "admin/sis_import/_theme_styles.html" %}
+{% endblock %}
 
 {% block breadcrumbs %}
-<div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800">
+<div class="sis-import-theme px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800">
     <a href="{% url 'admin:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
     <span class="mx-2 text-gray-400">/</span>
     <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">SIS Import</a>
@@ -14,7 +17,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col gap-6 max-w-5xl mx-auto py-8">
+<div class="sis-import-theme flex flex-col gap-6 max-w-5xl mx-auto py-8">
     <div class="border-b border-gray-200 dark:border-gray-800 pb-6">
         <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 mb-3 transition-colors">
             <span class="material-symbols-outlined text-[18px]">arrow_back</span>
