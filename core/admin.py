@@ -178,6 +178,31 @@ class CustomUserChangeForm(UserChangeForm):
 from unfold.admin import ModelAdmin as UnfoldModelAdmin
 from unfold.widgets import UnfoldAdminSelect2Widget
 
+
+SEMESTER_DROPDOWN_CHOICES = (
+    ("", "---------"),
+    ("1st Semester", "1st Semester"),
+    ("2nd Semester", "2nd Semester"),
+)
+
+
+def build_school_year_choices(start_year=None, years_ahead=10):
+    if start_year is None:
+        start_year = date.today().year
+    return [
+        (f"{year}-{year + 1}", f"{year}-{year + 1}")
+        for year in range(start_year, start_year + years_ahead)
+    ]
+
+
+def include_current_choice(choices, current_value):
+    if not current_value:
+        return choices
+    if current_value in {value for value, _ in choices}:
+        return choices
+    return [(current_value, current_value), *choices]
+
+
 class UserAdmin(UnfoldModelAdmin, DjangoUserAdmin):
     form = CustomUserChangeForm
     add_form = CustomUserCreationForm
@@ -674,7 +699,31 @@ class UserAdmin(UnfoldModelAdmin, DjangoUserAdmin):
     assign_advisory_action.short_description = "Assign advisory section to selected teacher"
 
 
+class SectionAdminForm(forms.ModelForm):
+    school_year = forms.ChoiceField(
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select school year"}),
+        help_text="Select the school year instead of typing manually.",
+    )
+
+    class Meta:
+        model = Section
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        current_school_year = (
+            self.instance.school_year
+            if self.instance and self.instance.pk
+            else self.initial.get("school_year")
+        )
+        self.fields["school_year"].choices = include_current_choice(
+            build_school_year_choices(),
+            current_school_year,
+        )
+
+
 class SectionAdmin(UnfoldModelAdmin):
+    form = SectionAdminForm
     list_display = ("name", "display_grade_strand", "school_year", "is_active", "course_count")
     list_filter = ("grade_level", "strand", "school_year", "is_active")
     search_fields = ("name",)
@@ -695,9 +744,42 @@ class SectionAdmin(UnfoldModelAdmin):
 
 
 class CourseAdminForm(forms.ModelForm):
+    school_year = forms.ChoiceField(
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select school year"}),
+        help_text="Select the school year instead of typing manually.",
+    )
+    semester = forms.ChoiceField(
+        required=False,
+        choices=SEMESTER_DROPDOWN_CHOICES,
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select semester"}),
+        help_text="Select the semester instead of typing manually.",
+    )
+
     class Meta:
         model = Course
         fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        current_school_year = (
+            self.instance.school_year
+            if self.instance and self.instance.pk
+            else self.initial.get("school_year")
+        )
+        self.fields["school_year"].choices = include_current_choice(
+            build_school_year_choices(),
+            current_school_year,
+        )
+
+        current_semester = (
+            self.instance.semester
+            if self.instance and self.instance.pk
+            else self.initial.get("semester")
+        )
+        self.fields["semester"].choices = include_current_choice(
+            list(SEMESTER_DROPDOWN_CHOICES),
+            current_semester,
+        )
 
 
 class CourseAdmin(UnfoldModelAdmin):
@@ -730,11 +812,7 @@ class CourseSectionAdminForm(forms.ModelForm):
 
     semester = forms.ChoiceField(
         required=False,
-        choices=(
-            ("", "---------"),
-            ("1st Semester", "1st Semester"),
-            ("2nd Semester", "2nd Semester"),
-        ),
+        choices=SEMESTER_DROPDOWN_CHOICES,
         widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select semester"}),
         help_text="Select the semester instead of typing manually.",
     )
@@ -753,27 +831,28 @@ class CourseSectionAdminForm(forms.ModelForm):
         model = CourseSection
         fields = "__all__"
 
-    @staticmethod
-    def build_school_year_choices(start_year=None, years_ahead=10):
-        if start_year is None:
-            start_year = date.today().year
-        return [
-            (f"{year}-{year + 1}", f"{year}-{year + 1}")
-            for year in range(start_year, start_year + years_ahead)
-        ]
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        school_year_choices = self.build_school_year_choices()
         current_school_year = (
             self.instance.school_year
             if self.instance and self.instance.pk
             else self.initial.get("school_year")
         )
-        if current_school_year and current_school_year not in {value for value, _ in school_year_choices}:
-            school_year_choices.insert(0, (current_school_year, current_school_year))
-        self.fields["school_year"].choices = school_year_choices
+        self.fields["school_year"].choices = include_current_choice(
+            build_school_year_choices(),
+            current_school_year,
+        )
+
+        current_semester = (
+            self.instance.semester
+            if self.instance and self.instance.pk
+            else self.initial.get("semester")
+        )
+        self.fields["semester"].choices = include_current_choice(
+            list(SEMESTER_DROPDOWN_CHOICES),
+            current_semester,
+        )
 
         teacher_queryset = User.objects.filter(role=User.Role.TEACHER).order_by("first_name", "last_name")
         if not (self.instance and self.instance.pk):
@@ -1331,8 +1410,44 @@ class IDCounterAdmin(UnfoldModelAdmin):
         return False
 
 
+class GradingPeriodAdminForm(forms.ModelForm):
+    school_year = forms.ChoiceField(
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select school year"}),
+        help_text="Select the school year instead of typing manually.",
+    )
+    semester_group = forms.TypedChoiceField(
+        required=False,
+        coerce=int,
+        empty_value=None,
+        choices=(
+            ("", "Grades 7-10 (No semester group)"),
+            ("1", "1st Semester (Q1 + Q2)"),
+            ("2", "2nd Semester (Q3 + Q4)"),
+        ),
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select semester group"}),
+        help_text="Choose the semester group for SHS, or leave blank for Grades 7-10.",
+    )
+
+    class Meta:
+        model = GradingPeriod
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        current_school_year = (
+            self.instance.school_year
+            if self.instance and self.instance.pk
+            else self.initial.get("school_year")
+        )
+        self.fields["school_year"].choices = include_current_choice(
+            build_school_year_choices(),
+            current_school_year,
+        )
+
+
 class GradingPeriodAdmin(UnfoldModelAdmin):
     """Admin for GradingPeriod - managing academic grading periods (quarters)."""
+    form = GradingPeriodAdminForm
     list_display = ("school_year", "label", "semester_group_display", "period_number", "start_date", "end_date", "is_current")
     list_filter = ("school_year", "semester_group", "is_current")
     search_fields = ("school_year",)
@@ -1563,8 +1678,32 @@ class AdviserOverrideLogAdmin(UnfoldModelAdmin):
     grade_entry_info.short_description = "Grade Entry"
 
 
+class TeacherAdvisoryAdminForm(forms.ModelForm):
+    school_year = forms.ChoiceField(
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select school year"}),
+        help_text="Select the school year instead of typing manually.",
+    )
+
+    class Meta:
+        model = TeacherAdvisory
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        current_school_year = (
+            self.instance.school_year
+            if self.instance and self.instance.pk
+            else self.initial.get("school_year")
+        )
+        self.fields["school_year"].choices = include_current_choice(
+            build_school_year_choices(),
+            current_school_year,
+        )
+
+
 class TeacherAdvisoryAdmin(UnfoldModelAdmin):
     """Admin for TeacherAdvisory model - managing section adviser assignments."""
+    form = TeacherAdvisoryAdminForm
 
     list_display = ("teacher_full_name", "section_name", "school_year", "is_active", "assigned_at", "assigned_by")
     list_filter = ("school_year", "is_active", "section__grade_level", "section__strand")
