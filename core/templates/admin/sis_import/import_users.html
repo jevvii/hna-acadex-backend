@@ -4,186 +4,187 @@
 {% block extrastyle %}{{ block.super }}{% endblock %}
 
 {% block breadcrumbs %}
-    <div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800">
-        <a href="{% url 'admin:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
-        <span class="mx-2 text-gray-400">/</span>
-        <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">SIS Import</a>
-        <span class="mx-2 text-gray-400">/</span>
-        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ title }}</span>
-    </div>
+<div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800">
+    <a href="{% url 'admin:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
+    <span class="mx-2 text-gray-400">/</span>
+    <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">SIS Import</a>
+    <span class="mx-2 text-gray-400">/</span>
+    <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ title }}</span>
+</div>
 {% endblock %}
 
 {% block content %}
 <div class="flex flex-col gap-6 max-w-5xl mx-auto py-8">
-    <div class="sis-import-header">
-        <h1>{{ title }}</h1>
+    <div class="border-b border-gray-200 dark:border-gray-800 pb-6">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ title }}</h1>
     </div>
 
-    <div class="import-steps">
-        <span class="step {% if step == 'upload' %}active{% else %}{% if step == 'preview' or step == 'result' %}completed{% else %}inactive{% endif %}{% endif %}">1. Upload</span>
-        <span class="step {% if step == 'preview' %}active{% else %}{% if step == 'result' %}completed{% else %}inactive{% endif %}{% endif %}">2. Preview</span>
-        <span class="step {% if step == 'result' %}active{% else %}inactive{% endif %}">3. Result</span>
+    {# Step Indicator #}
+    <div class="flex items-center gap-0 w-full">
+        <div class="flex items-center gap-2 {% if step == 'upload' %}text-primary-700 dark:text-primary-400{% elif step == 'preview' or step == 'result' %}text-primary-700 dark:text-primary-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'upload' %}bg-primary-700 text-white border-primary-700 dark:bg-primary-500 dark:border-primary-500{% elif step == 'preview' or step == 'result' %}bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/40 dark:text-primary-400 dark:border-primary-700{% else %}border-gray-300 dark:border-gray-600{% endif %}">1</span>
+            <span class="text-sm font-medium">Upload</span>
+        </div>
+        <div class="flex-1 h-0.5 mx-3 {% if step == 'preview' or step == 'result' %}bg-primary-500{% else %}bg-gray-200 dark:bg-gray-700{% endif %}"></div>
+        <div class="flex items-center gap-2 {% if step == 'preview' %}text-primary-700 dark:text-primary-400{% elif step == 'result' %}text-primary-700 dark:text-primary-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'preview' %}bg-primary-700 text-white border-primary-700 dark:bg-primary-500 dark:border-primary-500{% elif step == 'result' %}bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/40 dark:text-primary-400 dark:border-primary-700{% else %}border-gray-300 dark:border-gray-600{% endif %}">2</span>
+            <span class="text-sm font-medium">Preview</span>
+        </div>
+        <div class="flex-1 h-0.5 mx-3 {% if step == 'result' %}bg-primary-500{% else %}bg-gray-200 dark:bg-gray-700{% endif %}"></div>
+        <div class="flex items-center gap-2 {% if step == 'result' %}text-primary-700 dark:text-primary-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'result' %}bg-primary-700 text-white border-primary-700 dark:bg-primary-500 dark:border-primary-500{% else %}border-gray-300 dark:border-gray-600{% endif %}">3</span>
+            <span class="text-sm font-medium">Result</span>
+        </div>
     </div>
 
     {% if step == 'upload' %}
-    <div class="upload-section">
-        <form method="post" enctype="multipart/form-data">
-            {% csrf_token %}
-            <div class="file-input-wrapper">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {# File Upload #}
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary-600 dark:text-primary-400">upload_file</span>
+                Upload CSV File
+            </h2>
+            <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-primary-400 dark:hover:border-primary-600 transition-colors">
                 {{ form.csv_file }}
             </div>
 
-            <div class="checkbox-wrapper">
-                <label>
-                    {{ form.send_credentials }}
-                    <strong>Send login credentials via email</strong>
-                </label>
-                <div class="help-text">
-                    If checked, each user will receive an email with their school email and auto-generated password at their personal email address.
+            {# Send Credentials Checkbox #}
+            <div class="mt-4 flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-lg">
+                <input type="checkbox" name="send_credentials" id="id_send_credentials" {% if form.send_credentials.value %}checked{% endif %} class="mt-0.5 w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800">
+                <div>
+                    <label for="id_send_credentials" class="text-sm font-semibold text-gray-900 dark:text-white cursor-pointer">Send login credentials via email</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Each user will receive an email with their school email and auto-generated password at their personal email address.</p>
                 </div>
             </div>
+        </div>
 
-            <div class="format-info">
-                <h4>CSV Format</h4>
-                <p>Upload a CSV file with the following columns:</p>
-                <table>
+        {# CSV Format Reference #}
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary-600 dark:text-primary-400">table</span>
+                CSV Format
+            </h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Upload a CSV file with the following columns:</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
                     <thead>
-                        <tr>
-                            <th>Column</th>
-                            <th>Required</th>
-                            <th>Description</th>
-                            <th>Example</th>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Column</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Required</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Description</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Example</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr>
-                            <td>role</td>
-                            <td class="required">Yes</td>
-                            <td>student or teacher (NOT admin)</td>
-                            <td>student</td>
-                        </tr>
-                        <tr>
-                            <td>first_name</td>
-                            <td class="required">Yes</td>
-                            <td>First name</td>
-                            <td>Juan</td>
-                        </tr>
-                        <tr>
-                            <td>last_name</td>
-                            <td class="required">Yes</td>
-                            <td>Last name / Surname</td>
-                            <td>Dela Cruz</td>
-                        </tr>
-                        <tr>
-                            <td>personal_email</td>
-                            <td class="required">Yes</td>
-                            <td>Personal email for credentials</td>
-                            <td>juan@gmail.com</td>
-                        </tr>
-                        <tr>
-                            <td>middle_name</td>
-                            <td>No</td>
-                            <td>Middle name or initial</td>
-                            <td>B.</td>
-                        </tr>
-                        <tr>
-                            <td>grade_level</td>
-                            <td>No</td>
-                            <td>Grade 7-12</td>
-                            <td>Grade 7</td>
-                        </tr>
-                        <tr>
-                            <td>strand</td>
-                            <td>No</td>
-                            <td>STEM, ABM, HUMSS, TVL, GAS, NONE</td>
-                            <td>STEM</td>
-                        </tr>
-                        <tr>
-                            <td>section</td>
-                            <td>No</td>
-                            <td>Section name</td>
-                            <td>ICT-A</td>
-                        </tr>
-                        <tr>
-                            <td>status</td>
-                            <td>No</td>
-                            <td>active or inactive</td>
-                            <td>active</td>
-                        </tr>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">role</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">student or teacher (NOT admin)</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">student</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">first_name</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">First name</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">Juan</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">last_name</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Last name / Surname</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">Dela Cruz</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">personal_email</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Personal email for credentials</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">juan@gmail.com</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">middle_name</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Middle name or initial</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">B.</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">grade_level</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Grade 7-12</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">Grade 7</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">strand</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">STEM, ABM, HUMSS, TVL, GAS, NONE</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">STEM</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">section</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Section name</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">ICT-A</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">status</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">active or inactive</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">active</td></tr>
                     </tbody>
                 </table>
-                <p style="margin-top: 15px;"><strong>Note:</strong> Student ID, Employee ID, and School Email are auto-generated.</p>
             </div>
+            <div class="mt-4 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 p-3 rounded-md flex items-start gap-2">
+                <span class="material-symbols-outlined text-amber-600 dark:text-amber-400 text-[18px] mt-0.5">info</span>
+                <span>Student ID, Employee ID, and School Email are auto-generated.</span>
+            </div>
+        </div>
 
-            <div class="submit-row">
-                <input type="submit" value="Preview Import" class="default">
-                <a href="{% url 'hna_acadex_admin:sis_import_download_users_template' %}" class="download-link">Download Template CSV</a>
-            </div>
-        </form>
-    </div>
+        {# Action Buttons #}
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <a href="{% url 'hna_acadex_admin:sis_import_download_users_template' %}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <span class="material-symbols-outlined text-[18px]">download</span>
+                Download Template CSV
+            </a>
+            <button type="submit" class="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-primary-600 dark:bg-primary-500 rounded-lg shadow-sm hover:bg-primary-700 dark:hover:bg-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+                <span class="material-symbols-outlined text-[18px]">visibility</span>
+                Preview Import
+            </button>
+        </div>
+    </form>
 
     {% elif step == 'preview' %}
-    <div class="preview-section">
-        <h2>Preview ({{ validation_result.rows|length }} rows)</h2>
+    <div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Preview <span class="text-gray-500 dark:text-gray-400 font-normal">({{ validation_result.rows|length }} rows)</span></h2>
 
         {% if validation_result.error_count > 0 %}
-        <div style="background: #ffebee; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f44336;">
-            <strong>{{ validation_result.error_count }} error(s)</strong> found. Please fix the errors and re-upload.
+        <div class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg flex items-start gap-3">
+            <span class="material-symbols-outlined text-red-600 dark:text-red-400 mt-0.5">error</span>
+            <div>
+                <p class="text-sm font-semibold text-red-800 dark:text-red-300">{{ validation_result.error_count }} error(s) found</p>
+                <p class="text-xs text-red-600 dark:text-red-400 mt-0.5">Fix the errors in your CSV and re-upload.</p>
+            </div>
         </div>
         {% else %}
-        <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
-            All {{ validation_result.rows|length }} rows are valid. Click "Import" to proceed.
-            {% if send_credentials %}
-            <div class="email-note">
-                <strong>Email will be sent:</strong> Login credentials will be sent to each user's personal email address.
+        <div class="mb-4 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-lg flex items-start gap-3">
+            <span class="material-symbols-outlined text-emerald-600 dark:text-emerald-400 mt-0.5">check_circle</span>
+            <div>
+                <p class="text-sm font-semibold text-emerald-800 dark:text-emerald-300">All {{ validation_result.rows|length }} rows are valid</p>
+                <p class="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Click "Import" to proceed.</p>
+                {% if send_credentials %}
+                <p class="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">email</span> Login credentials will be sent to each user's personal email.</p>
+                {% endif %}
+                {% if validation_result.warning_count > 0 %}
+                <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">{{ validation_result.warning_count }} warning(s) — some records may be skipped.</p>
+                {% endif %}
             </div>
-            {% endif %}
-            {% if validation_result.warning_count > 0 %}
-            <br><strong>{{ validation_result.warning_count }} warning(s)</strong> - some records may be skipped.
-            {% endif %}
         </div>
         {% endif %}
 
-        <div style="overflow-x: auto;">
-            <table class="preview-table">
-                <thead>
-                    <tr>
-                        <th>Row</th>
-                        <th>Role</th>
-                        <th>First Name</th>
-                        <th>Last Name</th>
-                        <th>Personal Email</th>
-                        <th>Grade</th>
-                        <th>Strand</th>
-                        <th>Status</th>
-                        <th>Message</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in validation_result.rows %}
-                    <tr class="{% if row.action == 'error' %}error{% elif row.warnings %}warning{% else %}success{% endif %}">
-                        <td>{{ row.row_number }}</td>
-                        <td>{{ row.data.role }}</td>
-                        <td>{{ row.data.first_name }}</td>
-                        <td>{{ row.data.last_name }}</td>
-                        <td>{{ row.data.personal_email }}</td>
-                        <td>{{ row.data.grade_level|default:"-" }}</td>
-                        <td>{{ row.data.strand|default:"-" }}</td>
-                        <td>{{ row.data.status|default:"active" }}</td>
-                        <td>
-                            {% if row.action == 'error' %}
-                                <span class="error-message">{{ row.message }}</span>
-                            {% else %}
-                                <span style="color: #4caf50;">Valid</span>
-                            {% endif %}
-                            {% if row.warnings %}
-                                <br><span class="warning-message">{{ row.warnings|join:"; " }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Row</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Role</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">First Name</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Last Name</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Personal Email</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Grade</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Strand</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Status</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        {% for row in validation_result.rows %}
+                        <tr class="{% if row.action == 'error' %}bg-red-50/50 dark:bg-red-900/10{% elif row.warnings %}bg-amber-50/50 dark:bg-amber-900/10{% endif %}">
+                            <td class="px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ row.row_number }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.role }}</td>
+                            <td class="px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ row.data.first_name }}</td>
+                            <td class="px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ row.data.last_name }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.personal_email }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.grade_level|default:"-" }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.strand|default:"-" }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.status|default:"active" }}</td>
+                            <td class="px-4 py-2.5">
+                                {% if row.action == 'error' %}
+                                    <span class="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+                                        <span class="material-symbols-outlined text-[16px]">error</span>
+                                        {{ row.message }}
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                        <span class="material-symbols-outlined text-[16px]">check_circle</span>
+                                        Valid
+                                    </span>
+                                {% endif %}
+                                {% if row.warnings %}
+                                    <span class="block text-xs text-amber-600 dark:text-amber-400 mt-1">{{ row.warnings|join:"; " }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <form method="post" enctype="multipart/form-data">
@@ -191,95 +192,127 @@
             <input type="hidden" name="action" value="import">
             <input type="hidden" name="send_credentials" value="{% if send_credentials %}on{% endif %}">
 
-            <div class="submit-row">
+            <div class="flex flex-col sm:flex-row items-center justify-end gap-3 mt-6">
+                <a href="{% url 'hna_acadex_admin:sis_import_users' %}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">arrow_back</span>
+                    Cancel and Re-upload
+                </a>
                 {% if validation_result.error_count == 0 %}
-                <input type="submit" value="Import" class="default">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-primary-600 dark:bg-primary-500 rounded-lg shadow-sm hover:bg-primary-700 dark:hover:bg-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+                    <span class="material-symbols-outlined text-[18px]">cloud_upload</span>
+                    Import
+                </button>
                 {% endif %}
-                <a href="{% url 'hna_acadex_admin:sis_import_users' %}" class="closelink">Cancel and Re-upload</a>
             </div>
         </form>
     </div>
 
     {% elif step == 'result' %}
-    <div class="result-section">
-        <h2>Import Results</h2>
+    <div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Import Results</h2>
 
         {% if send_credentials %}
-        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <strong>Credentials emails sent:</strong> Login credentials have been sent to each user's personal email.
+        <div class="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-lg flex items-start gap-3">
+            <span class="material-symbols-outlined text-blue-600 dark:text-blue-400 mt-0.5">email</span>
+            <p class="text-sm text-blue-800 dark:text-blue-300"><span class="font-semibold">Credentials emails sent:</span> Login credentials have been sent to each user's personal email.</p>
         </div>
         {% endif %}
 
-        <div class="result-summary">
-            <div class="result-stat created">
-                <div class="count">{{ result.created_count }}</div>
-                <div class="label">Created</div>
+        {# Result Stats #}
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-lg p-4 text-center">
+                <div class="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{{ result.created_count }}</div>
+                <div class="text-xs font-medium text-emerald-600 dark:text-emerald-500 mt-1">Created</div>
             </div>
-            <div class="result-stat updated">
-                <div class="count">{{ result.updated_count }}</div>
-                <div class="label">Updated</div>
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-lg p-4 text-center">
+                <div class="text-2xl font-bold text-blue-700 dark:text-blue-400">{{ result.updated_count }}</div>
+                <div class="text-xs font-medium text-blue-600 dark:text-blue-500 mt-1">Updated</div>
             </div>
-            <div class="result-stat skipped">
-                <div class="count">{{ result.skipped_count }}</div>
-                <div class="label">Skipped</div>
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-4 text-center">
+                <div class="text-2xl font-bold text-amber-700 dark:text-amber-400">{{ result.skipped_count }}</div>
+                <div class="text-xs font-medium text-amber-600 dark:text-amber-500 mt-1">Skipped</div>
             </div>
-            <div class="result-stat failed">
-                <div class="count">{{ result.failed_count }}</div>
-                <div class="label">Failed</div>
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-lg p-4 text-center">
+                <div class="text-2xl font-bold text-red-700 dark:text-red-400">{{ result.failed_count }}</div>
+                <div class="text-xs font-medium text-red-600 dark:text-red-500 mt-1">Failed</div>
             </div>
         </div>
 
         {% if result.created %}
-        <h3>Created Users</h3>
-        <table class="preview-table">
-            <thead>
-                <tr>
-                    <th>Row</th>
-                    <th>Role</th>
-                    <th>Name</th>
-                    <th>Personal Email</th>
-                    <th>Generated School Email</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in result.created %}
-                <tr>
-                    <td>{{ row.row_number }}</td>
-                    <td>{{ row.data.role }}</td>
-                    <td>{{ row.data.first_name }} {{ row.data.last_name }}</td>
-                    <td>{{ row.data.personal_email }}</td>
-                    <td style="font-size: 0.85em;">{{ row.message|slice:"38:" }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm overflow-hidden mb-6">
+            <div class="px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800/50">
+                <h3 class="text-sm font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[18px]">person_add</span>
+                    Created Users
+                </h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Row</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Role</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Name</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Personal Email</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Generated School Email</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        {% for row in result.created %}
+                        <tr>
+                            <td class="px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ row.row_number }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.role }}</td>
+                            <td class="px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ row.data.first_name }} {{ row.data.last_name }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.personal_email }}</td>
+                            <td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">{{ row.message|slice:"38:" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
         {% endif %}
 
         {% if result.failed %}
-        <h3>Failed Records</h3>
-        <table class="preview-table">
-            <thead>
-                <tr>
-                    <th>Row</th>
-                    <th>Personal Email</th>
-                    <th>Error</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in result.failed %}
-                <tr class="error">
-                    <td>{{ row.row_number }}</td>
-                    <td>{{ row.data.personal_email|default:"-" }}</td>
-                    <td>{{ row.message }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm overflow-hidden mb-6">
+            <div class="px-4 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800/50">
+                <h3 class="text-sm font-semibold text-red-800 dark:text-red-300 flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-[18px]">error</span>
+                    Failed Records
+                </h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Row</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Personal Email</th>
+                            <th class="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        {% for row in result.failed %}
+                        <tr class="bg-red-50/30 dark:bg-red-900/10">
+                            <td class="px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ row.row_number }}</td>
+                            <td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">{{ row.data.personal_email|default:"-" }}</td>
+                            <td class="px-4 py-2.5 text-red-600 dark:text-red-400">{{ row.message }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
         {% endif %}
 
-        <div class="submit-row">
-            <a href="{% url 'hna_acadex_admin:sis_import_users' %}" class="closelink">Import More Users</a>
-            <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="closelink">Back to SIS Import</a>
+        <div class="flex flex-col sm:flex-row items-center justify-end gap-3 mt-6">
+            <a href="{% url 'hna_acadex_admin:sis_import_users' %}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <span class="material-symbols-outlined text-[18px]">refresh</span>
+                Import More Users
+            </a>
+            <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 dark:bg-primary-500 rounded-lg shadow-sm hover:bg-primary-700 dark:hover:bg-primary-400 transition-colors">
+                <span class="material-symbols-outlined text-[18px]">arrow_back</span>
+                Back to SIS Import
+            </a>
         </div>
     </div>
     {% endif %}
