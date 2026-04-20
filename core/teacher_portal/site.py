@@ -26,6 +26,7 @@ class TeacherPortalAdminSite(AdminSite):
     site_title = "Teacher Portal"
     index_title = "Advisory Dashboard"
     login_url = "/teacher-portal/login/"
+    login_template = "teacher_portal/login.html"
     login_form = TeacherAuthenticationForm
 
     def has_permission(self, request):

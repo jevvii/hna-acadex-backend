@@ -3,143 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HNA Acadex Portal</title>
+    <title>HNA Acadex | Secure Access Gateway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['InterVariable', 'sans-serif'],
+                    },
+                    colors: {
+                        cloud: '#F4F5F6',
+                        charcoal: '#333333',
+                        taupe: '#6B7280',
+                        accent: '#2563EB',
+                    },
+                    borderRadius: {
+                        'bento': '1.5rem',
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            background-color: var(--cloud);
+            color: var(--charcoal);
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
         }
-
-        .container {
-            text-align: center;
-            max-width: 800px;
+        .bento-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        .logo {
-            font-size: 48px;
-            font-weight: 700;
-            color: #417690;
-            margin-bottom: 10px;
-        }
-
-        .subtitle {
-            font-size: 18px;
-            color: #666;
-            margin-bottom: 40px;
-        }
-
-        .portal-cards {
-            display: flex;
-            gap: 30px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .portal-card {
-            background: white;
-            border-radius: 12px;
-            padding: 40px;
-            width: 300px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-            text-decoration: none;
-            color: inherit;
-        }
-
-        .portal-card:hover {
+        .bento-hover:hover {
             transform: translateY(-4px);
-            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .portal-card.admin {
-            border-top: 4px solid #417690;
-        }
-
-        .portal-card.teacher {
-            border-top: 4px solid #1565C0;
-        }
-
-        .portal-card h2 {
-            font-size: 24px;
-            margin-bottom: 15px;
-            color: #333;
-        }
-
-        .portal-card.admin h2 {
-            color: #417690;
-        }
-
-        .portal-card.teacher h2 {
-            color: #1565C0;
-        }
-
-        .portal-card p {
-            color: #666;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        .portal-card .icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-
-        .portal-card.admin .icon {
-            color: #417690;
-        }
-
-        .portal-card.teacher .icon {
-            color: #1565C0;
-        }
-
-        .footer {
-            margin-top: 40px;
-            color: #888;
-            font-size: 12px;
-        }
-
-        .footer a {
-            color: #417690;
-            text-decoration: none;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="logo">HNA Acadex</div>
-        <p class="subtitle">School Management System Portal</p>
-
-        <div class="portal-cards">
-            <a href="{{ admin_url }}" class="portal-card admin">
-                <div class="icon">&#128100;</div>
-                <h2>Admin Portal</h2>
-                <p>Administrative access for school administrators. Manage users, courses, enrollments, and system settings.</p>
-            </a>
-
-            <a href="{{ teacher_portal_url }}" class="portal-card teacher">
-                <div class="icon">&#128218;</div>
-                <h2>Teacher Portal</h2>
-                <p>Access for advisory teachers. Manage your advisory section, student enrollments, and import data.</p>
-            </a>
+<body class="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-8" style="background-color: #F4F5F6;">
+    
+    <div class="max-w-4xl w-full">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-sm border border-gray-100 mb-6">
+                <span class="text-3xl font-extrabold text-blue-600 tracking-tighter">HNA</span>
+            </div>
+            <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl mb-3">HNA Acadex Gateway</h1>
+            <p class="text-lg text-gray-500 max-w-2xl mx-auto">Select your designated portal to access the centralized learning and administrative systems.</p>
         </div>
 
-        <div class="footer">
-            <p>HNA Acadex &copy; 2024-{{ current_year }} | <a href="#">Privacy Policy</a> | <a href="#">Terms of Service</a></p>
+        <!-- Portal Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            
+            <!-- Admin Portal -->
+            <a href="{{ admin_url }}" class="group block bg-white rounded-bento p-8 border border-gray-200 shadow-sm bento-hover relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-blue-600 opacity-80 group-hover:opacity-100 transition-opacity"></div>
+                <div class="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center mb-6 group-hover:bg-blue-100 transition-colors">
+                    <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <h2 class="text-2xl font-semibold text-gray-900 mb-3">System Administrator</h2>
+                <p class="text-gray-500 leading-relaxed mb-8">Full administrative access. Manage global infrastructure, user roles, core courses, bulk enrollments, and system-wide configurations.</p>
+                <div class="flex items-center text-blue-600 font-medium">
+                    <span>Access Admin Portal</span>
+                    <svg class="w-5 h-5 ml-2 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                </div>
+            </a>
+
+            <!-- Teacher Portal -->
+            <a href="{{ teacher_portal_url }}" class="group block bg-white rounded-bento p-8 border border-gray-200 shadow-sm bento-hover relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-emerald-500 opacity-80 group-hover:opacity-100 transition-opacity"></div>
+                <div class="w-14 h-14 bg-emerald-50 rounded-xl flex items-center justify-center mb-6 group-hover:bg-emerald-100 transition-colors">
+                    <svg class="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                </div>
+                <h2 class="text-2xl font-semibold text-gray-900 mb-3">Adviser Portal</h2>
+                <p class="text-gray-500 leading-relaxed mb-8">Access for advisory teachers. Manage your designated advisory sections, create student accounts, and import sis data.</p>
+                <div class="flex items-center text-emerald-600 font-medium">
+                    <span>Access Adviser Portal</span>
+                    <svg class="w-5 h-5 ml-2 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                </div>
+            </a>
+            
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-16 text-center text-sm text-gray-400">
+            <p>HNA Acadex &copy; 2024-{{ current_year }} &middot; <a href="#" class="hover:text-gray-500 transition-colors">Privacy Policy</a> &middot; <a href="#" class="hover:text-gray-500 transition-colors">Terms of Service</a></p>
         </div>
     </div>
 </body>
