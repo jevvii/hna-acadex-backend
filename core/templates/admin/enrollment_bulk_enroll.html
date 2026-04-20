@@ -1,124 +1,144 @@
-{% extends "admin/base_site.html" %}
-{% load i18n admin_urls %}
+{% extends "admin/base.html" %}
+{% load i18n admin_urls unfold %}
+
+{% block title %}Bulk Enroll Students | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
 
 {% block breadcrumbs %}
-<div class="breadcrumbs">
-<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
-&rsaquo; <a href="{% url 'admin:app_list' opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
-&rsaquo; <a href="{% url 'admin:core_enrollment_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
-&rsaquo; Bulk Enroll Students
-</div>
+    <div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800 flex-wrap gap-2">
+        <a href="{% url 'admin:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
+        <span class="text-gray-400">/</span>
+        <a href="{% url 'admin:app_list' opts.app_label %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{{ opts.app_config.verbose_name }}</a>
+        <span class="text-gray-400">/</span>
+        <a href="{% url 'admin:core_enrollment_changelist' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{{ opts.verbose_name_plural|capfirst }}</a>
+        <span class="text-gray-400">/</span>
+        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">Bulk Enroll Students</span>
+    </div>
 {% endblock %}
 
 {% block content %}
-<h1>{{ title }}</h1>
-
-{% if students %}
-<div class="module">
-    <h2>Selected Students ({{ students.count }})</h2>
-    <table id="students-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Student ID</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for student in students %}
-            <tr>
-                <td>{{ student.full_name }}</td>
-                <td>{{ student.email }}</td>
-                <td>{{ student.student_id|default:"-" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% else %}
-<div class="module">
-    <p>No students selected. Please select enrollments from the enrollment list first.</p>
-    <a href="{% url 'admin:core_enrollment_changelist' %}" class="button">Back to Enrollments</a>
-</div>
-{% endif %}
-
-{% if students %}
-<form method="post">
-    {% csrf_token %}
-    <div class="module">
-        <h2>Select Class Offerings to Enroll In</h2>
-        <p>Choose the class offerings to enroll these students in:</p>
-        <p><label><input type="checkbox" id="select_all"> <strong>Select All</strong></label></p>
-        <table id="result_list">
-            <thead>
-                <tr>
-                    <th><input type="checkbox" id="select_all_header"></th>
-                    <th>Subject</th>
-                    <th>Section</th>
-                    <th>Teacher</th>
-                    <th>School Year</th>
-                    <th>Semester</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for cs in course_sections %}
-                <tr>
-                    <td><input type="checkbox" name="course_sections" value="{{ cs.id }}" class="course-section-checkbox"></td>
-                    <td>{{ cs.course.code }} - {{ cs.course.title }}</td>
-                    <td>{{ cs.section.name }}</td>
-                    <td>{{ cs.teacher.full_name|default:"No Teacher" }}</td>
-                    <td>{{ cs.school_year }}</td>
-                    <td>{{ cs.semester|default:"-" }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="6">No active class offerings available.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="flex flex-col gap-8 max-w-5xl">
+    <div class="border-b border-gray-200 dark:border-gray-800 pb-6">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ title }}</h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-2">Enroll the selected students into multiple class offerings at once.</p>
     </div>
 
-    <div class="submit-row">
-        <input type="submit" value="Enroll Students" class="default">
-        <a href="{% url 'admin:core_enrollment_changelist' %}" class="closelink">Cancel</a>
+    {% if students %}
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/[.02]">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Selected Students ({{ students.count }})</h2>
+        </div>
+        <div class="overflow-x-auto max-h-64">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 bg-gray-50 dark:bg-gray-900">
+                    <tr class="border-b border-gray-200 dark:border-gray-800">
+                        <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                        <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
+                        <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Student ID</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-800">
+                    {% for student in students %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-white/[.02] transition-colors">
+                        <td class="px-6 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{{ student.full_name }}</td>
+                        <td class="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{{ student.email }}</td>
+                        <td class="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{{ student.student_id|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</form>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Select all checkbox functionality
-    var selectAllHeader = document.getElementById('select_all_header');
-    var selectAllLabel = document.getElementById('select_all');
-    var checkboxes = document.querySelectorAll('.course-section-checkbox');
+    <form method="post" class="flex flex-col gap-6">
+        {% csrf_token %}
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/[.02] flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Select Class Offerings to Enroll In</h2>
+                <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-300 font-medium">
+                    <input type="checkbox" id="select_all" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4">
+                    Select All
+                </label>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
+                            <th class="px-6 py-3 w-12"><input type="checkbox" id="select_all_header" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"></th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Subject</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Section</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Teacher</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">School Year</th>
+                            <th class="px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Semester</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-800">
+                        {% for cs in course_sections %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-white/[.02] transition-colors">
+                            <td class="px-6 py-3"><input type="checkbox" name="course_sections" value="{{ cs.id }}" class="course-section-checkbox rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"></td>
+                            <td class="px-6 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{{ cs.course.code }} - {{ cs.course.title }}</td>
+                            <td class="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{{ cs.section.name }}</td>
+                            <td class="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{{ cs.teacher.full_name|default:"Unassigned" }}</td>
+                            <td class="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{{ cs.school_year }}</td>
+                            <td class="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">{{ cs.semester|default:"-" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No active class offerings available.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-    function toggleAll(checked) {
-        for (var i = 0; i < checkboxes.length; i++) {
-            checkboxes[i].checked = checked;
+        <div class="flex items-center gap-4 mt-2">
+            {% component "unfold/components/button.html" with submit=1 variant="primary" %}
+                Enroll Selected Students
+            {% endcomponent %}
+            <a href="{% url 'admin:core_enrollment_changelist' %}" class="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+                Cancel
+            </a>
+        </div>
+    </form>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAllHeader = document.getElementById('select_all_header');
+        const selectAllLabel = document.getElementById('select_all');
+        const checkboxes = document.querySelectorAll('.course-section-checkbox');
+
+        function toggleAll(checked) {
+            checkboxes.forEach(cb => cb.checked = checked);
+            if (selectAllHeader) selectAllHeader.checked = checked;
+            if (selectAllLabel) selectAllLabel.checked = checked;
         }
-    }
 
-    if (selectAllHeader) {
-        selectAllHeader.addEventListener('change', function() {
-            toggleAll(this.checked);
-        });
-    }
+        if (selectAllHeader) selectAllHeader.addEventListener('change', e => toggleAll(e.target.checked));
+        if (selectAllLabel) selectAllLabel.addEventListener('change', e => toggleAll(e.target.checked));
 
-    if (selectAllLabel) {
-        selectAllLabel.addEventListener('change', function() {
-            toggleAll(this.checked);
-        });
-    }
-
-    // Update select all checkbox state when individual checkboxes change
-    checkboxes.forEach(function(checkbox) {
-        checkbox.addEventListener('change', function() {
-            var allChecked = document.querySelectorAll('.course-section-checkbox:checked').length === checkboxes.length;
-            if (selectAllHeader) selectAllHeader.checked = allChecked;
-            if (selectAllLabel) selectAllLabel.checked = allChecked;
+        checkboxes.forEach(function(checkbox) {
+            checkbox.addEventListener('change', function() {
+                const allChecked = document.querySelectorAll('.course-section-checkbox:checked').length === checkboxes.length;
+                if (selectAllHeader) selectAllHeader.checked = allChecked;
+                if (selectAllLabel) selectAllLabel.checked = allChecked;
+            });
         });
     });
-});
-</script>
-{% endif %}
+    </script>
+
+    {% else %}
+    <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 flex flex-col items-center justify-center text-center">
+        <span class="material-symbols-outlined text-4xl text-yellow-500 mb-4">warning</span>
+        <h2 class="text-lg font-semibold text-yellow-900 dark:text-yellow-100 mb-2">No Students Selected</h2>
+        <p class="text-yellow-700 dark:text-yellow-400 mb-6">Please return to the enrollment list and select at least one student to bulk enroll.</p>
+        {% component "unfold/components/button.html" with href="/admin/core/enrollment/" variant="primary" %}
+            Back to Enrollments
+        {% endcomponent %}
+    </div>
+    {% endif %}
+</div>
 {% endblock %}

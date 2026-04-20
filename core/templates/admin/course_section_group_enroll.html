@@ -1,172 +1,94 @@
-{% extends "admin/base_site.html" %}
-{% load i18n admin_urls static %}
+{% extends "admin/base.html" %}
+{% load i18n admin_urls static unfold %}
 
-{% block extrastyle %}{{ block.super }}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<style>
-.select2-container--default .select2-selection--multiple {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    min-height: 100px;
-}
-.select2-container--default .select2-results__option--highlighted[aria-selected] {
-    background-color: #417690;
-}
-.select2-container--default .select2-selection--multiple .select2-selection__choice {
-    background-color: #417690;
-    color: white;
-    border: none;
-    padding: 3px 8px;
-    margin: 3px;
-}
-.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
-    color: white;
-    margin-right: 4px;
-}
-.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
-    color: #ffd;
-}
-.select2-results__option {
-    padding: 8px 12px;
-}
-.search-info {
-    background: #f8f8f8;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 12px;
-    margin-bottom: 15px;
-}
-.search-info strong {
-    color: #417690;
-}
-.student-search-container {
-    margin-bottom: 20px;
-}
-</style>
+{% block title %}Enroll Students | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
 {% endblock %}
-
-{% block extrahead %}{{ block.super }}
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-{{ media }}
-<script>
-$(document).ready(function() {
-    // Initialize Select2 with AJAX search
-    $('#id_students').select2({
-        ajax: {
-            url: '/admin/core/coursesectiongroup/autocomplete/students/',
-            dataType: 'json',
-            delay: 250,
-            data: function(params) {
-                return {
-                    term: params.term || '',
-                    page: params.page || 1
-                };
-            },
-            processResults: function(data, params) {
-                params.page = params.page || 1;
-                return {
-                    results: data.results,
-                    pagination: {
-                        more: data.pagination.more
-                    }
-                };
-            },
-            cache: true
-        },
-        placeholder: 'Search students by name, email, or student ID...',
-        minimumInputLength: 0,
-        allowClear: true,
-        multiple: true,
-        width: '100%'
-    });
-
-    // Pre-select any existing students from form data
-    {% if form.students.value %}
-    var existingStudents = {{ form.students.value|safe }};
-    if (existingStudents && existingStudents.length > 0) {
-        // Fetch student details for pre-selected values
-        $.ajax({
-            url: '/admin/core/coursesectiongroup/autocomplete/students/',
-            data: { term: '' },
-            dataType: 'json',
-            success: function(data) {
-                // Filter to only show selected students
-                var selectedIds = existingStudents.map(String);
-                data.results.forEach(function(item) {
-                    if (selectedIds.includes(item.id)) {
-                        var option = new Option(item.text, item.id, true, true);
-                        $('#id_students').append(option).trigger('change');
-                    }
-                });
-            }
-        });
-    }
-    {% endif %}
-});
-</script>
-{% endblock %}
-
-{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-form{% endblock %}
 
 {% block breadcrumbs %}
-<div class="breadcrumbs">
-<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
-&rsaquo; <a href="{% url 'admin:app_list' opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
-&rsaquo; <a href="{% url 'admin:core_coursesectiongroup_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
-&rsaquo; <a href="{% url 'admin:core_coursesectiongroup_change' course_group.pk %}">{{ course_group.name }}</a>
-&rsaquo; Enroll Students
-</div>
+    <div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800 flex-wrap gap-2">
+        <a href="{% url 'admin:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
+        <span class="text-gray-400">/</span>
+        <a href="{% url 'admin:app_list' opts.app_label %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{{ opts.app_config.verbose_name }}</a>
+        <span class="text-gray-400">/</span>
+        <a href="{% url 'admin:core_coursesectiongroup_changelist' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{{ opts.verbose_name_plural|capfirst }}</a>
+        <span class="text-gray-400">/</span>
+        <a href="{% url 'admin:core_coursesectiongroup_change' course_group.pk %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{{ course_group.name }}</a>
+        <span class="text-gray-400">/</span>
+        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">Enroll Students</span>
+    </div>
 {% endblock %}
 
 {% block content %}
-<div id="content-main">
-    <form method="post" novalidate>
+<div class="flex flex-col gap-8 max-w-5xl">
+    
+    <div class="border-b border-gray-200 dark:border-gray-800 pb-6">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Bulk Enroll Students</h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-2">Add multiple students to the <strong>{{ course_group.name }}</strong> enrollment group simultaneously.</p>
+    </div>
+
+    <form method="post" novalidate class="flex flex-col gap-6">
         {% csrf_token %}
-        <fieldset class="module aligned">
-            <div class="form-row">
-                <label>Course Group:</label>
-                <div class="readonly">{{ course_group.name }}</div>
-            </div>
-            <div class="form-row">
-                <label>School Year:</label>
-                <div class="readonly">{{ course_group.school_year }}</div>
-            </div>
-            {% if course_group.semester %}
-            <div class="form-row">
-                <label>Semester:</label>
-                <div class="readonly">{{ course_group.semester }}</div>
-            </div>
-            {% endif %}
-            <div class="form-row">
-                <label>Courses Included:</label>
-                <div class="readonly">
-                    <ul style="margin: 0; padding-left: 20px;">
+        
+        <!-- Group Details Box -->
+        <div class="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-4">Group Details</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <span class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Group Name</span>
+                    <span class="block mt-1 text-sm text-gray-900 dark:text-gray-100 font-medium">{{ course_group.name }}</span>
+                </div>
+                <div>
+                    <span class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Academic Period</span>
+                    <span class="block mt-1 text-sm text-gray-900 dark:text-gray-100 font-medium">{{ course_group.school_year }} {% if course_group.semester %}| {{ course_group.semester }}{% endif %}</span>
+                </div>
+                <div class="sm:col-span-2">
+                    <span class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Included Class Offerings ({{ course_group.course_sections.count }})</span>
+                    <ul class="space-y-2">
                         {% for cs in course_group.course_sections.all %}
-                        <li>{{ cs.course.code }} - {{ cs.course.title }} ({{ cs.section.name }}{% if cs.teacher %}, {{ cs.teacher.full_name }}{% endif %})</li>
+                        <li class="flex items-center text-sm text-gray-700 dark:text-gray-300">
+                            <span class="material-symbols-outlined text-[16px] text-primary-500 mr-2">book</span>
+                            <span class="font-medium mr-2">{{ cs.course.code }}</span> 
+                            {{ cs.course.title }} &middot; {{ cs.section.name }} 
+                            <span class="text-gray-400 dark:text-gray-500 ml-1">({% if cs.teacher %}{{ cs.teacher.full_name }}{% else %}Unassigned{% endif %})</span>
+                        </li>
                         {% endfor %}
                     </ul>
                 </div>
             </div>
-        </fieldset>
+        </div>
 
-        <div class="module">
-            <h2>Student Enrollment: Enroll Students to All Courses in Group</h2>
-            <div class="search-info">
-                <strong>Tip:</strong> Start typing to search for students by name, email, or student ID.
-                Select multiple students to enroll them in all {{ course_group.course_sections.count }} course(s) in this group.
+        <!-- Student Selection -->
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6 shadow-sm">
+            <div class="flex items-start gap-3 p-4 bg-primary-50 dark:bg-primary-900/20 text-primary-800 dark:text-primary-300 rounded-md border border-primary-100 dark:border-primary-800/50 mb-6">
+                <span class="material-symbols-outlined">info</span>
+                <div class="text-sm">
+                    <strong>Tip:</strong> Hold <kbd class="px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs">Ctrl</kbd> (or <kbd class="px-1 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs">Cmd</kbd> on Mac) to select multiple students. Every selected student will be instantly enrolled into all {{ course_group.course_sections.count }} class offerings listed above.
+                </div>
             </div>
-            <div class="student-search-container">
-                <label for="id_students"><strong>Select Students:</strong></label><br><br>
-                <select id="id_students" name="students" multiple="multiple" style="width: 100%;">
-                </select>
-                <p class="help">Search and select students to enroll. Use the search box to find students quickly.</p>
+
+            <div class="space-y-2">
+                <label for="id_students" class="block text-sm font-medium text-gray-900 dark:text-gray-100">Select Students</label>
+                <div class="relative">
+                    {{ form.students }}
+                </div>
+                {% if form.students.errors %}
+                <p class="text-sm text-red-600 dark:text-red-400 mt-1">{{ form.students.errors.0 }}</p>
+                {% endif %}
             </div>
         </div>
 
-        <div class="submit-row">
-            <input type="submit" value="Enroll Selected Students" class="default">
-            <a href="{% url 'admin:core_coursesectiongroup_change' course_group.pk %}" class="closelink">Back to Group</a>
+        <!-- Actions -->
+        <div class="flex items-center gap-4 mt-4">
+            {% component "unfold/components/button.html" with submit=1 variant="primary" %}
+                Enroll Selected Students
+            {% endcomponent %}
+            
+            <a href="{% url 'admin:core_coursesectiongroup_change' course_group.pk %}" class="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+                Cancel
+            </a>
         </div>
     </form>
 </div>

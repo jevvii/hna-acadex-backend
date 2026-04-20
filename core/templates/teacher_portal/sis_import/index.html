@@ -1,34 +1,77 @@
-{% extends "teacher_portal/base_site.html" %}
-{% load i18n %}
+{% extends "admin/base.html" %}
+{% load i18n unfold %}
 
-{% block nav_sis_active %}active{% endblock %}
+{% block title %}SIS Import | Adviser Portal{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block breadcrumbs %}
+    <div class="px-4 py-3 lg:px-12 flex flex-row items-center border-b border-gray-200 dark:border-gray-800">
+        <a href="{% url 'teacher_portal:index' %}" class="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">{% trans 'Home' %}</a>
+        <span class="mx-2 text-gray-400">/</span>
+        <span class="text-sm font-medium text-gray-900 dark:text-gray-100">SIS Import</span>
+    </div>
+{% endblock %}
 
 {% block content %}
-<h1>{{ title }}</h1>
-
-{% if teacher_advisory %}
-<div class="tp-context-banner">
-  <strong>Importing for advisory:</strong> {{ teacher_advisory.section.name }} &nbsp;·&nbsp; {{ teacher_advisory.school_year }}
-</div>
-
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:20px">
-  {% for import_type in import_types %}
-  <a href="{% url import_type.url_name %}" style="text-decoration:none">
-    <div class="module" style="cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(21,101,192,.18)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(13,27,62,.06)'">
-      <div style="padding:20px">
-        <div style="font-size:15px;font-weight:600;color:var(--tp-navy);margin-bottom:6px">{{ import_type.name }}</div>
-        <div style="font-size:12px;color:var(--tp-sky);line-height:1.5">{{ import_type.description }}</div>
-        <div style="margin-top:14px">
-          <span class="button" style="font-size:11px!important;padding:5px 12px!important">Import {{ import_type.name }}</span>
+<div class="flex flex-col gap-8">
+    <div class="border-b border-gray-200 dark:border-gray-800 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Student Information System (SIS) Import</h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-2">Import and build your curriculum data using CSV files.</p>
         </div>
-      </div>
+        
+        {% if teacher_advisory %}
+        <div class="inline-flex items-center px-4 py-2 rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 text-sm font-medium shadow-sm">
+            <span class="material-symbols-outlined mr-2 text-[18px]">school</span>
+            Target Section: {{ teacher_advisory.section.name }} &middot; {{ teacher_advisory.school_year }}
+        </div>
+        {% endif %}
     </div>
-  </a>
-  {% endfor %}
-</div>
 
-<a href="{% url 'teacher_portal:index' %}" class="button" style="background:var(--tp-ghost)!important;color:var(--tp-royal)!important;border-color:var(--tp-mist)!important">← Back to Dashboard</a>
-{% else %}
-{% include "teacher_portal/assign_advisory_error.html" %}
-{% endif %}
+    {% if teacher_advisory %}
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        {% for import_type in import_types %}
+        <a href="{% url import_type.url_name %}" class="block p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm hover:border-emerald-500 dark:hover:border-emerald-500 hover:shadow-md transition-all group">
+            <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-500 rounded-lg flex items-center justify-center mb-4 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40 transition-colors">
+                <span class="material-symbols-outlined text-2xl">{{ import_type.icon|default:"folder" }}</span>
+            </div>
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ import_type.name }}</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ import_type.description }}</p>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mt-4">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-emerald-600">lightbulb</span> Adviser Import Guide
+        </h3>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">Follow this order to build your curriculum if you are starting from scratch:</p>
+        <ol class="list-decimal list-inside space-y-3 text-sm text-gray-600 dark:text-gray-300 ml-2">
+            <li><strong class="text-gray-900 dark:text-white">Subjects:</strong> Import the core subjects for your section.</li>
+            <li><strong class="text-gray-900 dark:text-white">Students:</strong> Create user accounts for your students.</li>
+            <li><strong class="text-gray-900 dark:text-white">Class Offerings:</strong> Combine subjects, your section, and a teacher into an active class.</li>
+            <li><strong class="text-gray-900 dark:text-white">Enrollments:</strong> Place students into the class offerings.</li>
+        </ol>
+    </div>
+    
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-16 text-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm">
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-50 text-red-500 mb-6 dark:bg-red-900/20 dark:text-red-400">
+            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            </svg>
+        </div>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">No Advisory Assigned</h2>
+        <p class="text-gray-500 dark:text-gray-400 max-w-md mb-6">
+            You cannot import data because you haven't been assigned an advisory section yet.
+        </p>
+        <a href="{% url 'teacher_portal:index' %}" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700">
+            Return to Dashboard
+        </a>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}
