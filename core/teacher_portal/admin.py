@@ -7,6 +7,7 @@ to only show data related to the teacher's advisory section.
 """
 
 from django.contrib import admin, messages
+from unfold.admin import ModelAdmin as UnfoldModelAdmin
 from django.db import transaction
 from django.shortcuts import render, redirect
 from django.urls import reverse
@@ -92,7 +93,7 @@ class TeacherStudentChangeForm(forms.ModelForm):
         return personal_email
 
 
-class TeacherUserAdmin(admin.ModelAdmin):
+class TeacherUserAdmin(UnfoldModelAdmin):
     """Admin for teachers to view and create students in their advisory."""
 
     form = TeacherStudentCreationForm
@@ -368,7 +369,7 @@ class TeacherUserAdmin(admin.ModelAdmin):
 # Course Admin for Teachers
 # =============================================================================
 
-class TeacherCourseAdmin(admin.ModelAdmin):
+class TeacherCourseAdmin(UnfoldModelAdmin):
     """Admin for teachers to create courses for their curriculum."""
 
     list_display = ['code', 'title', 'category', 'school_year', 'semester', 'grade_level', 'strand', 'is_active']
@@ -440,7 +441,7 @@ class TeacherCourseAdmin(admin.ModelAdmin):
 # Enrollment Admin for Teachers
 # =============================================================================
 
-class EnrollmentAdminTeacher(admin.ModelAdmin):
+class EnrollmentAdminTeacher(UnfoldModelAdmin):
     """Enrollment admin scoped to teacher's advisory."""
 
     list_display = ('student_name', 'course_section_display', 'is_irregular_flag', 'is_active', 'enrolled_at')
@@ -554,7 +555,7 @@ class EnrollmentAdminTeacher(admin.ModelAdmin):
     deactivate_enrollments.short_description = "Deactivate selected enrollments"
 
 
-class CourseSectionGroupAdminTeacher(admin.ModelAdmin):
+class CourseSectionGroupAdminTeacher(UnfoldModelAdmin):
     """CourseSectionGroup admin (read-only for teachers, with enroll action)."""
 
     list_display = ('name', 'school_year', 'course_count', 'student_count', 'is_active')

@@ -6,7 +6,7 @@ Custom AdminSite that creates separate categories for better organization:
 - Enrollment: Enrollment-related models
 - Core: All other models
 """
-from django.contrib.admin import AdminSite
+from unfold.sites import UnfoldAdminSite as AdminSite
 from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 

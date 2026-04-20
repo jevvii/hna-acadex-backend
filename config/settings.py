@@ -59,6 +59,7 @@ if _prod_origins:
     CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in _prod_origins.split(",") if origin.strip()])
 
 INSTALLED_APPS = [
+    "unfold",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -339,4 +340,66 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "SECURITY": [{"bearerAuth": []}],
     "COMPONENT_SPLIT_REQUEST": True,
+}
+
+from django.urls import reverse_lazy
+
+UNFOLD = {
+    "SITE_TITLE": "HNA Acadex",
+    "SITE_HEADER": "HNA Acadex Admin",
+    "SITE_ICON": {
+        "light": lambda request: "/static/icon.png",
+        "dark": lambda request: "/static/icon.png",
+    },
+    "COLORS": {
+        "primary": {
+            "50": "239 246 255",
+            "100": "219 234 254",
+            "200": "191 219 254",
+            "300": "147 197 253",
+            "400": "96 165 250",
+            "500": "59 130 246",
+            "600": "37 99 235",
+            "700": "29 78 216",
+            "800": "30 64 175",
+            "900": "30 58 138",
+            "950": "23 37 84",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "Adviser Portal",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Advisory Dashboard",
+                        "icon": "dashboard",
+                        "link": reverse_lazy("teacher_portal:index"),
+                        "permission": lambda request: request.user.is_authenticated and request.user.role == 'teacher'
+                    },
+                    {
+                        "title": "SIS Import",
+                        "icon": "cloud_upload",
+                        "link": reverse_lazy("teacher_portal:tp_sis_import_index"),
+                        "permission": lambda request: request.user.is_authenticated and request.user.role == 'teacher'
+                    },
+                ]
+            },
+            {
+                "title": "System Administrator",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "SIS Import Tools",
+                        "icon": "cloud_upload",
+                        "link": reverse_lazy("hna_acadex_admin:sis_import_index"),
+                        "permission": lambda request: request.user.is_superuser
+                    },
+                ]
+            },
+        ],
+    },
 }

@@ -7,7 +7,7 @@ advisory sections. Teachers don't need is_staff=True - access is granted
 based on their role being 'teacher' and is_active=True.
 """
 
-from django.contrib.admin import AdminSite
+from unfold.sites import UnfoldAdminSite as AdminSite
 from django.urls import path, reverse
 from django.utils.translation import gettext_lazy as _
 
@@ -26,7 +26,6 @@ class TeacherPortalAdminSite(AdminSite):
     site_title = "Teacher Portal"
     index_title = "Advisory Dashboard"
     login_url = "/teacher-portal/login/"
-    login_template = "teacher_portal/login.html"
     login_form = TeacherAuthenticationForm
 
     def has_permission(self, request):

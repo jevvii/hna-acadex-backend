@@ -174,7 +174,9 @@ class CustomUserChangeForm(UserChangeForm):
         return personal_email
 
 
-class UserAdmin(DjangoUserAdmin):
+from unfold.admin import ModelAdmin as UnfoldModelAdmin
+
+class UserAdmin(UnfoldModelAdmin, DjangoUserAdmin):
     form = CustomUserChangeForm
     add_form = CustomUserCreationForm
     model = User
@@ -670,7 +672,7 @@ class UserAdmin(DjangoUserAdmin):
     assign_advisory_action.short_description = "Assign advisory section to selected teacher"
 
 
-class SectionAdmin(admin.ModelAdmin):
+class SectionAdmin(UnfoldModelAdmin):
     list_display = ("name", "display_grade_strand", "school_year", "is_active", "course_count")
     list_filter = ("grade_level", "strand", "school_year", "is_active")
     search_fields = ("name",)
@@ -742,7 +744,7 @@ class CourseAdminForm(forms.ModelForm):
         return color_overlay
 
 
-class CourseAdmin(admin.ModelAdmin):
+class CourseAdmin(UnfoldModelAdmin):
     form = CourseAdminForm
     list_display = ("code", "title", "category", "school_year", "semester", "is_active")
     list_filter = ("category", "school_year", "semester", "is_active")
@@ -767,7 +769,7 @@ class CourseAdmin(admin.ModelAdmin):
     )
 
 
-class CourseSectionAdmin(admin.ModelAdmin):
+class CourseSectionAdmin(UnfoldModelAdmin):
     list_display = ("course", "section", "teacher", "school_year", "semester", "enrollment_count", "is_active")
     list_filter = ("school_year", "semester", "is_active", "course__code")
     search_fields = ("course__code", "course__title", "section__name", "teacher__first_name", "teacher__last_name")
@@ -826,7 +828,7 @@ class CourseSectionGroupInlineEnrollmentForm(forms.Form):
     )
 
 
-class CourseSectionGroupAdmin(admin.ModelAdmin):
+class CourseSectionGroupAdmin(UnfoldModelAdmin):
     form = CourseSectionGroupForm
     list_display = ("name", "school_year", "semester", "course_count", "student_count", "is_active", "created_at")
     list_filter = ("school_year", "semester", "is_active")
@@ -1012,7 +1014,7 @@ class CourseSectionGroupAdmin(admin.ModelAdmin):
         return render(request, 'admin/course_section_group_enroll.html', context)
 
 
-class EnrollmentAdmin(admin.ModelAdmin):
+class EnrollmentAdmin(UnfoldModelAdmin):
     list_display = ("student", "course_section", "display_grade", "is_active", "enrolled_at")
     list_filter = ("is_active", "course_section__school_year", "course_section__semester")
     search_fields = ("student__last_name", "student__first_name", "student__email", "student__student_id")
@@ -1133,93 +1135,93 @@ class EnrollmentAdmin(admin.ModelAdmin):
         return render(request, 'admin/enrollment_bulk_enroll.html', context)
 
 
-class WeeklyModuleAdmin(admin.ModelAdmin):
+class WeeklyModuleAdmin(UnfoldModelAdmin):
     list_display = ("course_section", "week_number", "title", "is_exam_week", "is_published")
     list_filter = ("is_exam_week", "is_published")
 
 
-class AssignmentGroupAdmin(admin.ModelAdmin):
+class AssignmentGroupAdmin(UnfoldModelAdmin):
     list_display = ("course_section", "name", "weight_percent", "is_active", "created_at")
     list_filter = ("is_active", "course_section")
     search_fields = ("name", "course_section__course__title", "course_section__section__name")
 
 
-class MeetingSessionAdmin(admin.ModelAdmin):
+class MeetingSessionAdmin(UnfoldModelAdmin):
     list_display = ("course_section", "date", "title", "created_by", "created_at")
     list_filter = ("date", "course_section")
     search_fields = ("title", "course_section__course__title", "course_section__section__name")
 
 
-class AttendanceRecordAdmin(admin.ModelAdmin):
+class AttendanceRecordAdmin(UnfoldModelAdmin):
     list_display = ("meeting", "student", "status", "marked_by", "updated_at")
     list_filter = ("status", "meeting__course_section")
     search_fields = ("student__first_name", "student__last_name", "student__email", "meeting__title")
 
 
-class ActivityAdmin(admin.ModelAdmin):
+class ActivityAdmin(UnfoldModelAdmin):
     list_display = ("title", "course_section", "points", "deadline", "is_published")
     list_filter = ("is_published",)
 
 
-class CourseFileAdmin(admin.ModelAdmin):
+class CourseFileAdmin(UnfoldModelAdmin):
     list_display = ("file_name", "course_section", "category", "is_visible", "created_at")
     list_filter = ("category", "is_visible")
 
 
-class QuizAdmin(admin.ModelAdmin):
+class QuizAdmin(UnfoldModelAdmin):
     list_display = ("title", "course_section", "attempt_limit", "is_published", "created_at")
     list_filter = ("is_published",)
 
 
-class QuizQuestionAdmin(admin.ModelAdmin):
+class QuizQuestionAdmin(UnfoldModelAdmin):
     list_display = ("quiz", "question_type", "question_text", "points", "sort_order")
     list_filter = ("question_type",)
     search_fields = ("question_text", "quiz__title")
 
 
-class QuizChoiceAdmin(admin.ModelAdmin):
+class QuizChoiceAdmin(UnfoldModelAdmin):
     list_display = ("question", "choice_text", "is_correct", "sort_order")
     list_filter = ("is_correct",)
 
 
-class QuizAttemptAdmin(admin.ModelAdmin):
+class QuizAttemptAdmin(UnfoldModelAdmin):
     list_display = ("quiz", "student", "attempt_number", "score", "max_score", "is_submitted", "pending_manual_grading", "submitted_at")
     list_filter = ("is_submitted", "pending_manual_grading")
     search_fields = ("quiz__title", "student__first_name", "student__last_name", "student__email")
 
 
-class QuizAnswerAdmin(admin.ModelAdmin):
+class QuizAnswerAdmin(UnfoldModelAdmin):
     list_display = ("attempt", "question", "is_correct", "points_awarded", "needs_manual_grading", "graded_at")
     list_filter = ("needs_manual_grading", "is_correct")
 
 
-class SubmissionAdmin(admin.ModelAdmin):
+class SubmissionAdmin(UnfoldModelAdmin):
     list_display = ("activity", "student", "status", "score", "submitted_at", "graded_at")
     list_filter = ("status",)
     search_fields = ("activity__title", "student__first_name", "student__last_name", "student__email")
 
 
-class AnnouncementAdmin(admin.ModelAdmin):
+class AnnouncementAdmin(UnfoldModelAdmin):
     list_display = ("title", "course_section", "school_wide", "audience", "is_published", "created_at")
     list_filter = ("school_wide", "audience", "is_published")
 
 
-class CalendarEventAdmin(admin.ModelAdmin):
+class CalendarEventAdmin(UnfoldModelAdmin):
     list_display = ("title", "creator", "event_type", "start_at", "all_day", "is_personal")
     list_filter = ("event_type", "all_day", "is_personal")
 
 
-class TodoItemAdmin(admin.ModelAdmin):
+class TodoItemAdmin(UnfoldModelAdmin):
     list_display = ("title", "user", "due_at", "is_done", "created_at")
     list_filter = ("is_done",)
 
 
-class NotificationAdmin(admin.ModelAdmin):
+class NotificationAdmin(UnfoldModelAdmin):
     list_display = ("recipient", "type", "title", "is_read", "created_at")
     list_filter = ("type", "is_read")
 
 
-class PasswordResetRequestAdmin(admin.ModelAdmin):
+class PasswordResetRequestAdmin(UnfoldModelAdmin):
     list_display = ("user", "personal_email", "status", "created_at", "resolved_at", "resolved_by")
     list_filter = ("status", "created_at")
     search_fields = ("user__email", "user__first_name", "user__last_name", "personal_email")
@@ -1283,21 +1285,21 @@ class PasswordResetRequestAdmin(admin.ModelAdmin):
     decline_requests.short_description = "Decline selected password reset requests"
 
 
-class PushTokenAdmin(admin.ModelAdmin):
+class PushTokenAdmin(UnfoldModelAdmin):
     list_display = ("user", "token", "device_type", "device_name", "is_active", "created_at")
     list_filter = ("device_type", "is_active")
     search_fields = ("user__email", "user__first_name", "user__last_name", "token")
     readonly_fields = ("created_at", "updated_at")
 
 
-class ActivityReminderAdmin(admin.ModelAdmin):
+class ActivityReminderAdmin(UnfoldModelAdmin):
     list_display = ("user", "reminder_type", "activity", "quiz", "reminder_datetime", "notification_sent", "created_at")
     list_filter = ("reminder_type", "notification_sent")
     search_fields = ("user__email", "user__first_name", "user__last_name", "activity__title", "quiz__title")
     readonly_fields = ("created_at", "updated_at")
 
 
-class IDCounterAdmin(admin.ModelAdmin):
+class IDCounterAdmin(UnfoldModelAdmin):
     """Admin view for ID counters (read-only for audit purposes)."""
     list_display = ("year", "id_type", "prefix", "sequential", "last_id_display")
     list_filter = ("year", "id_type")
@@ -1317,7 +1319,7 @@ class IDCounterAdmin(admin.ModelAdmin):
         return False
 
 
-class GradingPeriodAdmin(admin.ModelAdmin):
+class GradingPeriodAdmin(UnfoldModelAdmin):
     """Admin for GradingPeriod - managing academic grading periods (quarters)."""
     list_display = ("school_year", "label", "semester_group_display", "period_number", "start_date", "end_date", "is_current")
     list_filter = ("school_year", "semester_group", "is_current")
@@ -1454,7 +1456,7 @@ class GradingPeriodAdmin(admin.ModelAdmin):
         return super().changelist_view(request, extra_context)
 
 
-class GradeEntryAdmin(admin.ModelAdmin):
+class GradeEntryAdmin(UnfoldModelAdmin):
     """Admin for GradeEntry - per-student per-period grades."""
     list_display = ("student_name", "course_section", "grading_period", "score", "is_published", "adviser_overridden", "updated_at")
     list_filter = ("grading_period", "is_published", "adviser_overridden", "enrollment__course_section__course__code")
@@ -1486,7 +1488,7 @@ class GradeEntryAdmin(admin.ModelAdmin):
     course_section.admin_order_field = "enrollment__course_section"
 
 
-class GradeWeightConfigAdmin(admin.ModelAdmin):
+class GradeWeightConfigAdmin(UnfoldModelAdmin):
     """Admin for GradeWeightConfig - DepEd grade weight configuration per course section."""
     list_display = ("course_section_info", "written_works", "performance_tasks", "quarterly_assessment", "is_customized", "updated_by", "updated_at")
     list_filter = ("is_customized", "course_section__course__category")
@@ -1499,7 +1501,7 @@ class GradeWeightConfigAdmin(admin.ModelAdmin):
     course_section_info.admin_order_field = "course_section__course__code"
 
 
-class AssignmentWeightAdmin(admin.ModelAdmin):
+class AssignmentWeightAdmin(UnfoldModelAdmin):
     """Admin for AssignmentWeight - teacher-defined weighting for categories."""
     list_display = ("course_section_info", "grading_period", "category", "weight_percent")
     list_filter = ("grading_period", "category")
@@ -1512,7 +1514,7 @@ class AssignmentWeightAdmin(admin.ModelAdmin):
     course_section_info.admin_order_field = "course_section__course__code"
 
 
-class GradeSubmissionAdmin(admin.ModelAdmin):
+class GradeSubmissionAdmin(UnfoldModelAdmin):
     """Admin for GradeSubmission - tracks submission status per subject+period."""
     list_display = ("course_section_info", "grading_period", "status", "submitted_by", "submitted_at", "taken_back_at")
     list_filter = ("status", "grading_period")
@@ -1525,7 +1527,7 @@ class GradeSubmissionAdmin(admin.ModelAdmin):
     course_section_info.admin_order_field = "course_section__course__code"
 
 
-class SectionReportCardAdmin(admin.ModelAdmin):
+class SectionReportCardAdmin(UnfoldModelAdmin):
     """Admin for SectionReportCard - tracks report card publication per section+period."""
     list_display = ("section_info", "grading_period", "is_published", "published_by", "published_at")
     list_filter = ("is_published", "grading_period")
@@ -1537,7 +1539,7 @@ class SectionReportCardAdmin(admin.ModelAdmin):
     section_info.short_description = "Section"
 
 
-class AdviserOverrideLogAdmin(admin.ModelAdmin):
+class AdviserOverrideLogAdmin(UnfoldModelAdmin):
     """Admin for AdviserOverrideLog - read-only audit trail of adviser grade overrides."""
     list_display = ("grade_entry_info", "adviser", "previous_score", "new_score", "created_at")
     list_filter = ("created_at",)
@@ -1549,7 +1551,7 @@ class AdviserOverrideLogAdmin(admin.ModelAdmin):
     grade_entry_info.short_description = "Grade Entry"
 
 
-class TeacherAdvisoryAdmin(admin.ModelAdmin):
+class TeacherAdvisoryAdmin(UnfoldModelAdmin):
     """Admin for TeacherAdvisory model - managing section adviser assignments."""
 
     list_display = ("teacher_full_name", "section_name", "school_year", "is_active", "assigned_at", "assigned_by")
