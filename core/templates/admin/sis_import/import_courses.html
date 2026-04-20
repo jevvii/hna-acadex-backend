@@ -25,18 +25,18 @@
 
     {# Step Indicator #}
     <div class="flex items-center gap-0 w-full">
-        <div class="flex items-center gap-2 {% if step == 'upload' %}text-primary-700 dark:text-primary-400{% elif step == 'preview' or step == 'result' %}text-primary-700 dark:text-primary-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'upload' %}bg-primary-700 text-white border-primary-700 dark:bg-primary-500 dark:border-primary-500{% elif step == 'preview' or step == 'result' %}bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/40 dark:text-primary-400 dark:border-primary-700{% else %}border-gray-300 dark:border-gray-600{% endif %}">1</span>
+        <div class="flex items-center gap-2 {% if step == 'upload' %}text-blue-700 dark:text-blue-400{% elif step == 'preview' or step == 'result' %}text-blue-700 dark:text-blue-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'upload' %}bg-blue-700 text-white border-blue-700 dark:bg-blue-500 dark:border-blue-500{% elif step == 'preview' or step == 'result' %}bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-700{% else %}border-gray-300 dark:border-gray-600{% endif %}">1</span>
             <span class="text-sm font-medium">Upload</span>
         </div>
-        <div class="flex-1 h-0.5 mx-3 {% if step == 'preview' or step == 'result' %}bg-primary-500{% else %}bg-gray-200 dark:bg-gray-700{% endif %}"></div>
-        <div class="flex items-center gap-2 {% if step == 'preview' %}text-primary-700 dark:text-primary-400{% elif step == 'result' %}text-primary-700 dark:text-primary-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'preview' %}bg-primary-700 text-white border-primary-700 dark:bg-primary-500 dark:border-primary-500{% elif step == 'result' %}bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/40 dark:text-primary-400 dark:border-primary-700{% else %}border-gray-300 dark:border-gray-600{% endif %}">2</span>
+        <div class="flex-1 h-0.5 mx-3 {% if step == 'preview' or step == 'result' %}bg-blue-500{% else %}bg-gray-200 dark:bg-gray-700{% endif %}"></div>
+        <div class="flex items-center gap-2 {% if step == 'preview' %}text-blue-700 dark:text-blue-400{% elif step == 'result' %}text-blue-700 dark:text-blue-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'preview' %}bg-blue-700 text-white border-blue-700 dark:bg-blue-500 dark:border-blue-500{% elif step == 'result' %}bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-700{% else %}border-gray-300 dark:border-gray-600{% endif %}">2</span>
             <span class="text-sm font-medium">Preview</span>
         </div>
-        <div class="flex-1 h-0.5 mx-3 {% if step == 'result' %}bg-primary-500{% else %}bg-gray-200 dark:bg-gray-700{% endif %}"></div>
-        <div class="flex items-center gap-2 {% if step == 'result' %}text-primary-700 dark:text-primary-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'result' %}bg-primary-700 text-white border-primary-700 dark:bg-primary-500 dark:border-primary-500{% else %}border-gray-300 dark:border-gray-600{% endif %}">3</span>
+        <div class="flex-1 h-0.5 mx-3 {% if step == 'result' %}bg-blue-500{% else %}bg-gray-200 dark:bg-gray-700{% endif %}"></div>
+        <div class="flex items-center gap-2 {% if step == 'result' %}text-blue-700 dark:text-blue-400{% else %}text-gray-400 dark:text-gray-600{% endif %}">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold border-2 {% if step == 'result' %}bg-blue-700 text-white border-blue-700 dark:bg-blue-500 dark:border-blue-500{% else %}border-gray-300 dark:border-gray-600{% endif %}">3</span>
             <span class="text-sm font-medium">Result</span>
         </div>
     </div>
@@ -46,17 +46,17 @@
         {% csrf_token %}
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm p-6">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary-600 dark:text-primary-400">upload_file</span>
+                <span class="material-symbols-outlined text-blue-600 dark:text-blue-400">upload_file</span>
                 Upload CSV File
             </h2>
-            <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-primary-400 dark:hover:border-primary-600 transition-colors">
+            <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center hover:border-blue-400 dark:hover:border-blue-600 transition-colors">
                 {{ form.csv_file }}
             </div>
         </div>
 
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm p-6">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary-600 dark:text-primary-400">table</span>
+                <span class="material-symbols-outlined text-blue-600 dark:text-blue-400">table</span>
                 CSV Format
             </h2>
             <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Upload a CSV file with the following columns:</p>
@@ -105,7 +105,7 @@
                 <span class="material-symbols-outlined text-[18px]">download</span>
                 Download Template CSV
             </a>
-            <button type="submit" class="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-primary-600 dark:bg-primary-500 rounded-lg shadow-sm hover:bg-primary-700 dark:hover:bg-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+            <button type="submit" class="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 dark:bg-blue-500 rounded-lg shadow-sm hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
                 <span class="material-symbols-outlined text-[18px]">visibility</span>
                 Preview Import
             </button>
@@ -194,7 +194,7 @@
                     Cancel and Re-upload
                 </a>
                 {% if validation_result.error_count == 0 %}
-                <button type="submit" class="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-primary-600 dark:bg-primary-500 rounded-lg shadow-sm hover:bg-primary-700 dark:hover:bg-primary-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 dark:bg-blue-500 rounded-lg shadow-sm hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900">
                     <span class="material-symbols-outlined text-[18px]">cloud_upload</span>
                     Import
                 </button>
@@ -328,7 +328,7 @@
                 <span class="material-symbols-outlined text-[18px]">refresh</span>
                 Import More Courses
             </a>
-            <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 dark:bg-primary-500 rounded-lg shadow-sm hover:bg-primary-700 dark:hover:bg-primary-400 transition-colors">
+            <a href="{% url 'hna_acadex_admin:sis_import_index' %}" class="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 dark:bg-blue-500 rounded-lg shadow-sm hover:bg-blue-700 dark:hover:bg-blue-400 transition-colors">
                 <span class="material-symbols-outlined text-[18px]">arrow_back</span>
                 Back to SIS Import
             </a>

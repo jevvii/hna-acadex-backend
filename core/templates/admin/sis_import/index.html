@@ -28,8 +28,8 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {% for import_type in import_types %}
-        <a href="{% url import_type.url_name %}" class="block p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm hover:border-primary-500 dark:hover:border-primary-500 hover:shadow-md transition-all group">
-            <div class="w-12 h-12 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-500 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/40 transition-colors">
+        <a href="{% url import_type.url_name %}" class="block p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md transition-all group">
+            <div class="w-12 h-12 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-500 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors">
                 <span class="material-symbols-outlined text-2xl">{{ import_type.icon|default:"folder" }}</span>
             </div>
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ import_type.name }}</h2>
@@ -40,7 +40,7 @@
 
     <div class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mt-4">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary-600">info</span> How it works
+            <span class="material-symbols-outlined text-blue-600">info</span> How it works
         </h3>
         <ol class="list-decimal list-inside space-y-3 text-sm text-gray-600 dark:text-gray-300 ml-2">
             <li><strong class="text-gray-900 dark:text-white">Upload:</strong> Select a CSV file to upload using the provided templates.</li>

@@ -14,7 +14,6 @@ class SISImportForm(forms.Form):
         help_text="Upload a CSV file with the data to import. Maximum 500 rows.",
         widget=forms.FileInput(attrs={
             'accept': '.csv',
-            'class': 'block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 dark:file:bg-primary-900/30 dark:file:text-primary-400 hover:file:bg-primary-100 dark:hover:file:bg-primary-900/50 file:cursor-pointer file:transition-colors',
         })
     )
 
