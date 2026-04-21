@@ -8,6 +8,14 @@ from django.contrib import messages
 from django.utils.html import format_html
 from django.db import models, transaction
 from datetime import date, timedelta
+from unfold.admin import ModelAdmin as UnfoldModelAdmin
+from unfold.widgets import (
+    UnfoldAdminEmailInputWidget,
+    UnfoldAdminPasswordWidget,
+    UnfoldAdminSelect2Widget,
+    UnfoldAdminTextInputWidget,
+    UnfoldBooleanWidget,
+)
 from .models import (
     Activity,
     ActivityComment,
@@ -64,46 +72,52 @@ class CustomUserCreationForm(UserCreationForm):
     personal_email = forms.EmailField(
         required=False,
         label="Personal Email",
+        widget=UnfoldAdminEmailInputWidget(),
         help_text="Personal email for sending login credentials (required for teachers/students)"
     )
     first_name = forms.CharField(
         max_length=100,
         label="First Name",
+        widget=UnfoldAdminTextInputWidget(),
         help_text="First name (e.g., 'Juan' or 'Maria Clara')"
     )
     last_name = forms.CharField(
         max_length=100,
         label="Last Name",
+        widget=UnfoldAdminTextInputWidget(),
         help_text="Last name / Surname (e.g., 'Dela Cruz' or 'Santos')"
     )
     middle_name = forms.CharField(
         max_length=100,
         required=False,
         label="Middle Name",
+        widget=UnfoldAdminTextInputWidget(),
         help_text="Middle name or initial (optional)"
     )
     auto_generate_password = forms.BooleanField(
         required=False,
         initial=True,
         label="Auto-generate password",
+        widget=UnfoldBooleanWidget(),
         help_text="If checked, a random password will be generated. Uncheck to set password manually."
     )
     password1 = forms.CharField(
         label="Password",
         required=False,
-        widget=forms.PasswordInput,
+        widget=UnfoldAdminPasswordWidget(),
         help_text="Required if auto-generate password is unchecked."
     )
     password2 = forms.CharField(
         label="Password confirmation",
         required=False,
-        widget=forms.PasswordInput,
+        widget=UnfoldAdminPasswordWidget(),
         help_text="Enter the same password as above, for verification."
     )
     send_credentials_email = forms.BooleanField(
         required=False,
         initial=True,
         label="Send credentials via email",
+        widget=UnfoldBooleanWidget(),
         help_text="If checked, login credentials will be sent to the personal email address."
     )
 
@@ -111,6 +125,21 @@ class CustomUserCreationForm(UserCreationForm):
         model = User
         fields = ('personal_email', 'first_name', 'last_name', 'middle_name', 'role', 'status', 'is_irregular', 'is_active', 'is_staff')
         # Note: email, student_id, employee_id are auto-generated for students/teachers
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name, placeholder in (
+            ("role", "Select role"),
+            ("status", "Select status"),
+        ):
+            if field_name in self.fields:
+                self.fields[field_name].widget = UnfoldAdminSelect2Widget(
+                    attrs={"data-placeholder": placeholder}
+                )
+
+        for field_name in ("is_irregular", "is_active", "is_staff"):
+            if field_name in self.fields:
+                self.fields[field_name].widget = UnfoldBooleanWidget()
 
     def clean_personal_email(self):
         """Validate that personal_email is not already in use."""
@@ -154,6 +183,7 @@ class CustomUserChangeForm(UserChangeForm):
     personal_email = forms.EmailField(
         required=False,
         label="Personal Email",
+        widget=UnfoldAdminEmailInputWidget(),
         help_text="Personal email for sending login credentials"
     )
 
@@ -173,10 +203,6 @@ class CustomUserChangeForm(UserChangeForm):
                     f"This personal email is already used by user: {existing_user.get_full_name()} ({existing_user.email})"
                 )
         return personal_email
-
-
-from unfold.admin import ModelAdmin as UnfoldModelAdmin
-from unfold.widgets import UnfoldAdminSelect2Widget
 
 
 SEMESTER_DROPDOWN_CHOICES = (
