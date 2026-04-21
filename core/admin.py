@@ -6,7 +6,7 @@ from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django import forms
 from django.contrib import messages
 from django.utils.html import format_html
-from django.db import models
+from django.db import models, transaction
 from datetime import date, timedelta
 from .models import (
     Activity,
@@ -1433,6 +1433,43 @@ class GradingPeriodAdminForm(forms.ModelForm):
         label="Automate end date from start date",
         help_text="If enabled, end date is automatically set to 10 weeks minus 1 day from the start date.",
     )
+    auto_generate_full_year = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Fully automate full school year (Q1-Q4)",
+        help_text="Generate all quarters for the selected school year starting from the start date.",
+    )
+    grade_level_group = forms.ChoiceField(
+        required=False,
+        initial="7-10",
+        choices=(
+            ("7-10", "Junior High School (Grades 7-10)"),
+            ("11-12", "Senior High School (Grades 11-12)"),
+        ),
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select grade-level group"}),
+        help_text="JHS: no semester groups. SHS: auto-assign Semester 1 (Q1-Q2) and Semester 2 (Q3-Q4).",
+    )
+    quarter_weeks = forms.IntegerField(
+        required=False,
+        initial=10,
+        min_value=1,
+        max_value=20,
+        help_text="Weeks per quarter when full-year automation is enabled.",
+    )
+    set_current_quarter = forms.TypedChoiceField(
+        required=False,
+        coerce=int,
+        empty_value=1,
+        initial=1,
+        choices=(
+            ("1", "Q1"),
+            ("2", "Q2"),
+            ("3", "Q3"),
+            ("4", "Q4"),
+        ),
+        widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Set current quarter"}),
+        help_text="Which quarter should be marked as current after generation.",
+    )
 
     class Meta:
         model = GradingPeriod
@@ -1449,17 +1486,39 @@ class GradingPeriodAdminForm(forms.ModelForm):
             build_school_year_choices(),
             current_school_year,
         )
+        self.fields["period_number"].required = False
+        self.fields["end_date"].required = False
         if self.instance and self.instance.pk:
             self.fields["auto_calculate_end_date"].initial = False
+            self.fields["auto_generate_full_year"].initial = False
 
     def clean(self):
         cleaned_data = super().clean()
+        auto_generate_full_year = cleaned_data.get("auto_generate_full_year")
+        start_date = cleaned_data.get("start_date")
+
+        if auto_generate_full_year:
+            if not start_date:
+                self.add_error("start_date", "Start date is required for full-year automation.")
+                return cleaned_data
+
+            quarter_weeks = cleaned_data.get("quarter_weeks") or 10
+            grade_level_group = cleaned_data.get("grade_level_group") or "7-10"
+            cleaned_data["end_date"] = start_date + timedelta(weeks=quarter_weeks) - timedelta(days=1)
+            cleaned_data["period_number"] = 1
+            cleaned_data["semester_group"] = None if grade_level_group == "7-10" else 1
+            return cleaned_data
+
+        if not cleaned_data.get("period_number"):
+            self.add_error("period_number", "Period number is required unless full-year automation is enabled.")
+
         if cleaned_data.get("auto_calculate_end_date"):
-            start_date = cleaned_data.get("start_date")
             if start_date:
                 cleaned_data["end_date"] = start_date + timedelta(weeks=10) - timedelta(days=1)
             else:
                 self.add_error("start_date", "Start date is required when end date automation is enabled.")
+        elif not cleaned_data.get("end_date"):
+            self.add_error("end_date", "End date is required when automation is disabled.")
         return cleaned_data
 
 
@@ -1477,6 +1536,10 @@ class GradingPeriodAdmin(UnfoldModelAdmin):
         ("Period Info", {
             "fields": ("school_year", "period_number", "semester_group", "is_current", "auto_calculate_end_date"),
         }),
+        ("Full-Year Automation", {
+            "fields": ("auto_generate_full_year", "grade_level_group", "quarter_weeks", "set_current_quarter"),
+            "description": "Enable this to auto-generate Q1-Q4 for the whole school year from the start date.",
+        }),
         ("Dates", {
             "fields": ("start_date", "end_date"),
         }),
@@ -1493,6 +1556,80 @@ class GradingPeriodAdmin(UnfoldModelAdmin):
     semester_group_display.short_description = "Group"
     semester_group_display.admin_order_field = "semester_group"
 
+    @staticmethod
+    def _build_full_year_periods(school_year, start_date, grade_level_group, quarter_weeks, set_current):
+        periods = []
+        current_date = start_date
+
+        for quarter_num in range(1, 5):
+            end_date = current_date + timedelta(weeks=quarter_weeks) - timedelta(days=1)
+            semester_group = 1 if (grade_level_group == "11-12" and quarter_num <= 2) else 2 if grade_level_group == "11-12" else None
+
+            periods.append({
+                "school_year": school_year,
+                "period_type": "quarter",
+                "period_number": quarter_num,
+                "semester_group": semester_group,
+                "start_date": current_date,
+                "end_date": end_date,
+                "is_current": quarter_num == set_current,
+            })
+            current_date = end_date + timedelta(days=1)
+
+        return periods
+
+    def add_view(self, request, form_url="", extra_context=None):
+        if request.method == "POST":
+            form_class = self.get_form(request)
+            form = form_class(request.POST, request.FILES)
+
+            if form.is_valid() and form.cleaned_data.get("auto_generate_full_year"):
+                school_year = form.cleaned_data["school_year"]
+                start_date = form.cleaned_data["start_date"]
+                grade_level_group = form.cleaned_data.get("grade_level_group") or "7-10"
+                quarter_weeks = form.cleaned_data.get("quarter_weeks") or 10
+                set_current = form.cleaned_data.get("set_current_quarter") or 1
+
+                periods_to_create = self._build_full_year_periods(
+                    school_year=school_year,
+                    start_date=start_date,
+                    grade_level_group=grade_level_group,
+                    quarter_weeks=quarter_weeks,
+                    set_current=set_current,
+                )
+
+                created_count = 0
+                updated_count = 0
+                with transaction.atomic():
+                    for period_data in periods_to_create:
+                        _, created = GradingPeriod.objects.update_or_create(
+                            school_year=period_data["school_year"],
+                            semester_group=period_data["semester_group"],
+                            period_number=period_data["period_number"],
+                            defaults={
+                                "start_date": period_data["start_date"],
+                                "end_date": period_data["end_date"],
+                                "is_current": period_data["is_current"],
+                                "period_type": "quarter",
+                            },
+                        )
+                        if created:
+                            created_count += 1
+                        else:
+                            updated_count += 1
+
+                level_label = "Senior High School" if grade_level_group == "11-12" else "Junior High School"
+                self.message_user(
+                    request,
+                    f"Generated grading periods for {school_year} ({level_label}): {created_count} created, {updated_count} updated.",
+                    level=messages.SUCCESS,
+                )
+                from django.http import HttpResponseRedirect
+                from django.urls import reverse
+                return HttpResponseRedirect(reverse("admin:core_gradingperiod_changelist"))
+
+        return super().add_view(request, form_url, extra_context)
+
     def get_urls(self):
         from django.urls import path
         urls = super().get_urls()
@@ -1505,8 +1642,7 @@ class GradingPeriodAdmin(UnfoldModelAdmin):
         """View for generating grading periods for a school year."""
         from django.shortcuts import render, redirect
         from django.contrib import messages
-        from django.db import transaction
-        from datetime import date, timedelta
+        from datetime import date
         from .models import GradingPeriod
 
         if request.method == 'POST':
@@ -1537,33 +1673,13 @@ class GradingPeriodAdmin(UnfoldModelAdmin):
                 messages.error(request, f"Invalid start date: {e}")
                 return redirect(request.path)
 
-            # Generate quarter periods
-            periods_to_create = []
-            current_date = start_date
-
-            for quarter_num in range(1, 5):
-                end_date = current_date + timedelta(weeks=quarter_weeks)
-                if quarter_num < 4:
-                    end_date = end_date - timedelta(days=1)
-
-                # Determine semester_group
-                if grade_level_group == '11-12':
-                    semester_group = 1 if quarter_num <= 2 else 2
-                else:
-                    semester_group = None
-
-                periods_to_create.append({
-                    'school_year': school_year,
-                    'period_type': 'quarter',
-                    'period_number': quarter_num,
-                    'semester_group': semester_group,
-                    'start_date': current_date,
-                    'end_date': end_date,
-                    'is_current': quarter_num == set_current,
-                })
-
-                if quarter_num < 4:
-                    current_date = end_date + timedelta(days=1)
+            periods_to_create = self._build_full_year_periods(
+                school_year=school_year,
+                start_date=start_date,
+                grade_level_group=grade_level_group,
+                quarter_weeks=quarter_weeks,
+                set_current=set_current,
+            )
 
             # Create periods
             created_count = 0
