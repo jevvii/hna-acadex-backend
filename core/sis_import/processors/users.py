@@ -4,7 +4,7 @@ Processor for importing users (students and teachers) from CSV files.
 
 CSV Headers:
   Required: role, first_name, last_name, personal_email
-  Optional: middle_name, grade_level, strand, section, status
+  Optional: middle_name, grade_level, strand, status, is_irregular
 
 Notes:
   - 'admin' role is not allowed for import
@@ -41,7 +41,7 @@ class UserCSVProcessor(BaseCSVProcessor):
 
     @property
     def optional_headers(self) -> list[str]:
-        return ['middle_name', 'grade_level', 'strand', 'section', 'status', 'is_irregular']
+        return ['middle_name', 'grade_level', 'strand', 'status', 'is_irregular']
 
     def validate_row(self, row_number: int, row_data: dict[str, str]) -> RowResult:
         """Validate a single user row."""
@@ -126,7 +126,6 @@ class UserCSVProcessor(BaseCSVProcessor):
         personal_email = row_data.get('personal_email', '').strip()
         grade_level = row_data.get('grade_level', '').strip() or None
         strand = row_data.get('strand', '').strip() or None
-        section = row_data.get('section', '').strip() or None
         status = row_data.get('status', '').strip() or User.Status.ACTIVE
         is_irregular = row_data.get('is_irregular', '').strip().lower() in ('true', '1', 'yes')
 
@@ -163,7 +162,6 @@ class UserCSVProcessor(BaseCSVProcessor):
             employee_id=employee_id,
             grade_level=grade_level,
             strand=strand,
-            section=section,
             is_irregular=is_irregular,
             requires_setup=True,
         )
@@ -278,7 +276,6 @@ class UserCSVProcessor(BaseCSVProcessor):
             'B.',                # middle_name
             'Grade 7',           # grade_level
             'STEM',              # strand
-            'ICT-A',             # section
             'active',            # status
             'false',             # is_irregular
         ]

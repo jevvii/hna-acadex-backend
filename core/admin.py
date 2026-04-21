@@ -1136,7 +1136,6 @@ class EnrollmentAdmin(UnfoldModelAdmin):
     list_filter = ("is_active", "course_section__school_year", "course_section__semester")
     search_fields = ("student__last_name", "student__first_name", "student__email", "student__student_id")
     autocomplete_fields = ("student", "course_section")
-    raw_id_fields = ("student",)
     date_hierarchy = "enrolled_at"
 
     actions = ["activate_enrollments", "deactivate_enrollments", "bulk_enroll_to_classes"]

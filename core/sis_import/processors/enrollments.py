@@ -3,13 +3,13 @@
 Processor for importing enrollments from CSV files.
 
 CSV Headers:
-  Required: student_id, course_code, school_year
-  Optional: section_name, semester
+  Required: student_email, class_section
+  Optional: none
 
 Notes:
-  - Student can be identified by student_id or personal_email
-  - Course is identified by code + school_year
-  - CourseSection is found by course + optional section_name/semester filters
+  - Student is identified by school email (personal_email is also accepted)
+  - Class section is identified by section name
+  - Student is enrolled to all active class offerings for that section
 """
 
 from typing import Any
@@ -18,7 +18,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from .base import BaseCSVProcessor, RowResult
-from core.models import User, Course, CourseSection, Section, Enrollment
+from core.models import User, CourseSection, Section, Enrollment
 
 
 class EnrollmentCSVProcessor(BaseCSVProcessor):
@@ -30,11 +30,27 @@ class EnrollmentCSVProcessor(BaseCSVProcessor):
 
     @property
     def required_headers(self) -> list[str]:
-        return ['student_id', 'course_code', 'school_year']
+        return ['student_email', 'class_section']
 
     @property
     def optional_headers(self) -> list[str]:
-        return ['section_name', 'semester']
+        return []
+
+    def _find_student(self, student_email: str) -> User | None:
+        """Find student by school email (or personal email fallback)."""
+        return User.objects.filter(
+            Q(email__iexact=student_email) | Q(personal_email__iexact=student_email),
+            role=User.Role.STUDENT
+        ).first()
+
+    def _find_section(self, class_section_name: str) -> Section | None:
+        """
+        Find class section by name.
+
+        If multiple sections share the same name across years, use the latest active one.
+        """
+        section_qs = Section.objects.filter(name__iexact=class_section_name).order_by('-is_active', '-school_year')
+        return section_qs.first()
 
     def validate_row(self, row_number: int, row_data: dict[str, str]) -> RowResult:
         """Validate a single enrollment row."""
@@ -42,72 +58,39 @@ class EnrollmentCSVProcessor(BaseCSVProcessor):
         warnings = []
 
         # Get identifiers
-        student_id = row_data.get('student_id', '').strip()
-        course_code = row_data.get('course_code', '').strip()
-        school_year = row_data.get('school_year', '').strip()
-        section_name = row_data.get('section_name', '').strip() or None
-        semester = row_data.get('semester', '').strip() or None
+        student_email = row_data.get('student_email', '').strip()
+        class_section = row_data.get('class_section', '').strip()
 
-        # Validate student_id (can be student ID or email)
-        if not student_id:
-            errors.append("Student ID or email is required")
+        # Validate student_email
+        is_valid_email, email_error = self.validate_email(student_email)
+        if not student_email:
+            errors.append("Student email is required")
+        elif not is_valid_email:
+            errors.append(email_error)
         else:
-            # Check if student exists
-            if '@' in student_id:
-                # It's an email - look for personal_email or school email
-                student = User.objects.filter(
-                    Q(personal_email=student_id) | Q(email=student_id),
-                    role=User.Role.STUDENT
-                ).first()
-            else:
-                # It's a student ID
-                student = User.objects.filter(student_id=student_id, role=User.Role.STUDENT).first()
-
+            student = self._find_student(student_email)
             if not student:
-                warnings.append(f"Student '{student_id}' not found - will be skipped during import")
+                warnings.append(f"Student '{student_email}' not found - row will be skipped")
 
-        # Validate course
-        if not course_code:
-            errors.append("Course code is required")
+        if not class_section:
+            errors.append("Class section is required")
+        else:
+            section_matches = Section.objects.filter(name__iexact=class_section)
+            match_count = section_matches.count()
 
-        # Validate school year
-        is_valid_sy, sy_error = self.validate_school_year(school_year)
-        if not school_year:
-            errors.append("School year is required")
-        elif not is_valid_sy:
-            errors.append(sy_error)
-
-        # Check if course exists
-        if course_code and school_year and is_valid_sy:
-            course = Course.objects.filter(code=course_code, school_year=school_year).first()
-            if not course:
-                warnings.append(f"Course '{course_code}' for {school_year} not found")
-
-        # Check if CourseSection exists (if we can identify it)
-        if course_code and school_year:
-            course = Course.objects.filter(code=course_code, school_year=school_year).first()
-            if course:
-                course_sections = CourseSection.objects.filter(
-                    course=course,
-                    school_year=school_year
+            if match_count == 0:
+                warnings.append(f"Class section '{class_section}' not found - row will be skipped")
+            elif match_count > 1:
+                warnings.append(
+                    f"Multiple class sections named '{class_section}' found across school years - latest active section will be used"
                 )
-                if section_name:
-                    # Try to find by section name
-                    try:
-                        section = Section.objects.filter(name=section_name, school_year=school_year).first()
-                        if section:
-                            course_sections = course_sections.filter(section=section)
-                    except Exception:
-                        pass
-
-                if semester:
-                    course_sections = course_sections.filter(semester=semester)
-
-                count = course_sections.count()
-                if count == 0:
-                    warnings.append(f"No matching CourseSection found for {course_code} in {school_year}")
-                elif count > 1:
-                    warnings.append(f"Multiple CourseSections ({count}) found for {course_code} - will use first match")
+            else:
+                section = section_matches.first()
+                class_offerings_count = CourseSection.objects.filter(section=section, is_active=True).count()
+                if class_offerings_count == 0:
+                    warnings.append(
+                        f"Class section '{class_section}' has no active class offerings - row will be skipped"
+                    )
 
         action = 'error' if errors else 'valid'
 
@@ -123,81 +106,69 @@ class EnrollmentCSVProcessor(BaseCSVProcessor):
         """Create an enrollment from row data."""
         options = options or {}
 
-        # Extract identifiers
-        student_identifier = row_data.get('student_id', '').strip()
-        course_code = row_data.get('course_code', '').strip()
-        school_year = row_data.get('school_year', '').strip()
-        section_name = row_data.get('section_name', '').strip() or None
-        semester = row_data.get('semester', '').strip() or None
+        student_email = row_data.get('student_email', '').strip()
+        class_section_name = row_data.get('class_section', '').strip()
 
-        # Find student
-        if '@' in student_identifier:
-            student = User.objects.filter(
-                Q(personal_email=student_identifier) | Q(email=student_identifier),
-                role=User.Role.STUDENT
-            ).first()
-        else:
-            student = User.objects.filter(student_id=student_identifier, role=User.Role.STUDENT).first()
+        student = self._find_student(student_email)
 
         if not student:
             return RowResult(
                 row_number=row_number,
                 data=row_data,
                 action='error',
-                message=f"Student '{student_identifier}' not found"
+                message=f"Student '{student_email}' not found"
             )
 
-        # Find course
-        course = Course.objects.filter(code=course_code, school_year=school_year).first()
-        if not course:
+        section = self._find_section(class_section_name)
+        if not section:
             return RowResult(
                 row_number=row_number,
                 data=row_data,
                 action='error',
-                message=f"Course '{course_code}' for {school_year} not found"
+                message=f"Class section '{class_section_name}' not found"
             )
 
-        # Find CourseSection
-        course_sections = CourseSection.objects.filter(course=course, school_year=school_year)
-
-        if section_name:
-            section = Section.objects.filter(name=section_name, school_year=school_year).first()
-            if section:
-                course_sections = course_sections.filter(section=section)
-
-        if semester:
-            course_sections = course_sections.filter(semester=semester)
-
-        course_section = course_sections.first()
-
-        if not course_section:
+        course_sections = CourseSection.objects.filter(section=section, is_active=True).select_related('course', 'section')
+        if not course_sections.exists():
             return RowResult(
                 row_number=row_number,
                 data=row_data,
                 action='error',
-                message=f"No matching CourseSection found for {course_code} in {school_year}"
+                message=f"No active class offerings found for class section '{section.name}'"
             )
 
-        # Create enrollment (get_or_create to avoid duplicates)
-        enrollment, created = Enrollment.objects.get_or_create(
-            student=student,
-            course_section=course_section,
-            defaults={'is_active': True}
-        )
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
 
-        if created:
-            message = f"Enrolled {student.email} in {course_section}"
-            action = 'created'
-        else:
-            # Update to active if it was inactive
-            if not enrollment.is_active:
-                enrollment.is_active = True
-                enrollment.save(update_fields=['is_active'])
-                message = f"Re-activated enrollment for {student.email} in {course_section}"
-                action = 'updated'
+        for course_section in course_sections:
+            enrollment, created = Enrollment.objects.get_or_create(
+                student=student,
+                course_section=course_section,
+                defaults={'is_active': True}
+            )
+
+            if created:
+                created_count += 1
             else:
-                message = f"Enrollment already exists for {student.email} in {course_section}"
-                action = 'skipped'
+                if not enrollment.is_active:
+                    enrollment.is_active = True
+                    enrollment.save(update_fields=['is_active'])
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+
+        if created_count > 0:
+            action = 'created'
+        elif updated_count > 0:
+            action = 'updated'
+        else:
+            action = 'skipped'
+
+        message = (
+            f"Processed section '{section.name}' for {student.email}: "
+            f"{created_count} enrolled, {updated_count} re-activated, {skipped_count} already enrolled"
+        )
 
         return RowResult(
             row_number=row_number,
@@ -267,9 +238,6 @@ class EnrollmentCSVProcessor(BaseCSVProcessor):
     def _get_example_row(self) -> list[str]:
         """Get an example row for the template CSV."""
         return [
-            '120240001',         # student_id (or email)
-            'MATH101',           # course_code
-            '2024-2025',         # school_year
-            'ICT-A',             # section_name
-            '1st Semester',      # semester
+            'student@example.edu.ph',  # student_email
+            'ICT-A',                   # class_section
         ]

@@ -71,11 +71,8 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">student_id</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Student ID or personal email</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">120240001</td></tr>
-                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">course_code</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Course code (must exist)</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">MATH101</td></tr>
-                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">school_year</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Academic year</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">2024-2025</td></tr>
-                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">section_name</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Section name (to find CourseSection)</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">ICT-A</td></tr>
-                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">semester</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">No</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Semester filter</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">1st Semester</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">student_email</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Student school email (personal email also accepted)</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">student@example.edu.ph</td></tr>
+                        <tr><td class="px-4 py-2.5 font-mono text-xs text-gray-900 dark:text-gray-100">class_section</td><td class="px-4 py-2.5"><span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400">Yes</span></td><td class="px-4 py-2.5 text-gray-600 dark:text-gray-400">Class section name used to locate all associated class offerings</td><td class="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-500">ICT-A</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -84,9 +81,8 @@
                 <div>
                     <strong>Notes:</strong>
                     <ul class="list-disc list-inside mt-1 space-y-0.5 text-xs">
-                        <li>Students can be identified by student_id OR personal email</li>
-                        <li>Course and CourseSection must already exist in the system</li>
-                        <li>If multiple CourseSections match, the first one will be used</li>
+                        <li>Each row enrolls a student to all active class offerings under the class section</li>
+                        <li>If multiple sections share the same name, the latest active section is used</li>
                         <li>Duplicate enrollments will be skipped (not error)</li>
                     </ul>
                 </div>
@@ -124,7 +120,7 @@
                 <p class="text-sm font-semibold text-emerald-800 dark:text-emerald-300">All {{ validation_result.rows|length }} rows are valid</p>
                 <p class="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Click "Import" to proceed.</p>
                 {% if validation_result.warning_count > 0 %}
-                <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">{{ validation_result.warning_count }} warning(s) — some students or courses may not be found.</p>
+                <p class="text-xs text-amber-600 dark:text-amber-400 mt-1">{{ validation_result.warning_count }} warning(s) — some students or class sections may not be found.</p>
                 {% endif %}
             </div>
         </div>
