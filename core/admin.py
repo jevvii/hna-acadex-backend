@@ -7,7 +7,7 @@ from django import forms
 from django.contrib import messages
 from django.utils.html import format_html
 from django.db import models
-from datetime import date
+from datetime import date, timedelta
 from .models import (
     Activity,
     ActivityComment,
@@ -1427,6 +1427,12 @@ class GradingPeriodAdminForm(forms.ModelForm):
         widget=UnfoldAdminSelect2Widget(attrs={"data-placeholder": "Select semester group"}),
         help_text="Choose the semester group for SHS, or leave blank for Grades 7-10.",
     )
+    auto_calculate_end_date = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Automate end date from start date",
+        help_text="If enabled, end date is automatically set to 10 weeks minus 1 day from the start date.",
+    )
 
     class Meta:
         model = GradingPeriod
@@ -1443,6 +1449,18 @@ class GradingPeriodAdminForm(forms.ModelForm):
             build_school_year_choices(),
             current_school_year,
         )
+        if self.instance and self.instance.pk:
+            self.fields["auto_calculate_end_date"].initial = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("auto_calculate_end_date"):
+            start_date = cleaned_data.get("start_date")
+            if start_date:
+                cleaned_data["end_date"] = start_date + timedelta(weeks=10) - timedelta(days=1)
+            else:
+                self.add_error("start_date", "Start date is required when end date automation is enabled.")
+        return cleaned_data
 
 
 class GradingPeriodAdmin(UnfoldModelAdmin):
@@ -1457,7 +1475,7 @@ class GradingPeriodAdmin(UnfoldModelAdmin):
 
     fieldsets = (
         ("Period Info", {
-            "fields": ("school_year", "period_number", "semester_group", "is_current"),
+            "fields": ("school_year", "period_number", "semester_group", "is_current", "auto_calculate_end_date"),
         }),
         ("Dates", {
             "fields": ("start_date", "end_date"),
