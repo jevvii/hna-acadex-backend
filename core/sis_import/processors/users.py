@@ -125,7 +125,7 @@ class UserCSVProcessor(BaseCSVProcessor):
         middle_name = row_data.get('middle_name', '').strip() or None
         personal_email = row_data.get('personal_email', '').strip()
         grade_level = row_data.get('grade_level', '').strip() or None
-        strand = row_data.get('strand', '').strip() or None
+        strand = row_data.get('strand', '').strip() or User.Strand.NONE
         status = row_data.get('status', '').strip() or User.Status.ACTIVE
         is_irregular = row_data.get('is_irregular', '').strip().lower() in ('true', '1', 'yes')
 
@@ -215,7 +215,10 @@ class UserCSVProcessor(BaseCSVProcessor):
         with transaction.atomic():
             for row_num, row_dict in enumerate(rows, start=2):
                 try:
-                    result = self.process_row(row_num, row_dict, options)
+                    # Isolate each row with a savepoint so one DB error does not
+                    # poison the entire atomic block.
+                    with transaction.atomic():
+                        result = self.process_row(row_num, row_dict, options)
 
                     if result.action == 'created':
                         created.append(result)
